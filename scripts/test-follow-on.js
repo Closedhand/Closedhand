@@ -101,7 +101,7 @@ test("background progress: one live line on the web, one plain message on a chat
   const agents = read("lib/agents.js");
   const start = agents.indexOf("function progressParts");
   const box = {};
-  vm.runInNewContext(agents.slice(start, agents.indexOf("function formatElapsed")) + "\nthis.live = liveLine; this.still = stillWorking;", box);
+  vm.runInNewContext(agents.slice(start, agents.indexOf("// --- Build agent system prompt ---")) + "\nthis.live = liveLine; this.still = stillWorking;", box);
   assert.equal(box.live("Searching the web... (8m so far)", 8 * 60000), "Searching the web · 8 min");
   assert.equal(box.still("Searching the web... (8m so far)", 8 * 60000), "Still on it, about 8 minutes in: searching the web. I'll send the answer here when it's done.");
   assert.match(agents, /sendToUser\(chatId, \{ type: "agent_progress", taskId, content: liveLine\(/);
