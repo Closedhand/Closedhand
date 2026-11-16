@@ -111,14 +111,18 @@ function register(app, { db, sessions, baseUrl, clients, request = fetch, pepper
       if (!claims || claims.nonce !== pending.nonce || !(claims.exp * 1000 > Date.now())) return fail('ID token rejected');
       const identity = provider.identity(claims, clients[key].id);
       if (!identity) return fail('identity rejected');
-      // Signing in to find a Closedhand never makes an account: a sign-in
-      // with none goes back saying so. Claiming a personal URL is where an
-      // account begins; confirming Closedhand's email address only finds the
-      // account it belongs with, so a Google sign-in there never makes a
-      // second one beside an account made with an account number.
-      const finding = /^\/(open|account|carry-on|subscribe|assistant-email\/confirm)(?=[?#]|$)/.test(back);
-      const owner = finding ? await findOwner(db, identity) : await ownerFor(db, identity);
-      if (!owner) return res.redirect(navigation.noAccount(back, key));
+      // Claiming a personal URL is where an account begins, and the only
+      // place a sign-in makes one. Everywhere else it only finds an account,
+      // and a sign-in with none goes back saying so: confirming Closedhand's
+      // email address never makes a second account beside one made with an
+      // account number, and Sign in in a page's header never leaves an empty
+      // account holding an email (it did, from Pricing and seven more pages:
+      // the pages that only find were listed, and those were not on the list).
+      const claiming = /^\/phone-access\/pair(?=[?#]|$)/.test(back);
+      const owner = claiming ? await ownerFor(db, identity) : await findOwner(db, identity);
+      // Said on the pages that can say it; from any other, on My Account.
+      const says = /^\/(open|account|carry-on|subscribe|assistant-email\/confirm)(?=[?#]|$)/.test(back);
+      if (!owner) return res.redirect(navigation.noAccount(says ? back : '/account', key));
       sessions.signIn(res, owner);
       res.redirect(back);
     } catch (e) {

@@ -135,10 +135,21 @@ test('signing in only to find a Closedhand never makes an account, and a sign-in
   assert.equal(none.cookie, '', 'nobody is signed in');
   assert.equal((await db.query("SELECT count(*)::int n FROM owners WHERE lower(email) = 'nobody@example.com'")).rows[0].n, 0, 'and no empty account is left behind');
   assert.equal((await signIn('google', google('g-nobody', 'nobody@example.com'), '/account')).location, '/account?none=google');
+  // Sign in in a page's header (account-nav.js sends it back to that page)
+  // finds an account too: it once made an empty one and kept the email.
+  for (const page of ['/pricing', '/', '/ethos', '/architecture', '/pcl', '/privacy', '/terms', '/insights']) {
+    const from = await signIn('google', google('g-passer-by', 'passer-by@example.com'), page);
+    assert.equal(from.location, '/account?none=google', page);
+    assert.equal(from.cookie, '', page);
+  }
+  assert.equal((await db.query("SELECT count(*)::int n FROM owners WHERE lower(email) = 'passer-by@example.com'")).rows[0].n, 0, 'no account from a header sign-in');
   await signIn('google', google('g-finder', 'finder@example.com'));
   const found = await signIn('google', google('g-finder', 'finder@example.com'), '/open');
   assert.equal(found.location, '/open', 'an account that exists is found');
   assert.equal((await account(found.cookie)).signedIn, true);
+  const fromHeader = await signIn('google', google('g-finder', 'finder@example.com'), '/pricing');
+  assert.equal(fromHeader.location, '/pricing', 'and found from a page\'s header, going back to that page');
+  assert.equal((await account(fromHeader.cookie)).signedIn, true);
 });
 
 test('a Microsoft account claiming someone else\'s email becomes its own owner, never theirs', async () => {
