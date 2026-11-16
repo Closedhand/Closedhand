@@ -127,3 +127,21 @@ test("Closedhand Managed Models have one name: the paid part is the subscription
     "closedhand-com/views/home.html", "closedhand-com/lib/plus.js", "closedhand-com/lib/addresses.js", "README.md"];
   for (const f of files) assert.doesNotMatch(readable(f), /Closedhand\+|Closedhand plus\b|closedhand\.com\/plus\b/i, f);
 });
+
+// The Privacy page is served by closedhand.com and by the app, and the app's
+// copy had fallen behind in three paragraphs (how content is indexed, what
+// Polar is sent, where Delete account is). They say the same thing now but
+// where each has to speak from its own side.
+test("the app's Privacy page says what closedhand.com's does", () => {
+  const paragraphs = (f) => [...read(f).matchAll(/<(p|li|h2|h3)[^>]*>([\s\S]*?)<\/\1>/g)].map((m) => m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()).filter(Boolean);
+  const site = paragraphs("closedhand-com/views/privacy.html"), app = paragraphs("webapp/views/privacy.html");
+  assert.equal(app.length, site.length);
+  const differ = site.map((p, i) => (p === app[i] ? null : i)).filter((i) => i !== null);
+  // The page's own header; "here" on the site is "closedhand.com" in the app; and who to ask.
+  assert.equal(differ.length, 3, "only the header, the 'here' paragraph and the contact line differ: " + differ.map((i) => site[i].slice(0, 50)).join(" | "));
+  assert.match(app[differ[1]], /passes through closedhand\.com is mail to and from Closedhand's own email address/);
+  assert.match(site[differ[1]], /passes through here is mail to and from Closedhand's own email address/);
+  assert.match(app[differ[2]], /contact its operator/);
+  assert.match(app.join("\n"), /delete your account in My Account on your dashboard, or at closedhand\.com\/account/);
+  assert.match(read("webapp/views/privacy.html"), /<a href="https:\/\/closedhand\.com\/account">closedhand\.com\/account<\/a>/, "the app links to closedhand.com, not to itself");
+});
