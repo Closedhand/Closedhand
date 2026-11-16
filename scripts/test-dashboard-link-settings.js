@@ -450,6 +450,11 @@ test("the weather line's tip shows at once, in the page's own quiet style", () =
   assert.doesNotMatch(chat, /wx\.title = |id="hereBtn" type="button" hidden title=/, "no slow browser tooltip");
   assert.match(chat, /var info = e\.target\.closest\('\[data-tip\]'\);/, "drawn by the page's own instant tooltip");
   assert.doesNotMatch(chat, /\[data-tip\]::after/, "one tooltip, not two");
+  // The place's name goes inside an attribute: its helper escaped only & and
+  // <, so a name holding a " ended the attribute it was written into.
+  const esc = new Function("return " + chat.match(/var esc = (function\(x\) \{ return String\(x == null[^\n]+\};)/)[1].replace(/;$/, ""))();
+  assert.equal(esc('Bar "Sol" <b> & \'x\''), "Bar &quot;Sol&quot; &lt;b&gt; &amp; &#39;x&#39;");
+  assert.equal(esc(null), "");
 });
 
 test("clicking the temperature flips it between Celsius and Fahrenheit, and the choice is kept everywhere", () => {

@@ -2615,7 +2615,9 @@
 (function() {
   var btn = document.getElementById('hereBtn'), wx = document.getElementById('hereWx');
   if (!btn || !wx) return;
-  var esc = function(x) { return String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+  // Its output goes inside attributes as well as text, so quotes count too:
+  // a place name holding a " ended the attribute it was written into.
+  var esc = function(x) { return String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
   var glyphs = {
     clear: function(day) { return day
       ? '<g class="wx-sun"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></g>'
@@ -4988,7 +4990,7 @@
           var chat = Number(data.chat.message_count) > 0;
           var row = document.getElementById('heroProjects');
           if (!row || (!projects.length && !chat)) return;
-          var esc = function(x) { return String(x || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+          var esc = function(x) { return String(x || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
           var shown = projects.slice(0, 5);
           row.innerHTML = '<span class="hero-projects-label">' + (chat ? 'or pick up' : 'or pick up a project') + '</span>'
             + (chat ? '<button type="button" class="hero-project" data-chat="1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Main chat</button>' : '')
