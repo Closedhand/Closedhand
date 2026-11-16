@@ -4807,11 +4807,13 @@
       // Frame already carries this hash: no reload, no hashchange. Tell it
       // directly, or the click lands on whatever tab was left open inside.
       try { iframe.contentWindow.postMessage({ type: 'dash-nav', hash: hash }, '*'); } catch (e) {}
+    } else {
+      // Opened as it was left: what it shows is brought up to date at once.
+      try { iframe.contentWindow.postMessage({ type: 'dash-shown' }, '*'); } catch (e) {}
     }
     // My Account opens as its popup, wherever the link came from.
     if (/^#account(\/|$)/.test(hash || '')) { openMyAccount('chat'); return; }
     overlay.classList.add('active');
-    try { iframe.contentWindow.postMessage({ type: 'dash-shown' }, '*'); } catch (e) {}
     // First open on a touch screen: the panel peeks right once, a nod that
     // it can be swiped away.
     try {

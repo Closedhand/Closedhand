@@ -94,7 +94,7 @@ test("nothing asks the server on a timer while nobody is looking", () => {
   assert.match(dash, /setInterval\(function \(\) \{ if \(typeof dashShowing !== 'function' \|\| dashShowing\(\)\) tick\(\); \}, 6000\)/);
   assert.match(dash, /e\.data\.type === 'dash-shown'[\s\S]{0,120}refreshTab\(_polledTab\)/, "and it catches up the moment the panel opens again");
   const chat = read("webapp/views/index.html");
-  assert.match(chat, /overlay\.classList\.add\('active'\);\s+try \{ iframe\.contentWindow\.postMessage\(\{ type: 'dash-shown' \}/);
+  assert.match(chat, /postMessage\(\{ type: 'dash-nav', hash: hash \}, '\*'\); \} catch \(e\) \{\}\s+\} else \{[\s\S]{0,120}postMessage\(\{ type: 'dash-shown' \}/, "told once: a tab asked for loads itself");
   assert.match(chat, /if \(hasIndexing\) ragStartPolling\(\); else ragStopPolling\(\);/, "File Search stops asking once nothing is being read");
   assert.match(chat, /function pollAgentStatus\(\) \{\s+if \(!isAuthenticated \|\| document\.hidden\) return;/);
   assert.match(chat, /setInterval\(function\(\)\{ if \(!document\.hidden\) checkBridgeStatus\(\); \}, 15000\)/);
