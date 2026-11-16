@@ -98,7 +98,7 @@ test("skills: a name says what it does and wraps rather than running off, never 
   assert.doesNotMatch(dash, /getMcpLogo\(skill\.name/, "never the app's logo, which is the connection's");
   assert.match(dash, /\.int-card \.int-name\.wraps \{ white-space: normal;[^}]*-webkit-line-clamp: 2;/);
   const builtin = JSON.parse(read("webapp/public/builtin-skills.json"));
-  assert.deepEqual(builtin.map((s) => s.name), ["Comment on Instagram posts", "Manage Meta ad campaigns", "Check Shopify sales and stock", "Read and post in Slack"]);
+  assert.deepEqual(builtin.map((s) => s.name), ["Comment on Instagram posts", "Check Shopify sales and stock"]);
   assert.ok(!fs.existsSync(path.join(__dirname, "..", "skills", "intelligence-loop")));
   assert.match(read("lib/skill-learning.js"), /"name":"the kind of task in 2 to 5 words, starting with a verb, under 36 characters, as a tile's title/);
 });

@@ -38,6 +38,16 @@ test('catalogue exposes setup routes without credentials and keeps account state
  assert.equal(/global-secret|notion-secret|hub-secret/.test(JSON.stringify(a)),false);
 });
 
+test('a service whose tile is its company’s MCP server carries no sign-in settings of its own',()=>{
+ const src=fs.readFileSync(require.resolve('../webapp/server.js'),'utf8');
+ const start=src.indexOf('const SERVICES = {'),end=src.indexOf('\n};\n',start)+3;
+ const scope={process:{env:{}}};vm.runInNewContext(src.slice(start,end).replace('const SERVICES','SERVICES'),scope);
+ const {remote}=require('../webapp/connection-catalogue');
+ for(const key of Object.keys(remote)){
+  assert.deepEqual(Object.keys(scope.SERVICES[key]).sort(),['description','logoUrl','name'],key+': its sign-in is the server’s, kept in user_mcps');
+ }
+ assert.ok(scope.SERVICES.microsoft.authUrl&&scope.SERVICES.shopify.needsStoreDomain,'a service that signs in through an app still says how');
+});
 test('a hidden tile comes back for someone already connected to it or using their own app',async()=>{
  const f=fixture();
  f.rows.connections.push({user_id:'a',service:'spotify'});

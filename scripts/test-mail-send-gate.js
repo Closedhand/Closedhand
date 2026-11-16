@@ -58,7 +58,7 @@ test("a raw send or draft write through the API is refused in the chat, backgrou
   assert.equal(gate.codeCallRefusal("google", "GET", `${gmail}/messages?q=from:harbour`), null);
   assert.match(gate.codeCallRefusal("google", "POST", `${gmail}/messages/send`), /Never send email/);
   assert.match(gate.codeCallRefusal("google", "PATCH", "https://www.googleapis.com/calendar/v3/calendars/primary/events/ev-1"), /api_request, which asks/);
-  assert.match(gate.codeCallRefusal("slack", "POST", "https://slack.com/api/chat.postMessage", { channel: "C1", text: "Racquets land Tuesday" }), /api_request/);
+  assert.match(gate.codeCallRefusal("shopify", "POST", "https://kestrel.myshopify.com/admin/api/2025-01/orders.json", { order: { note: "Racquets land Tuesday" } }), /api_request/);
   assert.equal(gate.codeCallRefusal("shopify", "POST", "https://kestrel.myshopify.com/admin/api/2025-01/graphql.json", { query: "{ shop { name } }" }), null, "a GraphQL read");
   assert.match(gate.codeCallRefusal("shopify", "POST", "https://kestrel.myshopify.com/admin/api/2025-01/graphql.json", { query: "mutation { productDelete(input: {id: \"gid://1\"}) { deletedProductId } }" }), /api_request/);
   assert.equal(gate.codeCallRefusal("none", "POST", "https://api.harbourpost.example/v1/lookup"), null, "not one of the person's accounts");

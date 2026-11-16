@@ -20,16 +20,23 @@ const catalogueWith=(personal,services={slack:{name:'Slack'}})=>createCatalogue(
 
 // A server like Slack's: it names its sign-in pages and permissions, has no
 // way for an app to register itself, and hands out a token only to the app
-// whose secret it knows, for the callback address that app was given.
-async function standIn(){
-  const state={challenge:null,tokenAsks:[]};
+// whose secret it knows, for the callback address that app was given. With
+// `registers`, one like most: any app may register itself, with the callback
+// address it wants its sign-ins sent back to.
+async function standIn({registers=false}={}){
+  const state={challenge:null,tokenAsks:[],registered:[]};
   const server=http.createServer(async(req,res)=>{
     const base='http://127.0.0.1:'+server.address().port;
     const send=(code,body,headers={})=>{res.writeHead(code,{'Content-Type':'application/json',...headers});res.end(body===undefined?'':JSON.stringify(body));};
     let raw='';for await(const chunk of req)raw+=chunk;
     if(req.url==='/.well-known/oauth-protected-resource')return send(200,{resource:base,authorization_servers:[base],scopes_supported:['notes:read','notes:write']});
     if(req.url==='/.well-known/oauth-authorization-server')return send(200,{issuer:base,authorization_endpoint:base+'/authorize',token_endpoint:base+'/token',
-      response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['client_secret_post']});
+      response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],
+      ...(registers?{registration_endpoint:base+'/register',token_endpoint_auth_methods_supported:['none']}:{token_endpoint_auth_methods_supported:['client_secret_post']})});
+    if(req.url==='/register'&&registers){
+      const asked=JSON.parse(raw);state.registered.push(asked.redirect_uris);
+      return send(201,{...asked,client_id:'registered-'+state.registered.length});
+    }
     if(req.url==='/token'){
       const form=Object.fromEntries(new URLSearchParams(raw));state.tokenAsks.push(form);
       const proved=crypto.createHash('sha256').update(form.code_verifier||'').digest('base64url')===state.challenge;
@@ -55,24 +62,25 @@ function webapp(catalogue){
   const src=fs.readFileSync(path.join(__dirname,'../webapp/server.js'),'utf8');
   const cut=(from,to)=>{const a=src.indexOf(from);assert.ok(a>=0,from);const b=src.indexOf(to,a);assert.ok(b>a,to);return src.slice(a,b);};
   const routes={},saved=[],oauthStates=new Map();
+  const callbackRoute=cut('// What a sign-in that did not finish says','\n// OAuth callback for any service');
   const resolver=require('../webapp/mcp-input-resolver');
   vm.runInNewContext([
     cut('async function mcpOpenForDiscovery','\nasync function scanModelFor'),
     cut('async function connectMcpHandler','\n// Connecting Google or Microsoft through'),
-    cut('app.get("/auth/mcp-oauth/callback"','\n// OAuth callback for any service'),
-    'routes.connect=connectMcpHandler;',
+    callbackRoute,
+    'routes.connect=connectMcpHandler;routes.open=mcpOpenForDiscovery;',
   ].join('\n'),{
     routes,app:{get:(route,handler)=>{routes[route]=handler;}},console:{log(){},error(){}},crypto,URL,
     mcpClient:mcp,connectionCatalogue:catalogue,oauthStates,
     consumeOAuthState:key=>{const found=oauthStates.get(key);oauthStates.delete(key);return found||null;},
-    getUserIdFromRequest:()=>'person-1',apiKeys:{bareKey:()=>false},mcpHost:url=>new URL(url).hostname,
+    getUserIdFromRequest:()=>'person-1',fromElsewhere:req=>!!req.elsewhere,apiKeys:{bareKey:()=>false},mcpHost:url=>new URL(url).hostname,
     require:name=>name==='./mcp-input-resolver'?{...resolver,resolveInput:async()=>null}:require(name),
     mcpDiscoverAndScan:async client=>({found:{tools:(await client.listTools()).tools,serverInfo:client.getServerVersion()},verdict:null}),
     mcpSaveRow:async(userId,row,found)=>{saved.push({userId,row:{...row},found});return {id:'row-1',name:found.serverInfo.name};},
   });
-  const ask=async body=>{let reply;await routes.connect({body},{json(v){reply=v;return this;},status(){return this;}});return reply;};
-  const comeBack=async query=>{let to;await routes['/auth/mcp-oauth/callback']({query},{redirect(v){to=v;}});return to;};
-  return {ask,comeBack,saved,oauthStates};
+  const ask=async(body,elsewhere=false)=>{let reply;await routes.connect({body,elsewhere},{json(v){reply=v;return this;},status(){return this;}});return reply;};
+  const comeBack=async query=>{let to;await routes['/auth/mcp-oauth/callback']({query},{redirect(v){to=decodeURIComponent(v);}});return to;};
+  return {ask,comeBack,open:routes.open,saved,oauthStates};
 }
 
 test('a server that turns Closedhand away is connected through an app the person made',async()=>{
@@ -111,15 +119,62 @@ test('a server that turns Closedhand away is connected through an app the person
     assert.equal(row.installed_via,'own_app','so signing in again later uses the same callback address');
     assert.equal(found.tools[0].name,'find_notes');
 
-    // A wrong code or a reused sign-in saves nothing.
-    assert.match(await app.comeBack({code:'code-1',state:signIn.searchParams.get('state')}),/mcp_error=invalid_state/);
+    // A reused sign-in saves nothing, and says so in words for the person.
+    assert.equal(await app.comeBack({code:'code-1',state:signIn.searchParams.get('state')}),'/dashboard?mcp_error=That sign-in took too long or was already used. Start it again.');
     assert.equal(app.saved.length,1);
+  }finally{await server.close();}
+});
+
+test('a sign-in that does not finish says what to do, never what the service or the library said',async()=>{
+  const server=await standIn(),app=webapp(catalogueWith(PERSONAL));
+  try{
+    assert.equal(await app.comeBack({error:'access_denied',state:'any'}),'/dashboard?mcp_error=The sign-in was cancelled.');
+    assert.equal(await app.comeBack({error:'server_error',state:'any'}),'/dashboard?mcp_error=The service turned the sign-in down. Try again.');
+    // The app's secret was pasted wrong: the service refuses the swap.
+    const started=await app.ask({input:server.url,client_id:'app-1',client_secret:'not-the-secret'});
+    const signIn=new URL(started.redirect_url);server.state.challenge=signIn.searchParams.get('code_challenge');
+    const landed=await app.comeBack({code:'code-1',state:signIn.searchParams.get('state')});
+    assert.equal(landed,'/dashboard?mcp_error=The service did not accept your app’s client ID or secret. Check them and try again.');
+    assert.equal(/invalid_grant|Error|400/.test(landed),false);
+    assert.equal(app.saved.length,0);
+  }finally{await server.close();}
+});
+
+test('a sign-in Closedhand registers for itself comes back to where it was started',async()=>{
+  const LOCAL='http://localhost:3000/auth/mcp-oauth/callback';
+  const server=await standIn({registers:true}),app=webapp(catalogueWith(PERSONAL));
+  try{
+    // On the computer itself: back to its own address.
+    const here=new URL((await app.ask({input:server.url})).redirect_url);
+    assert.equal(here.searchParams.get('redirect_uri'),LOCAL);
+    // From a phone, through the personal URL: localhost opens nothing there.
+    const away=new URL((await app.ask({input:server.url},true)).redirect_url);
+    assert.equal(away.searchParams.get('redirect_uri'),CALLBACK);
+    assert.deepEqual(server.state.registered,[[LOCAL],[CALLBACK]],'each registered with the address it then used');
+
+    // Signing in again later, from the other place: the app registered then
+    // knows only the old address, so Closedhand registers again for this one.
+    const row={server_url:server.url,transport:'http',auth_type:'oauth',auth_token:'no-longer-taken',oauth_client_id:'registered-1',installed_via:'oauth'};
+    const again=await app.open(row,{allowOAuth:true,state:'state-2',callback:CALLBACK}).then(()=>null,e=>e);
+    const next=new URL(again.redirectUrl);
+    assert.equal(next.searchParams.get('client_id'),'registered-3');
+    assert.equal(next.searchParams.get('redirect_uri'),CALLBACK);
+    assert.deepEqual(server.state.registered[2],[CALLBACK]);
+    assert.equal(row.oauth_client_id,'registered-3');
+
+    // An app the person made is theirs: never swapped for a registered one.
+    const own={server_url:server.url,transport:'http',auth_type:'oauth',auth_token:'no-longer-taken',oauth_client_id:'app-1',oauth_client_secret:'app-secret',installed_via:'own_app'};
+    const kept=await app.open(own,{allowOAuth:true,state:'state-3',callback:CALLBACK}).then(()=>null,e=>e);
+    assert.equal(new URL(kept.redirectUrl).searchParams.get('client_id'),'app-1');
+    assert.equal(server.state.registered.length,3);
   }finally{await server.close();}
 });
 
 test('the callback address: this computer for a sign-in Closedhand registered, the personal URL for the person’s own app',async()=>{
   const claimed=catalogueWith(PERSONAL+'/'),unclaimed=catalogueWith(null);
   assert.equal(await claimed.mcpCallback({installed_via:'oauth'}),'http://localhost:3000/auth/mcp-oauth/callback');
+  assert.equal(await claimed.mcpCallback({installed_via:'oauth'},true),CALLBACK,'started away from this computer, the personal URL');
+  assert.equal(await unclaimed.mcpCallback({},true),'http://localhost:3000/auth/mcp-oauth/callback');
   assert.equal(await claimed.mcpCallback({}),'http://localhost:3000/auth/mcp-oauth/callback');
   assert.equal(await claimed.mcpCallback({installed_via:'own_app'}),CALLBACK);
   assert.equal(await unclaimed.mcpCallback({installed_via:'own_app'}),'http://localhost:3000/auth/mcp-oauth/callback','with no personal URL yet, this computer');
@@ -145,7 +200,7 @@ test('the dashboard has one own-app form, and the paste box opens it instead of 
   const page=fs.readFileSync(path.join(__dirname,'../webapp/views/dashboard.html'),'utf8');
   const script=fs.readFileSync(path.join(__dirname,'../webapp/public/connection-catalogue.js'),'utf8');
   assert.equal(script.split('function ownAppForm(').length,2);
-  assert.equal(script.split('ownAppForm(').length,4,'the catalogue’s own-app tiles and MCP servers share it');
+  assert.equal(script.split('ownAppForm(').length,5,'the catalogue’s own-app tiles, Shopify and MCP servers share it');
   assert.equal(/client[-_ ]?secret/i.test(page.slice(page.indexOf('id="mcp-credentials"'),page.indexOf('id="mcp-own-app"'))),false,'no second place to type an app’s secret');
   assert.match(page,/openOwnApp\(ownApp\)/);
 });

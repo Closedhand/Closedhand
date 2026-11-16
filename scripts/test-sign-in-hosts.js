@@ -10,8 +10,8 @@ test("each sign-in goes to its own service's API addresses", () => {
   for (const [service, url] of [
     ["google", "https://gmail.googleapis.com/gmail/v1/users/me/messages"],
     ["google", "https://www.googleapis.com/drive/v3/files"],
-    ["github", "https://api.github.com/user/repos"],
-    ["slack", "https://slack.com/api/conversations.list"],
+    ["hubspot", "https://api.hubapi.com/crm/v3/objects/contacts"],
+    ["spotify", "https://api.spotify.com/v1/me/playlists"],
     ["salesforce", "https://kestrel-co.my.salesforce.com/services/data/v59.0/query"],
     ["microsoft", "https://graph.microsoft.com/v1.0/me"],
   ]) assert.equal(signInMayGo(service, url), true, `${service} ${url}`);
@@ -23,26 +23,27 @@ test("and to nowhere else", () => {
     ["google", "https://googleapis.com.kestrel.example/x"],
     ["google", "https://evilgoogleapis.com/x"],
     ["google", "http://www.googleapis.com/drive/v3/files"],
-    ["github", "https://api.github.com.kestrel.example/user"],
-    ["github", "https://user:pw@api.github.com/user"],
-    ["slack", "https://hooks.kestrel.example/slack"],
+    ["hubspot", "https://api.hubapi.com.kestrel.example/crm"],
+    ["hubspot", "https://user:pw@api.hubapi.com/crm"],
+    ["spotify", "https://hooks.kestrel.example/spotify"],
+    // A service that connects through its own MCP server has no sign-in here.
+    ["slack", "https://slack.com/api/conversations.list"],
+    ["github", "https://api.github.com/user/repos"],
     ["whatsapp", "https://graph.facebook.com.kestrel.example/"],
     ["salesforce", "https://salesforce.kestrel.example/"],
     ["lunchflow", "https://anything.example/"],
     ["kestrel", "https://api.kestrel.example/"],
-    ["github", "not an address"],
+    ["hubspot", "not an address"],
   ]) assert.equal(signInMayGo(service, url), false, `${service} ${url}`);
 });
 
-test("the same rule holds for services whose code builds the address itself", () => {
-  assert.equal(signInMayGo("meta", "https://graph.facebook.com/v21.0/me"), true);
+test("the same rule holds for a service whose code builds the address itself", () => {
   assert.equal(signInMayGo("shopify", "https://kestrel-goods.myshopify.com/admin/api/2026-01/orders.json"), true);
-  assert.equal(signInMayGo("meta", "https://kestrel.example/v21.0/me"), false);
   assert.equal(signInMayGo("shopify", "https://kestrel.example/admin/api/2026-01/orders.json"), false);
 });
 
 test("the model is told where the sign-in goes, so it can correct the call", () => {
-  assert.equal(refusal("github"), 'The github sign-in is only ever sent to api.github.com or uploads.github.com, over https. For any other address, use service "none".');
+  assert.equal(refusal("google"), 'The google sign-in is only ever sent to *.googleapis.com, over https. For any other address, use service "none".');
   assert.match(refusal("kestrel"), /no sign-in for "kestrel"/);
 });
 

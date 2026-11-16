@@ -62,10 +62,15 @@ test("links the bot sends stay on the web chat's address there, and use the pers
   // link signed with a key from the hosted days that no setup has, so making
   // it threw every time; then to the service's own sign-in address, which
   // opened on an error wherever no app was set up for the service: everywhere.
-  const connect = require("node:vm").runInNewContext(
-    `(async (toolInput, ctx) => { switch ("connect_service") { ${handlers.slice(handlers.indexOf('case "connect_service": {'), handlers.indexOf('case "wait_for_result": {'))} } })`,
-    { CONNECTABLE_SERVICES: require("../lib/services-config").CONNECTABLE_SERVICES,
-      require: (name) => (name === "../dashboard-links" ? { dashboardUrl: async (platform, tab) => (platform === "web" ? "" : "https://quiet-test.closedhand.com") + `/dashboard#${tab}` } : require(name)) });
+  const { CONNECTABLE_SERVICES, serverFor } = require("../lib/services-config");
+  let servers = [];
+  const tool = (name, upTo) => require("node:vm").runInNewContext(
+    `(async (toolInput, ctx) => { switch (${JSON.stringify(name)}) { ${handlers.slice(handlers.indexOf(`case "${name}": {`), handlers.indexOf(`case "${upTo}": {`))} } })`,
+    { CONNECTABLE_SERVICES, serverFor,
+      require: (id) => (id === "../dashboard-links" ? { dashboardUrl: async (platform, tab) => (platform === "web" ? "" : "https://quiet-test.closedhand.com") + `/dashboard#${tab}` }
+        : id === "../user-mcp" ? { connectedServers: () => servers }
+        : id === "../api-connections" ? { list: () => [{ name: "Kestrel Voice" }] } : require(id)) });
+  const connect = tool("connect_service", "wait_for_result"), list = tool("list_connections", "connect_service");
   for (const [service, says] of [["slack", /presses Slack there and follows what it asks/], ["shopify", /presses Shopify there/], ["hubspot", /no tile of its own there/], ["simplefin", /signs up to the bank service/]]) {
     const result = await connect({ service }, { activePlatform: "whatsapp" });
     assert.equal(result.url, "https://quiet-test.closedhand.com/dashboard#connections", service);
@@ -77,6 +82,19 @@ test("links the bot sends stay on the web chat's address there, and use the pers
   assert.equal((await connect({ service: "slack", _platform: "telegram" }, {})).url, "https://quiet-test.closedhand.com/dashboard#connections");
   assert.equal((await connect({ service: "slack" }, {})).url, "/dashboard#connections");
   assert.match((await connect({ service: "imap" }, {})).error, /can't be added yet/);
+
+  // A service connected through its company's MCP server is connected: the
+  // chat says so, and does not offer to connect it again.
+  assert.ok((await list({}, {})).available.some((a) => a.service === "slack"));
+  servers = [{ name: "Slack", host: "mcp.slack.com" }, { name: "Harbour Notes", host: "notes.harbour.example" }];
+  const listed = await list({}, {});
+  assert.deepEqual(Array.from(listed.connected, (c) => c.name), ["Slack", "Harbour Notes", "Kestrel Voice"], "known services, any other server, and anything connected with a key");
+  assert.equal(listed.available.some((a) => a.service === "slack"), false);
+  assert.match((await connect({ service: "slack" }, {})).error, /Slack is already connected/);
+  // The hosts are the catalogue's: every service whose tile is an MCP server.
+  const { remote } = require("../webapp/connection-catalogue");
+  assert.deepEqual(Object.fromEntries(Object.entries(CONNECTABLE_SERVICES).filter(([, svc]) => svc.mcp).map(([key, svc]) => [key, svc.mcp]).sort()),
+    Object.fromEntries(Object.entries(remote).map(([key, url]) => [key, new URL(url).hostname]).sort()));
   for (const f of ["lib/tools/handlers.js", "lib/services-config.js", "webapp/server.js"]) {
     assert.doesNotMatch(read(f), /bot-connect/, f);
     assert.doesNotMatch(read(f), /createHmac\("sha256", process\.env\.SUPABASE_SERVICE_KEY\)/, f);

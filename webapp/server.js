@@ -130,18 +130,21 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // ============================================================
-// SERVICE REGISTRY — all OAuth services defined here
-// Adding a new service = adding a config block below.
+// SERVICE REGISTRY: every service the dashboard names.
 //
-// Each service needs:
-//   clientId / clientSecret: env var references
+// A service that signs in through an app (Closedhand's or the person's own)
+// carries how:
+//   clientId / clientSecret: the app, where this build has one
 //   authUrl: where to redirect user for consent
 //   tokenUrl: where to exchange code for tokens
 //   scopes: what permissions to request
 //   profileUrl: (optional) to fetch user info after auth
+// Google is special: it doubles as signup/login. The others just store
+// tokens in the connections table.
 //
-// Google is special: it doubles as signup/login.
-// All others just store tokens in the connections table.
+// A service that connects through its company's own MCP server
+// (connection-catalogue.js `remote`) carries only its name, description and
+// logo: its sign-in is the server's, and it is kept in user_mcps.
 // ============================================================
 
 const SERVICES = {
@@ -214,37 +217,12 @@ const SERVICES = {
     name: "Notion",
     description: "Pages, databases, project management",
     logoUrl: "/logos/notion.svg",
-    clientId: process.env.NOTION_CLIENT_ID,
-    clientSecret: process.env.NOTION_CLIENT_SECRET,
-    authUrl: "https://api.notion.com/v1/oauth/authorize",
-    tokenUrl: "https://api.notion.com/v1/oauth/token",
-    scopes: [],
-    extraAuthParams: { owner: "user" },
-    tokenAuthMethod: "basic",
-    provides: ["Notion"],
   },
 
   atlassian: {
     name: "Atlassian",
     description: "Jira, Trello, Confluence",
     logoUrl: "/logos/atlassian.svg",
-    clientId: process.env.ATLASSIAN_CLIENT_ID,
-    clientSecret: process.env.ATLASSIAN_CLIENT_SECRET,
-    authUrl: "https://auth.atlassian.com/authorize",
-    tokenUrl: "https://auth.atlassian.com/oauth/token",
-    scopes: [
-      "read:jira-work",
-      "write:jira-work",
-      "read:jira-user",
-      "read:board-scope:jira-software",
-      "read:trello",
-      "write:trello",
-      "read:confluence-content.all",
-      "write:confluence-content",
-      "offline_access",
-    ],
-    extraAuthParams: { audience: "api.atlassian.com", prompt: "consent" },
-    provides: ["Jira", "Trello", "Confluence"],
   },
 
   spotify: {
@@ -271,12 +249,6 @@ const SERVICES = {
     name: "Stripe",
     description: "Payments, invoices, revenue data",
     logoUrl: "/logos/stripe.svg",
-    clientId: process.env.STRIPE_CLIENT_ID,
-    clientSecret: process.env.STRIPE_CLIENT_SECRET,
-    authUrl: "https://connect.stripe.com/oauth/authorize",
-    tokenUrl: "https://connect.stripe.com/oauth/token",
-    scopes: ["read_write"],
-    provides: ["Stripe"],
   },
 
   shopify: {
@@ -318,30 +290,6 @@ const SERVICES = {
     name: "Slack",
     description: "Channels, messages",
     logoUrl: "/logos/slack.svg",
-    clientId: process.env.SLACK_CLIENT_ID,
-    clientSecret: process.env.SLACK_CLIENT_SECRET,
-    authUrl: "https://slack.com/oauth/v2/authorize",
-    tokenUrl: "https://slack.com/api/oauth.v2.access",
-    scopes: [
-      "channels:history",
-      "channels:read",
-      "chat:write",
-      "groups:history",
-      "groups:read",
-      "im:history",
-      "im:read",
-      "im:write",
-      "mpim:history",
-      "mpim:read",
-      "search:read",
-      "users:read",
-      "users:read.email",
-    ],
-    scopeParam: "scope",
-    scopeJoin: ",",
-    profileUrl: null,
-    isSignup: false,
-    tokenField: "access_token",
   },
 
 
@@ -350,14 +298,6 @@ const SERVICES = {
     name: "Dropbox",
     description: "File storage, sharing, sync",
     logoUrl: "/logos/dropbox.svg",
-    clientId: process.env.DROPBOX_CLIENT_ID,
-    clientSecret: process.env.DROPBOX_CLIENT_SECRET,
-    authUrl: "https://www.dropbox.com/oauth2/authorize",
-    tokenUrl: "https://api.dropboxapi.com/oauth2/token",
-    profileUrl: "https://api.dropboxapi.com/2/users/get_current_account",
-    scopes: [],
-    extraAuthParams: { token_access_type: "offline" },
-    provides: ["Dropbox"],
   },
 
 
@@ -365,18 +305,6 @@ const SERVICES = {
     name: "Meta Ads",
     description: "Facebook & Instagram ad campaigns",
     logoUrl: "/logos/meta.svg",
-    clientId: process.env.META_CLIENT_ID,
-    clientSecret: process.env.META_CLIENT_SECRET,
-    authUrl: "https://www.facebook.com/v21.0/dialog/oauth",
-    tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
-    profileUrl: "https://graph.facebook.com/me",
-    scopes: [
-      "ads_management",
-      "ads_read",
-      "business_management",
-    ],
-    extraAuthParams: { auth_type: "rerequest" },
-    provides: ["Meta Ads"],
   },
 
 
@@ -420,26 +348,12 @@ const SERVICES = {
     name: "GitHub",
     description: "Repos, issues, pull requests",
     logoUrl: "/logos/github.svg",
-    clientId: process.env.GITHUB_CLIENT_ID,
-    clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    authUrl: "https://github.com/login/oauth/authorize",
-    tokenUrl: "https://github.com/login/oauth/access_token",
-    profileUrl: "https://api.github.com/user",
-    scopes: ["repo", "read:user", "user:email"],
-    provides: ["GitHub"],
   },
 
   gitlab: {
     name: "GitLab",
     description: "Repos, CI/CD, issues",
     logoUrl: "/logos/gitlab.svg",
-    clientId: process.env.GITLAB_CLIENT_ID,
-    clientSecret: process.env.GITLAB_CLIENT_SECRET,
-    authUrl: "https://gitlab.com/oauth/authorize",
-    tokenUrl: "https://gitlab.com/oauth/token",
-    profileUrl: "https://gitlab.com/api/v4/user",
-    scopes: ["api", "read_user", "read_api", "read_repository"],
-    provides: ["GitLab"],
   },
 
   // Read-only bank data through a service the person signs up to themselves.
@@ -462,7 +376,8 @@ const SERVICES = {
   },
 };
 
-// Which services are available (have credentials configured)
+// The services the dashboard names: a connected one's card reads its name,
+// logo and what it gives from here.
 function getAvailableServices() {
   const available = {};
   for (const [key, svc] of Object.entries(SERVICES)) {
@@ -471,10 +386,7 @@ function getAvailableServices() {
       description: svc.description,
       logoUrl: svc.logoUrl || "",
       provides: svc.provides,
-      configured: !!(svc.clientId && svc.clientSecret) || (svc.needsStoreDomain === true),
-      oauthReady: !!(svc.clientId && svc.clientSecret),
       isSignup: svc.isSignup || false,
-      needsStoreDomain: svc.needsStoreDomain || false,
     };
   }
   return available;
@@ -2224,7 +2136,7 @@ app.post("/logout", async (req, res) => {
   signInRecord("signed out", req);
   res.set("Clear-Site-Data", '"cache", "storage"');
   res.append("Set-Cookie", sessionCookie(req, "", 0));
-  for (const c of ["ch_user=; Path=/", "ch_connect_queue=; Path=/", "ch_wallet_ok=; Path=/api"]) {
+  for (const c of ["ch_user=; Path=/", "ch_wallet_ok=; Path=/api"]) {
     res.append("Set-Cookie", `${c}; HttpOnly; SameSite=Lax; Max-Age=0${browserAccess.publicHttps(req) ? "; Secure" : ""}`);
   }
   res.redirect(303, "/");
@@ -2383,14 +2295,11 @@ app.get("/auth/:service", async (req, res) => {
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&state=${state}`;
   } else {
-    const scopeValue = svc.scopes.join(svc.scopeJoin || " ");
-    const scopeKey = svc.scopeParam || "scope";
-
     const params = new URLSearchParams({
       client_id: svc.clientId,
       redirect_uri: redirectUri,
       response_type: "code",
-      [scopeKey]: scopeValue,
+      scope: svc.scopes.join(svc.scopeJoin || " "),
       state,
     });
 
@@ -2437,23 +2346,39 @@ function mcpAuthTypeFor(headerName) {
 // Opens a row for discovery. Returns { client, transport, transportKind, stderr }
 // or throws; when the server wants OAuth and none has been granted, the
 // throw carries needsAuth and, if the SDK got as far as an authorisation
-// URL, redirectUrl.
-async function mcpOpenForDiscovery(row, { allowOAuth, state } = {}) {
-  let redirectUrl = null;
-  const io = {
-    redirectUrl: await connectionCatalogue.mcpCallback(row),
-    state,
-    oauth: !!allowOAuth,
-    onRedirect: (u) => { redirectUrl = u; },
-    save: async (patch) => { Object.assign(row, patch); if (row.id) { const { error } = await supabase.from("user_mcps").update(mcpClient.sealRow(patch)).eq("id", row.id); if (error) console.error("[mcp] save failed:", error.message); } },
-    saveVerifier: async (v) => { row.oauth_code_verifier = v; },
-    connectTimeoutMs: row.transport === "stdio" ? 180000 : 20000,
+// URL, redirectUrl. `callback` is where a new sign-in comes back to
+// (connectionCatalogue.mcpCallback, for where it was started).
+async function mcpOpenForDiscovery(row, { allowOAuth, state, callback } = {}) {
+  const registered = !!row.oauth_client_id && row.installed_via !== "own_app";
+  const open = async () => {
+    let redirectUrl = null;
+    const io = {
+      redirectUrl: callback || await connectionCatalogue.mcpCallback(row),
+      state,
+      oauth: !!allowOAuth,
+      onRedirect: (u) => { redirectUrl = u; },
+      save: async (patch) => { Object.assign(row, patch); if (row.id) { const { error } = await supabase.from("user_mcps").update(mcpClient.sealRow(patch)).eq("id", row.id); if (error) console.error("[mcp] save failed:", error.message); } },
+      saveVerifier: async (v) => { row.oauth_code_verifier = v; },
+      connectTimeoutMs: row.transport === "stdio" ? 180000 : 20000,
+    };
+    try {
+      return await mcpClient.openClient(row, io);
+    } catch (e) {
+      if (redirectUrl) e.redirectUrl = redirectUrl;
+      throw e;
+    }
   };
   try {
-    return await mcpClient.openClient(row, io);
+    return await open();
   } catch (e) {
-    if (redirectUrl) e.redirectUrl = redirectUrl;
-    throw e;
+    // A new sign-in is needed, through an app Closedhand registered for
+    // itself. That app was registered with one callback address, which need
+    // not be the one for where this sign-in was started (a phone can't open
+    // localhost), so Closedhand registers again, for this one.
+    if (!(registered && e.redirectUrl)) throw e;
+    row.oauth_client_id = null;
+    row.oauth_client_secret = null;
+    return open();
   }
 }
 
@@ -2662,13 +2587,14 @@ async function connectMcpHandler(req, res) {
       }
 
       const state = crypto.randomBytes(16).toString("hex");
+      const callback = await connectionCatalogue.mcpCallback(row, fromElsewhere(req));
       let opened;
       try {
-        opened = await mcpOpenForDiscovery(row, { allowOAuth: row.transport !== "stdio" && !row.auth_token, state });
+        opened = await mcpOpenForDiscovery(row, { allowOAuth: row.transport !== "stdio" && !row.auth_token, state, callback });
       } catch (e) {
         if (e.needsAuth && e.redirectUrl) {
           // Off to the provider. Everything the callback needs rides in the state.
-          oauthStates.set(state, { flow: "mcp-oauth", userId, row: { ...row, auth_type: "oauth" }, name: row.name || null, created: Date.now() });
+          oauthStates.set(state, { flow: "mcp-oauth", userId, row: { ...row, auth_type: "oauth" }, name: row.name || null, callback, created: Date.now() });
           return res.json({ auth_required: true, redirect_url: e.redirectUrl, server_url: row.server_url });
         }
         if (e.needsAuth) {
@@ -2876,37 +2802,47 @@ async function apiCheckRow(userId, row) {
   return { status: 200, body: { success: true, fixed: true, api: true, caps: news.caps, voice: news.caps.voice || null, voice_new: news.voice_new, jobs_new: news.jobs_new, message: tested.ok ? `${row.name} takes the key.` : `Couldn't check the key with ${row.name} just now. Closedhand will find out the next time it uses it.` } };
 }
 
+// What a sign-in that did not finish says on the dashboard: what the person
+// can do about it, in plain words. What the service or the library said goes
+// to the log.
+const MCP_SIGN_IN_PROBLEMS = {
+  cancelled: "The sign-in was cancelled.",
+  refused: "The service turned the sign-in down. Try again.",
+  expired: "That sign-in took too long or was already used. Start it again.",
+  own_app: "The service did not accept your app’s client ID or secret. Check them and try again.",
+  failed: "Could not connect. Try again.",
+};
+const mcpSignInFailed = (res, problem) => res.redirect("/dashboard?mcp_error=" + encodeURIComponent(MCP_SIGN_IN_PROBLEMS[problem] || problem));
+
 // MCP OAuth callback (must be BEFORE /auth/:service/callback to avoid conflict)
 app.get("/auth/mcp-oauth/callback", async (req, res) => {
   const { code, error, state } = req.query;
   if (error) {
     console.error("MCP OAuth error:", error);
-    return res.redirect("/dashboard?mcp_error=" + encodeURIComponent(error));
+    return mcpSignInFailed(res, error === "access_denied" ? "cancelled" : "refused");
   }
   const pending = consumeOAuthState(state);
-  if (!pending || pending.flow !== "mcp-oauth" || !pending.row) {
-    return res.redirect("/dashboard?mcp_error=invalid_state");
-  }
+  if (!pending || pending.flow !== "mcp-oauth" || !pending.row) return mcpSignInFailed(res, "expired");
   const row = pending.row;
   let opened = null;
+  let swapped = false;
   try {
     // Finish the code exchange through the SDK, with the verifier and client
     // registration saved before the redirect, then connect for real.
     const { StreamableHTTPClientTransport } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
     const { SSEClientTransport } = require("@modelcontextprotocol/sdk/client/sse.js");
-    const io = { redirectUrl: await connectionCatalogue.mcpCallback(row), state, save: async (patch) => { Object.assign(row, patch); }, saveVerifier: async () => {} };
+    const io = { redirectUrl: pending.callback, state, save: async (patch) => { Object.assign(row, patch); }, saveVerifier: async () => {} };
     const provider = mcpClient.makeOAuthProvider(row, io);
     const url = new URL(row.server_url);
     const finisher = row.transport === "sse" ? new SSEClientTransport(url, { authProvider: provider }) : new StreamableHTTPClientTransport(url, { authProvider: provider });
     await finisher.finishAuth(String(code));
+    swapped = true;
     await mcpClient.closeQuietly(null, finisher);
     row.auth_type = "oauth";
 
-    opened = await mcpOpenForDiscovery(row, { allowOAuth: true, state });
+    opened = await mcpOpenForDiscovery(row, { allowOAuth: true, state, callback: pending.callback });
     const { found, verdict } = await mcpDiscoverAndScan(opened.client, row, false);
-    if (verdict && verdict.blocked) {
-      return res.redirect("/dashboard?mcp_error=" + encodeURIComponent("Blocked: " + verdict.scan.summary));
-    }
+    if (verdict && verdict.blocked) return mcpSignInFailed(res, "Blocked: " + verdict.scan.summary);
     if (verdict && verdict.needs_confirmation) {
       // Nothing can be asked mid-redirect; connect and say what was found.
       console.log(`[security-scan] Warning for OAuth MCP "${row.name || mcpHost(row.server_url)}":`, verdict.scan.findings);
@@ -2916,7 +2852,9 @@ app.get("/auth/mcp-oauth/callback", async (req, res) => {
     res.redirect("/dashboard?mcp_connected=" + encodeURIComponent(saved.name) + (saved.voice_new || saved.jobs_new?.length ? "&mcp_new=" + saved.id : ""));
   } catch (e) {
     console.error("MCP OAuth callback error:", e);
-    res.redirect("/dashboard?mcp_error=" + encodeURIComponent(e.message));
+    // Turned down at the swap of the code for a sign-in, with an app the
+    // person made: the client ID or secret they pasted is the likely cause.
+    mcpSignInFailed(res, !swapped && row.installed_via === "own_app" ? "own_app" : "failed");
   } finally {
     if (opened) await mcpClient.closeQuietly(opened.client, opened.transport);
   }
@@ -2998,11 +2936,6 @@ async function exchangeOAuthCode(svc, code, redirectUri, storeDomain, codeVerifi
     "Content-Length": Buffer.byteLength(postData),
     "Accept": "application/json",
   };
-
-  // Notion uses Basic auth for token exchange
-  if (svc.tokenAuthMethod === "basic") {
-    headers["Authorization"] = "Basic " + Buffer.from(`${svc.clientId}:${svc.clientSecret}`).toString("base64");
-  }
 
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -3261,27 +3194,6 @@ async function handleServiceOAuthComplete(req, res, stateData, serviceKey, token
   // The bot discovers this saved connection on its next sync cycle. The
   // webapp cannot import bot modules in Docker or the separate Railway service.
 
-  // Check for multi-connect queue
-  const raw = req.headers.cookie || "";
-  const queueMatch = raw.match(/ch_connect_queue=([^;]+)/);
-  if (queueMatch) {
-    try {
-      const queue = JSON.parse(decodeURIComponent(queueMatch[1]));
-      const idx = queue.indexOf(serviceKey);
-      if (idx !== -1) queue.splice(idx, 1);
-      if (queue.length > 0) {
-        const remaining = JSON.stringify(queue);
-        res.setHeader("Set-Cookie", `ch_connect_queue=${encodeURIComponent(remaining)}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-        return res.redirect(`/auth/${queue[0]}`);
-      }
-    } catch (e) {
-      // Malformed cookie, ignore
-    }
-    // Queue empty or finished — clear cookie
-    res.setHeader("Set-Cookie", "ch_connect_queue=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
-    return res.redirect("/dashboard?connected=multiple");
-  }
-
   res.redirect("/dashboard?connected=" + serviceKey);
 }
 
@@ -3330,58 +3242,8 @@ async function fetchAccountMetadata(serviceKey, svc, tokens) {
       case "microsoft":
         return { name: profile.displayName, email: profile.mail || profile.userPrincipalName };
 
-      case "github":
-        return { username: profile.login, name: profile.name, email: profile.email, avatar: profile.avatar_url };
-
-      case "gitlab":
-        return { username: profile.username, name: profile.name, email: profile.email, avatar: profile.avatar_url };
-
-      case "meta_ads": {
-        const meta = { name: profile.name, email: profile.email };
-        const graphGet = (path) => new Promise((resolve, reject) => {
-          const req = https.request({
-            hostname: "graph.facebook.com",
-            path: `${path}${path.includes("?") ? "&" : "?"}access_token=${accessToken}`,
-            method: "GET",
-          }, (res) => {
-            const chunks = [];
-            res.on("data", (c) => chunks.push(c));
-            res.on("end", () => {
-              try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-              catch { resolve(null); }
-            });
-          });
-          req.on("error", () => resolve(null));
-          req.end();
-        });
-        // Fetch ad accounts, businesses, and pages in parallel
-        const [adData, bizData, pageData, permData] = await Promise.all([
-          graphGet("/me/adaccounts?fields=name,account_id,business_name,account_status"),
-          graphGet("/me/businesses?fields=name,id"),
-          graphGet("/me/accounts?fields=name,id,category"),
-          graphGet("/me/permissions"),
-        ]);
-        if (adData?.data) meta.adAccounts = adData.data.map(a => ({
-          name: a.name || a.business_name, accountId: a.account_id,
-          status: a.account_status === 1 ? "active" : a.account_status === 2 ? "disabled" : "unknown",
-        }));
-        if (bizData?.data) meta.businesses = bizData.data.map(b => ({ name: b.name, id: b.id }));
-        if (pageData?.data) meta.pages = pageData.data.map(p => ({ name: p.name, id: p.id, category: p.category }));
-        if (permData?.data) meta.permissions = permData.data.map(p => ({ permission: p.permission, status: p.status }));
-        return meta;
-      }
-
-
-      case "dropbox":
-        return { name: profile.name?.display_name, email: profile.email };
-
-
-
       case "spotify":
         return { name: profile.display_name, email: profile.email };
-
-      case "stripe":
-        return { name: profile.business_profile?.name || profile.display_name };
 
       default:
         // Generic: try common fields
@@ -3843,24 +3705,6 @@ app.post("/api/connect-shopify-token", async (req, res) => {
     const safe = /^(Enter |Use your |Shopify (rejected|did not|could not))/.test(e.message);
     res.status(400).json({ error: safe ? e.message : "Could not connect to your store. Check your details and try again." });
   }
-});
-
-// Connect multiple services (queue-based)
-app.post("/api/connect-multiple", (req, res) => {
-  const { services } = req.body;
-  if (!Array.isArray(services) || services.length === 0) {
-    return res.status(400).json({ error: "No services provided" });
-  }
-
-  for (const key of services) {
-    if (!SERVICES[key] || SERVICES[key].isSignup) {
-      return res.status(400).json({ error: `Invalid service: ${key}` });
-    }
-  }
-
-  const queue = JSON.stringify(services);
-  res.setHeader("Set-Cookie", `ch_connect_queue=${encodeURIComponent(queue)}; Path=/; HttpOnly; Secure; SameSite=Lax`);
-  res.json({ redirectUrl: `/auth/${services[0]}` });
 });
 
 // Disconnect a service
@@ -5604,7 +5448,7 @@ app.delete("/api/mcps/:id", async (req, res) => {
 // Test and Fix share one path: open the saved connection exactly as the bot
 // would, list what it offers, and record the outcome. Fix additionally
 // restarts OAuth when the server has stopped accepting the saved token.
-async function mcpCheckRow(userId, id, { reauth } = {}) {
+async function mcpCheckRow(userId, id, { reauth, elsewhere } = {}) {
   const { data: stored, error } = await supabase
     .from("user_mcps")
     .select("*")
@@ -5616,12 +5460,13 @@ async function mcpCheckRow(userId, id, { reauth } = {}) {
   if (mcp.transport === "api") return apiCheckRow(userId, mcp);
 
   const state = crypto.randomBytes(16).toString("hex");
+  const callback = await connectionCatalogue.mcpCallback(mcp, elsewhere);
   let opened;
   try {
-    opened = await mcpOpenForDiscovery(mcp, { allowOAuth: reauth && mcp.transport !== "stdio", state });
+    opened = await mcpOpenForDiscovery(mcp, { allowOAuth: reauth && mcp.transport !== "stdio", state, callback });
   } catch (e) {
     if (e.needsAuth && e.redirectUrl && reauth) {
-      oauthStates.set(state, { flow: "mcp-oauth", userId, row: { ...mcp, auth_type: "oauth" }, name: mcp.name, created: Date.now() });
+      oauthStates.set(state, { flow: "mcp-oauth", userId, row: { ...mcp, auth_type: "oauth" }, name: mcp.name, callback, created: Date.now() });
       return { status: 200, body: { needs_reauth: true, redirect_url: e.redirectUrl } };
     }
     const { error: e2 } = await supabase.from("user_mcps").update({ status: e.needsAuth ? "needs_auth" : "error" }).eq("id", id).eq("user_id", userId);
@@ -5719,7 +5564,7 @@ app.post("/api/mcps/:id/test", async (req, res) => {
 app.post("/api/mcps/:id/fix", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   try {
-    const r = await mcpCheckRow(userId, req.params.id, { reauth: true });
+    const r = await mcpCheckRow(userId, req.params.id, { reauth: true, elsewhere: fromElsewhere(req) });
     res.status(r.status).json(r.body);
   } catch (e) {
     console.error("MCP fix error:", e);

@@ -366,13 +366,6 @@
       border-color: var(--muted);
     }
 
-    /* Shopify's box is a <dialog>, for the browser's own focus and Escape
-       handling. Everything else about it is the shared box below. */
-    #shopify-modal { margin: auto; color: inherit; }
-    #shopify-modal input + label, #shopify-modal details label { margin-top: 0.625rem; }
-    #shopify-modal a { color: var(--accent); }
-    #shopify-modal summary { cursor: pointer; margin-top: 0.75rem; font-size: 0.8125rem; color: var(--muted); }
-
     /* Shared modal styles */
     .modal-overlay, dialog.modal::backdrop {
       background: rgba(var(--bg-rgb),0.6);
@@ -427,12 +420,6 @@
       font-weight: 600;
       color: var(--fg);
       margin: 0 0 0.25rem;
-    }
-
-    .modal .modal-desc {
-      font-size: 0.8125rem;
-      color: var(--muted);
-      margin-bottom: 1rem;
     }
 
     .modal label {
@@ -755,11 +742,6 @@
       background: rgba(var(--fg-rgb),0.06);
     }
 
-    .conn-perm.declined {
-      color: rgba(var(--fg-rgb),0.4);
-      background: transparent;
-      text-decoration: line-through;
-    }
 
     /* Drawer action row */
     .conn-drawer-actions {
@@ -2815,7 +2797,7 @@
         window.history.replaceState({}, "", "/dashboard");
       }
       if (params.get("mcp_error")) {
-        showToast("MCP connection failed: " + decodeURIComponent(params.get("mcp_error")), true);
+        showToast(decodeURIComponent(params.get("mcp_error")), true);
         window.history.replaceState({}, "", "/dashboard");
       }
 
@@ -2859,107 +2841,6 @@
         }
         return;
       }
-
-      // Shopify — open modal
-      if (svc.needsStoreDomain) {
-        openShopifyModal();
-        return;
-      }
-
-      // Unconnected + configured — single tap to connect
-      if (svc.configured) {
-        connectService(key);
-        return;
-      }
-    }
-
-    async function connectService(key) {
-      try {
-        const res = await fetch("/api/connect-multiple", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ services: [key] }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.redirectUrl) {
-            // Break out of the dashboard iframe: providers (Facebook, Google,
-            // Microsoft) send frame-ancestors/X-Frame-Options and their consent
-            // pages refuse to render embedded ("refused to connect").
-            (window.top || window).location.href = data.redirectUrl;
-          } else {
-            loadStatus();
-          }
-        } else {
-          const data = await res.json().catch(() => ({}));
-          showToast(data.error || "Could not start connection", true);
-        }
-      } catch (e) {
-        showToast("Network error", true);
-      }
-    }
-
-    function openShopifyModal() {
-      const modal = document.getElementById("shopify-modal");
-      document.getElementById("shopify-form").reset();
-      document.getElementById("shopify-error").style.display = "none";
-      clearNeeds(modal);
-      document.getElementById("shopify-save-btn").disabled = false;
-      const oauth = !!window._allServices?.shopify?.oauthReady;
-      document.getElementById("shopify-oauth").hidden = !oauth;
-      document.getElementById("shopify-own-app").hidden = oauth;
-      modal.showModal();
-    }
-
-    function closeShopifyModal() {
-      document.getElementById("shopify-modal").close();
-      document.getElementById("shopify-form").reset();
-    }
-
-    function shopifyDomain() {
-      let domain = document.getElementById("shopify-store").value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-      if (!domain.includes(".")) domain += ".myshopify.com";
-      if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.myshopify\.com$/.test(domain)) throw Object.assign(new Error("Enter your store's myshopify.com address, without a page path."), { field: "shopify-store" });
-      return domain;
-    }
-
-    function connectShopifyOAuth() {
-      const errEl = document.getElementById("shopify-error");
-      try {
-        (window.top || window).location.href = "/auth/shopify?store_domain=" + encodeURIComponent(shopifyDomain());
-      } catch (e) {
-        if (e.field) return needsField(document.getElementById(e.field), e.message);
-        errEl.textContent = e.message; errEl.style.display = "block";
-      }
-    }
-
-    async function saveShopifyToken() {
-      const errEl = document.getElementById("shopify-error");
-      const btn = document.getElementById("shopify-save-btn");
-      errEl.style.display = "none";
-      try {
-        const storeDomain = shopifyDomain();
-        const accessToken = document.getElementById("shopify-token").value.trim();
-        const clientId = document.getElementById("shopify-client-id").value.trim();
-        const clientSecret = document.getElementById("shopify-client-secret").value.trim();
-        if (!accessToken && (!clientId || !clientSecret)) throw Object.assign(new Error("Enter your app's Client ID and Client secret or use an existing access token below."), { field: clientId ? "shopify-client-secret" : "shopify-client-id" });
-        btn.disabled = true;
-        btn.textContent = "Connecting…";
-        const res = await fetch("/api/connect-shopify-token", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ storeDomain, ...(accessToken ? { accessToken } : { clientId, clientSecret }) }),
-          signal: AbortSignal.timeout(35000),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Could not connect. Try again.");
-        closeShopifyModal();
-        showToast(`Connected to ${data.shopName || storeDomain}`);
-        loadStatus();
-      } catch (e) {
-        if (e.field) return needsField(document.getElementById(e.field), e.message);
-        errEl.textContent = e.name === "TimeoutError" ? "The connection took too long. Please try again." : e.message;
-        errEl.style.display = "block";
-      } finally { btn.disabled = false; btn.textContent = "Connect store"; }
     }
 
     async function openAppleModal() {
@@ -2998,15 +2879,10 @@
     // Capabilities per service — shown as permission pills in drawer
     const SERVICE_CAPS = {
       google: ["Gmail", "Calendar", "Drive"],
-      github: ["Repos", "Issues", "Pull requests"],
-      gitlab: ["Repos", "CI/CD", "Issues"],
       microsoft: ["Outlook", "Calendar", "OneDrive"],
-      dropbox: ["Files", "Sharing"],
       hubspot: ["Contacts", "Deals", "Companies"],
       salesforce: ["CRM", "Leads", "Opportunities"],
-      stripe: ["Payments", "Invoices"],
       spotify: ["Playback", "Playlists"],
-      slack: ["Messages", "Channels"],
       shopify: ["Store", "Products", "Orders"],
     };
 
@@ -3124,36 +3000,8 @@
         html += resourceSection("Accounts", msAcctHtml);
       }
 
-      // Meta-specific resource lists
-      if (c.service === "meta_ads") {
-        if (m.adAccounts?.length) {
-          html += resourceSection("Ad Accounts", m.adAccounts.map(a =>
-            `<div class="conn-resource"><span>${escHtml(a.name || a.accountId)}</span>${a.status === "active" ? '<span class="conn-badge-ok">Active</span>' : a.status === "disabled" ? '<span class="conn-badge-warn">Disabled</span>' : ""}</div>`
-          ).join(""));
-        }
-        if (m.businesses?.length) {
-          html += resourceSection("Businesses", m.businesses.map(b =>
-            `<div class="conn-resource"><span>${escHtml(b.name)}</span></div>`
-          ).join(""));
-        }
-        if (m.pages?.length) {
-          html += resourceSection("Pages", m.pages.map(p =>
-            `<div class="conn-resource"><span>${escHtml(p.name)}</span>${p.category ? `<span style="color:rgba(var(--fg-rgb),0.6);font-size: 0.8125rem">${escHtml(p.category)}</span>` : ""}</div>`
-          ).join(""));
-        }
-      }
-
-      // Permissions / capabilities — uniform pills for every service
-      if (c.service === "meta_ads" && m.permissions?.length) {
-        // Meta has real API permissions
-        const granted = m.permissions.filter(p => p.status === "granted");
-        const declined = m.permissions.filter(p => p.status === "declined");
-        html += `<div class="conn-resources-label">Permissions</div><div class="conn-perms">`;
-        html += granted.map(p => `<span class="conn-perm granted">${escHtml(p.permission.replace(/_/g, " "))}</span>`).join("");
-        html += declined.map(p => `<span class="conn-perm declined">${escHtml(p.permission.replace(/_/g, " "))}</span>`).join("");
-        html += `</div>`;
-      } else if (SERVICE_CAPS[c.service]) {
-        // Other services — show capabilities as granted pills
+      // What the connection gives, as pills
+      if (SERVICE_CAPS[c.service]) {
         html += `<div class="conn-resources-label">Permissions</div><div class="conn-perms">`;
         html += SERVICE_CAPS[c.service].map(cap => `<span class="conn-perm granted">${escHtml(cap)}</span>`).join("");
         html += `</div>`;
@@ -3167,9 +3015,6 @@
 
       // Action buttons
       const actions = [];
-      if (c.service === "meta_ads") {
-        actions.push(`<button class="conn-btn conn-btn-manage" onclick="event.stopPropagation();(window.top||window).location.href='/auth/${c.service}'">Manage permissions</button>`);
-      }
       if (c.isSignup) {
         actions.push(`<button class="conn-btn conn-btn-disconnect" onclick="event.stopPropagation();disconnectFromSettings('${c.service}','${escHtml(c.name)}', true, this)">Disconnect</button>`);
       } else {
@@ -6970,7 +6815,7 @@
       }
     }
 
-    var SKILL_SERVICES = { meta_ads: 'Meta Ads', shopify: 'Shopify', slack: 'Slack', google: 'Google', microsoft: 'Microsoft 365' };
+    var SKILL_SERVICES = { shopify: 'Shopify', google: 'Google', microsoft: 'Microsoft 365' };
     function renderConnectedSkills() {
       var list = document.getElementById('skills-connected');
       if (!list) return;
@@ -9832,40 +9677,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Shopify Connect Modal -->
-  <dialog class="modal" id="shopify-modal" aria-labelledby="shopify-heading" onclick="if(event.target===this)closeShopifyModal()">
-    <form id="shopify-form" onsubmit="event.preventDefault();if(window._allServices?.shopify?.oauthReady)connectShopifyOAuth();else saveShopifyToken();">
-      <h3 id="shopify-heading">Connect Shopify</h3>
-      <p class="modal-desc">Connect your store to work with its orders and products.</p>
-      <label for="shopify-store">Store address</label>
-      <input type="text" id="shopify-store" placeholder="yourstore.myshopify.com" autocomplete="off" autocapitalize="none" spellcheck="false" autofocus>
-      <div id="shopify-oauth" hidden>
-        <p class="modal-desc">Shopify will ask you to approve access to your store.</p>
-        <div class="modal-actions">
-          <button type="button" class="btn-modal btn-modal-secondary" onclick="closeShopifyModal()">Cancel</button>
-          <button type="submit" class="btn-modal btn-modal-primary">Connect with Shopify</button>
-        </div>
-      </div>
-      <div id="shopify-own-app" hidden>
-        <p class="modal-desc">Make an app in <a href="https://dev.shopify.com/dashboard" target="_blank" rel="noopener noreferrer">Shopify's Dev Dashboard</a>, choose what it can access and install it on your store. Its Client ID and Client secret are under Settings. The app and store must belong to the same Shopify organization.</p>
-        <label for="shopify-client-id">Client ID</label>
-        <input id="shopify-client-id" type="text" autocomplete="off" autocapitalize="none" spellcheck="false">
-        <label for="shopify-client-secret">Client secret</label>
-        <input id="shopify-client-secret" type="password" autocomplete="off">
-        <details>
-          <summary>Use an existing access token instead</summary>
-          <label for="shopify-token">Admin API access token</label>
-          <input id="shopify-token" type="password" autocomplete="off">
-        </details>
-        <div class="modal-actions">
-          <button type="button" class="btn-modal btn-modal-secondary" onclick="closeShopifyModal()">Cancel</button>
-          <button type="submit" id="shopify-save-btn" class="btn-modal btn-modal-primary">Connect store</button>
-        </div>
-      </div>
-      <div class="modal-error" id="shopify-error" role="alert"></div>
-    </form>
-  </dialog>
 
   <!-- Floating chat pill -->
   <a href="/?chat=1" id="chat-fab" style="

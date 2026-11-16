@@ -9,7 +9,7 @@ function unchanged(query, field, value, timestamp) {
 }
 function usesExistingReader(row) {
   return !Object.keys(row.config?.recall || {}).length && (/^(google|microsoft)(_|$)/.test(row.service) ||
-    ["slack", "notion", "imap", "ics_calendar", "whatsapp", "whatsapp_linked", "telegram", "simplefin", "lunchflow"].includes(row.service));
+    ["imap", "ics_calendar", "whatsapp", "whatsapp_linked", "telegram", "simplefin", "lunchflow"].includes(row.service));
 }
 function location(kind) {
   if (kind === "connection") return { table: "connections", field: "config", source: row => `connected:${row.service}` };
@@ -79,7 +79,7 @@ function apiDescription(service, svc) {
     try { const url = new URL(address); return url.protocol === "https:" ? [url.origin] : []; } catch { return []; }
   }))];
   if (!origins.length) return null;
-  return { origins, ...(svc.openapiUrl ? { openapiUrl: svc.openapiUrl } : {}), ...(svc.tokenUrl ? { refresh: { url: svc.tokenUrl, auth: svc.tokenAuthMethod || "body", envPrefix: service.toUpperCase() } } : {}) };
+  return { origins, ...(svc.openapiUrl ? { openapiUrl: svc.openapiUrl } : {}), ...(svc.tokenUrl ? { refresh: { url: svc.tokenUrl, envPrefix: service.toUpperCase() } } : {}) };
 }
 async function backfill(db, services) {
   for (let offset = 0; ; offset += 500) {

@@ -29,6 +29,8 @@
 .catalogue-form {display:grid;gap:1.25rem;margin-top:1.5rem;max-width:40rem;}
 .catalogue-form label {display:grid;gap:0.5rem;}
 .catalogue-form .catalogue-action {justify-self:start;}
+.catalogue-instead summary {cursor:pointer;font-size:0.875rem;color:var(--muted);}
+.catalogue-instead label {margin-top:0.75rem;}
 .catalogue-callback {display:grid;gap:0.5rem;}
 .catalogue-callback>span {font-size:0.9375rem;}
 .catalogue-copybox {display:flex;align-items:center;gap:0.5rem;min-height:2.75rem;padding-right:0.25rem;border:1px solid rgba(var(--fg-rgb),.25);border-radius:0.5rem;background:var(--bg);}

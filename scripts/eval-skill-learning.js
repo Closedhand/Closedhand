@@ -24,7 +24,7 @@ const ok = (tool, sent) => ({ tool, sent: JSON.stringify(sent), ok: true, error:
 const bad = (tool, sent, error) => ({ tool, sent: JSON.stringify(sent), ok: false, error });
 const IG = { name: "Comment on Instagram posts", description: "Leave a comment on one of the person's own Instagram posts through the sandbox computer's browser.", triggers: ["instagram comment", "comment on my post"],
   body: "## When to use\nWhen the person asks to comment under one of their own Instagram posts.\n\n## Steps\n1. Read the post links from the profile page in one eval_js call collecting a[href^=\"/p/\"].\n2. Open the post by its own link.\n3. Type the comment and press Post.\n\n## Mistakes to avoid\n- Clicking through the grid uses up the steps; open each post by its link.\n\n## How to check it worked\nThe comment shows under the post." };
-const BUILT_IN = ["Comment on Instagram posts", "Manage Meta ad campaigns", "Check Shopify sales and stock", "Read and post in Slack"];
+const BUILT_IN = ["Comment on Instagram posts", "Check Shopify sales and stock"];
 
 const CASES = [
   { id: "hotel-research", expect: "none", request: "Find me three quiet hotels in Lisbon under 150 a night for the first week of May",

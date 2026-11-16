@@ -2,18 +2,13 @@
 // This module never returns a saved secret to the browser.
 const { encryptString, decryptString } = require('./crypto-tokens');
 const microsoftApp = require('./microsoft-app');
+// Where the person makes an app of their own for a service that signs in
+// through one, and what to make there.
 const guides = {
   microsoft: ['https://entra.microsoft.com/', 'Register a web application in Microsoft Entra.'],
-  notion: ['https://www.notion.so/profile/integrations', 'Create a public connection in Notion.'],
-  atlassian: ['https://developer.atlassian.com/console/myapps/', 'Create an OAuth application in Atlassian.'],
   spotify: ['https://developer.spotify.com/dashboard', 'Create an application in Spotify for Developers.'],
-  stripe: ['https://dashboard.stripe.com/settings/connect', 'Open your Stripe Connect application settings.'],
-  dropbox: ['https://www.dropbox.com/developers/apps', 'Create a scoped application in Dropbox.'],
-  meta_ads: ['https://developers.facebook.com/apps/', 'Create a Meta application with Marketing API access.'],
   hubspot: ['https://developers.hubspot.com/', 'Create an OAuth application in HubSpot.'],
   salesforce: ['https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm&type=5', 'Create an external client application in Salesforce.'],
-  github: ['https://github.com/settings/developers', 'Create an OAuth application in GitHub.'],
-  gitlab: ['https://gitlab.com/-/user_settings/applications', 'Create an application in GitLab.'],
 };
 // Each company's own MCP server. A tile with one connects through it and
 // nothing else (no app of Closedhand's or the person's), and Closedhand's
@@ -57,13 +52,14 @@ function validClient(value) {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= 4096 && !/[\r\n\0]/.test(value);
 }
 function createCatalogue({db, services, userId, baseUrl, personalUrl}) {
-  // Where a sign-in to an MCP server comes back to: this computer's own
-  // address. Through an app the person made (installed_via own_app) it is the
-  // personal URL instead: that one address is written into their app, most
-  // companies take only an https one, and it opens on whichever device they
-  // sign in from.
-  async function mcpCallback(row) {
-    const personal=row&&row.installed_via==='own_app'?String(await personalUrl()||'').replace(/\/+$/,''):'';
+  // Where a sign-in to an MCP server comes back to. One that Closedhand
+  // registers for itself comes back to where it was started: this computer's
+  // own address, or the personal URL when started away from it (`elsewhere`:
+  // a phone can't open localhost). Through an app the person made
+  // (installed_via own_app) it is always the personal URL: that one address
+  // is written into their app, and most companies take only an https one.
+  async function mcpCallback(row, elsewhere) {
+    const personal=elsewhere||(row&&row.installed_via==='own_app')?String(await personalUrl()||'').replace(/\/+$/,''):'';
     return (personal||baseUrl)+MCP_CALLBACK;
   }
   // What the own-app form shows for an MCP server that would not let
@@ -142,5 +138,5 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl}) {
   }
   return {resolve,register,mcpCallback,ownApp};
 }
-module.exports={createCatalogue,validClient};
+module.exports={createCatalogue,validClient,remote};
 
