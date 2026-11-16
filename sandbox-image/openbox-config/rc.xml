@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <!-- The screen is the size shown (entrypoint.sh, agent /desktop/shape):
+       windows are placed and maximized on all of it. -->
+  <applications>
+    <!-- Auto-maximize all windows, no title bar decorations -->
+    <application class="*">
+      <maximized>yes</maximized>
+      <decor>no</decor>
+    </application>
+  </applications>
+</openbox_config>

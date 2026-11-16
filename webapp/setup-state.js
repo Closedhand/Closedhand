@@ -1,0 +1,170 @@
+// webapp/setup-state.js — First-run setup state for the onboarding wizard.
+//
+// Reports what's configured and what the next unlock is, so the P3 setup UI is a
+// pure rendering of this backend truth. Only booleans + service names leave here —
+// never secret values. Sources: env (operator overrides) and the runtime config
+// the wizard itself writes (settings.self_host_config), plus the admin's chat
+// provider settings, which the dashboard has always owned.
+
+const { supabase, isDbConfigured } = require("./db");
+const { getAdminUserId } = require("./admin");
+
+async function getSetupState() {
+  const db = isDbConfigured();
+
+  let settings = {};
+  let connections = [];
+  let signInAgain = [];
+  let addedSignInAgain = [];
+  let googleAccount = null;
+  let microsoftAccount = null;
+  let profileCreatedAt = null;
+  let imagesService = null;
+  if (db) {
+    try {
+      const { data } = await supabase.from("profiles").select("settings, created_at").eq("id", getAdminUserId()).single();
+      settings = (data && data.settings) || {};
+      profileCreatedAt = (data && data.created_at) || null;
+    } catch (_) { /* DB not reachable yet */ }
+    try {
+      const { data } = await supabase.from("connections").select("service, metadata").eq("user_id", getAdminUserId());
+      // A connection Google or Microsoft stopped accepting is not connected.
+      ({ working: connections, signInAgain } = require("./connection-health").split(data));
+      // Added accounts that stopped working, by address, so setup never says
+      // "everything is connected" over one that is not.
+      addedSignInAgain = (data || []).filter((r) => /_extra_/.test(r.service || "") && r.metadata?.reconnect_required).map((r) => r.metadata?.email || r.service);
+      const g = (data || []).find((r) => r.service === "google");
+      if (g) googleAccount = { name: g.metadata?.name || null, email: g.metadata?.email || null };
+      const m = (data || []).find((r) => r.service === "microsoft");
+      if (m) microsoftAccount = { name: m.metadata?.name || null, email: m.metadata?.email || null };
+    } catch (_) { /* treat as none */ }
+    // A connected service with Image generation switched on makes pictures
+    // first (lib/connection-jobs.js), the latest connected if several.
+    try {
+      const { data } = await supabase.from("user_mcps").select("name, caps, updated_at").eq("user_id", getAdminUserId()).eq("status", "connected");
+      const on = (data || []).filter((r) => r.caps?.jobs?.images?.on).sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0];
+      if (on) imagesService = on.name;
+    } catch (_) { /* treat as none */ }
+  }
+  const conf = settings.self_host_config || {};
+  const envOr = (k) => (process.env[k] !== undefined && process.env[k] !== "" ? process.env[k] : conf[k]);
+
+  // Chat is set up once a chat model is chosen in Models (setup or Settings).
+  const model = !!settings.model_config?.roles?.chat;
+
+  // The AI that comes with Closedhand: in use ("ready"), or on its way
+  // ("pending") because claiming the personal URL brings it (closedhand.com
+  // says a claim now would) or because a claim brought it and its models are
+  // being checked. Pending counts as done here, so setup carries on to the
+  // claim; if the key never comes, the step asks for an AI account again.
+  const urlClaimed = !!(envOr("PHONE_ADDRESS_NAME") || envOr("PHONE_PERMANENT_URL"));
+  let modelIncluded = null;
+  if (model && settings.model_config?.included) modelIncluded = "ready";
+  else if (!model && settings.included_api_key && !settings.included_ai?.error) modelIncluded = "pending";
+  else if (!model && !urlClaimed && db) {
+    // Whether a claim would bring it.
+    const registration = require("./phone-registration");
+    if (await registration.includedAiModel().catch(() => null)) modelIncluded = "pending";
+  }
+  const modelDone = model || modelIncluded === "pending";
+
+  const adminPassword = !!(process.env.ADMIN_PASSWORD || conf.DASHBOARD_PASSWORD_HASH);
+  const telegram = !!envOr("TELEGRAM_BOT_TOKEN");
+  const google = connections.some((s) => s === "google" || s.startsWith("google"));
+  const googleCreds = !!(envOr("GOOGLE_CLIENT_ID") && envOr("GOOGLE_CLIENT_SECRET"));
+  const microsoft = connections.some((s) => s === "microsoft" || s.startsWith("microsoft_extra_"));
+  // An account that needs signing in again still finished this step: setup
+  // and the dashboard stay open, and its card asks for the sign-in.
+  const accountSaved = google || microsoft || signInAgain.some((s) => s.startsWith("google") || s === "microsoft" || s.startsWith("microsoft_extra_"));
+  // Signing in by code through Closedhand's app needs no setup of its own;
+  // an app of the person's own in .env is used by the dashboard instead.
+  // Google through Closedhand's own app: only in builds that carry one, and
+  // only where Google can hand the sign-in back to this computer.
+  const googleApp = require("./google-app");
+  const googleQuick = !!googleApp.app() && googleApp.canReturnTo(process.env.BASE_URL || "http://localhost:3000");
+  const microsoftCode = !!require("./microsoft-app").appId() && !(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
+
+  const waLinked = await (async () => {
+    try {
+      const { data } = await supabase.from("connections").select("config, metadata")
+        .eq("user_id", getAdminUserId()).eq("service", "whatsapp_linked").single();
+      if (!data) return { enabled: false, linked: false, hasQr: false };
+      // The linked number, so links can open the person's own chat.
+      const number = String(data.metadata?.jid || "").split("@")[0].split(":")[0] || null;
+      return { enabled: !!data.config?.enabled, linked: !!data.metadata?.linked, hasQr: !!data.metadata?.qr, number };
+    } catch (_) { return { enabled: false, linked: false, hasQr: false }; }
+  })();
+
+  // Ordered by the onboarding spine; the first not-done is the next unlock.
+  // Chat apps are one step: any connected chat surface satisfies it.
+  const steps = [
+    { key: "database", label: "Database", done: db, required: true },
+    { key: "model", label: "Model provider", done: modelDone, required: true },
+    { key: "admin_password", label: "Admin password", done: adminPassword, required: true },
+    { key: "accounts", label: "Email and calendar", done: accountSaved, required: true },
+    { key: "chat", label: "Chat apps", done: telegram || waLinked.linked, required: false },
+  ];
+  const nextUnlock = steps.find((s) => !s.done) || null;
+
+  return {
+    // Ready = a database, a model provider, a password and a Google or
+    // Microsoft account (or both). Without mail and calendar Closedhand is a
+    // chat window round a model, so one of them is part of the floor, not an
+    // extra. Without a password the dashboard is open to anyone on the same
+    // network, so it is part of the floor too. Chat apps can follow.
+    ready: db && modelDone && adminPassword && accountSaved,
+    steps,
+    connections,
+    nextUnlock: nextUnlock ? nextUnlock.key : null,
+    // How far each model on this computer has got downloading.
+    localModels: conf.LOCAL_MODELS_STATUS || null,
+    modelIncluded,
+    modelIncludedName: settings.included_ai?.name || null,
+    // Pictures this computer can't make are made in the TEE with the plan
+    // (lib/image-generation.js picture).
+    imagesInTee: require("./included-ai").live(settings),
+    imagesService,
+    // The person's own LLM provider's picture model, where it has one, and
+    // whether they have said it may make their pictures.
+    imagesProvider: (() => { const p = require("./image-providers").forSettings(settings); return p ? { name: p.name, model: p.model, on: settings.images_from_provider === true } : null; })(),
+    chatProvider: settings.model_config?.connections?.primary?.provider || null,
+    chatProviderLabel: settings.model_config ? new URL(settings.model_config.connections.primary.baseUrl).hostname : null,
+    botUsername: conf.TELEGRAM_BOT_USERNAME || null,
+    // The Mac app, rather than Docker: setup says how to keep it running.
+    desktop: !!process.env.CLOSEDHAND_DESKTOP,
+    // Identifies THIS install, so the page can keep per-install UI state
+    // (skipped steps) instead of one browser's choices leaking across every
+    // install that has ever answered on this address. NOT the admin user id:
+    // that is a fixed sentinel, identical on every install, which is exactly
+    // how a skip kept crossing installs. The admin profile's creation time is
+    // written when this database gets its row and dies with the volume, so it
+    // changes precisely when "a different install" is true.
+    installId: profileCreatedAt,
+    googleCreds,
+    // Who is connected (name and address only), so the card can say so.
+    googleConnected: google,
+    googleSignInAgain: !google && signInAgain.some((s) => s === "google" || s.startsWith("google")),
+    addedSignInAgain,
+    googleAccount,
+    microsoftConnected: microsoft,
+    microsoftSignInAgain: !microsoft && signInAgain.some((s) => s === "microsoft" || s.startsWith("microsoft_extra_")),
+    microsoftAccount,
+    microsoftCode,
+    googleQuick,
+    waLinked,
+    // Chat apps beyond Telegram and WhatsApp need the operator's own app
+    // credentials in .env; the dashboard says so rather than offering a
+    // Connect button that cannot work.
+    extraChat: {
+      discord: !!process.env.DISCORD_BOT_TOKEN,
+      slack: !!(process.env.SLACK_BOT_TOKEN || process.env.SLACK_CLIENT_ID),
+      line: !!(process.env.LINE_CHANNEL_ACCESS_TOKEN && process.env.LINE_CHANNEL_SECRET),
+    },
+    // The exact redirect URI the server will send in the Google OAuth flow
+    // (mirrors server.js BASE_URL). The Google wizard renders this so the value
+    // pasted into the console always matches what the server uses.
+    googleRedirectUri: `${process.env.BASE_URL || "http://localhost:3000"}/auth/google/callback`,
+  };
+}
+
+module.exports = { getSetupState };

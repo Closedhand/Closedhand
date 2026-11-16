@@ -1,0 +1,158 @@
+// A flight or booking card opens the email it came from, and lists the files
+// that came with the booking from every email naming its reference (the
+// order confirmation has the details, the airline's email has the e-ticket).
+// A booking with no end time is over a few hours after it starts, so last
+// night's dinner moves to Past instead of staying "upcoming".
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+const server = read('webapp/server.js');
+const helpers = server.slice(server.indexOf('const MAIL_SOURCE ='), server.indexOf('// A file attached to an email Closedhand keeps'));
+
+const CACHE = [
+  { source: 'gmail', external_id: 'order11', data: { subject: 'Your order', body: 'Booking QZX7KP confirmed', threadId: 'thr11', account: 'pat@example.com', attachments: [],
+    webLink: 'https://mail.google.com/mail/?authuser=pat%40example.com#all/thr11' } },
+  { source: 'gmail', external_id: 'airline22', data: { subject: 'Travel Reservation - QZX7KP', body: 'see attached', threadId: 'thr22', account: 'pat@example.com',
+    attachments: [{ filename: 'logo.png', mimeType: 'image/png', attachmentId: 'a0', inline: true }, { filename: 'QZX7KP.ics', mimeType: 'text/calendar', attachmentId: 'a2', inline: false }, { filename: 'E-ticket QZX7KP.pdf', mimeType: 'application/pdf', attachmentId: 'a1', inline: false }, { filename: 'terms_and_conditions.pdf', mimeType: 'application/pdf', attachmentId: 'a3', inline: false }] } },
+  { source: 'outlook', external_id: 'AAMk33=', data: { subject: 'QZX7KP receipt', body: '', attachments: [{ filename: 'Receipt.pdf', mimeType: 'application/pdf', attachmentId: 'b1', inline: false }, { filename: 'Boarding pass.pkpass', mimeType: 'application/vnd.apple.pkpass', attachmentId: 'b2', inline: false }],
+    webLink: 'https://outlook.office.com/owa/?ItemID=AAMk33' } },
+  { source: 'imap', external_id: 'imap-7-42', data: { subject: 'Table at Rosa\'s', body: 'Booking ROSA77X', attachments: [{ filename: 'menu.pdf', mimeType: 'application/pdf', attachmentId: '0', inline: false }], webLink: null } },
+  { source: 'gmail', external_id: 'evil99', data: { subject: 'phish', webLink: 'https://evil.example/login', attachments: [] } },
+];
+function fakeDb() {
+  return { from: () => {
+    const filters = [];
+    const q = {
+      select: () => q, eq: (c, v) => { filters.push((r) => (c === 'external_id' ? r.external_id === v : c === 'source' ? r.source === v : true)); return q; },
+      ilike: (c, v) => { const needle = v.replace(/%/g, '').toLowerCase(); const key = c.split('->>')[1]; filters.push((r) => String(r.data[key] || '').toLowerCase().includes(needle)); return q; },
+      limit: () => q,
+      then: (ok) => ok({ data: CACHE.filter((r) => filters.every((f) => f(r))), error: null }),
+    };
+    return q;
+  } };
+}
+function load(now) {
+  const FixedDate = class extends Date {}; FixedDate.now = () => now;
+  const box = { supabase: fakeDb(), Date: FixedDate, Intl, encodeURIComponent, String, Number, isNaN, crypto: require('node:crypto'), process, BOT_INTERNAL_URL: 'http://bot:3000' };
+  vm.runInNewContext(helpers + '\nthis.sourceMail = sourceMail; this.bookingOver = bookingOver;', box);
+  return box;
+}
+
+test('a flight opens its own email in the right account, with the files worth having from every email naming the booking', async () => {
+  const sm = JSON.parse(JSON.stringify(await load(Date.now()).sourceMail('u1', { emailId: 'order11', reference: 'QZX7KP' })));
+  assert.equal(sm.open_url, 'https://mail.google.com/mail/?authuser=pat%40example.com#all/thr11');
+  assert.equal(sm.copy_url, '/mail?source=gmail&id=order11', "and Closedhand's own copy, for an iPhone");
+  assert.equal(sm.mailbox, 'gmail');
+  assert.deepEqual(sm.documents.map((d) => d.name), ['E-ticket QZX7KP.pdf', 'Boarding pass.pkpass'],
+    'Gmail and Outlook alike; inline pictures, calendar files, terms and receipts left out');
+  assert.equal(sm.documents[0].url, '/api/mail/attachment?source=gmail&id=airline22&n=1', 'numbered as the email numbers its files');
+  assert.equal(sm.documents[1].url, '/api/mail/attachment?source=outlook&id=AAMk33%3D&n=1');
+});
+
+test('Outlook opens in Outlook; IMAP, with no web address, opens Closedhand\'s copy; a strange link is not trusted', async () => {
+  const box = load(Date.now());
+  const outlook = await box.sourceMail('u1', { emailId: 'AAMk33=' });
+  assert.equal(outlook.open_url, 'https://outlook.office.com/owa/?ItemID=AAMk33');
+  assert.equal(outlook.mailbox, 'outlook');
+  const imap = JSON.parse(JSON.stringify(await box.sourceMail('u1', { emailId: 'imap-7-42' })));
+  assert.equal(imap.open_url, '/mail?source=imap&id=imap-7-42');
+  assert.equal(imap.mailbox, null, 'no mark for a mailbox without a web address');
+  assert.deepEqual(imap.documents.map((d) => d.url), ['/api/mail/attachment?source=imap&id=imap-7-42&n=0']);
+  assert.equal((await box.sourceMail('u1', { emailId: 'evil99' })).open_url, '/mail?source=gmail&id=evil99');
+});
+
+test('nothing is linked when nothing is known', async () => {
+  assert.equal(await load(Date.now()).sourceMail('u1', { emailId: 'nope', reference: 'ZZZZZZ' }), null);
+  assert.equal(await load(Date.now()).sourceMail('u1', { emailId: '../x', reference: 'a b' }), null, 'odd ids and references are not searched');
+});
+
+test('a booking with no end moves to Past an hour after it starts', () => {
+  const dinner = { kind: 'restaurant', starts_at: '2026-10-06T19:00:00+07:00' };
+  const at = (iso) => load(Date.parse(iso)).bookingOver(dinner, Date.parse(iso));
+  assert.equal(at('2026-10-06T19:40:00+07:00'), false, 'arriving, it is still on');
+  assert.equal(at('2026-10-06T20:30:00+07:00'), true, 'once it is under way it is no longer coming up');
+  const viewing = { kind: 'event', starts_at: '2026-10-14T10:30:00+01:00' };
+  assert.equal(load(0).bookingOver(viewing, Date.parse('2026-10-14T13:30:00+01:00')), true, 'a morning viewing is past by the afternoon');
+  const festival = { kind: 'event', starts_at: '2026-10-14T10:00:00+01:00', timezone: 'Europe/London', details: { all_day: true } };
+  assert.equal(load(0).bookingOver(festival, Date.parse('2026-10-14T18:00:00+01:00')), false, 'an all-day event lasts its day');
+  assert.equal(load(0).bookingOver(festival, Date.parse('2026-10-15T00:30:00+01:00')), true, 'and is over after midnight');
+  const untimed = { kind: 'flight', starts_at: '2026-10-14T00:00:00+01:00', timezone: 'Europe/London', details: { time_unknown: true } };
+  assert.equal(load(0).bookingOver(untimed, Date.parse('2026-10-14T09:00:00+01:00')), false, 'a day without its time lasts the day');
+  const hotel = { kind: 'hotel', starts_at: '2026-10-06T14:00:00+07:00', ends_at: '2026-10-09T12:00:00+07:00' };
+  assert.equal(load(0).bookingOver(hotel, Date.parse('2026-10-08T10:00:00+07:00')), false, 'a stated end wins');
+});
+
+test('the file route is behind the login, checks its inputs, asks the bot and never serves script', () => {
+  const route = server.slice(server.indexOf('app.get("/api/mail/attachment"'), server.indexOf('app.get("/mail"'));
+  assert.ok(server.indexOf('app.get("/api/mail/attachment"') > server.indexOf('const SIGNED_BY_BRIDGE'), 'registered after the dashboard login gate');
+  assert.match(route, /if \(!userId\) return res\.status\(401\)/);
+  assert.match(route, /if \(!MAIL_SOURCE\.test\(source\) \|\| !MAIL_ID\.test\(id\)/);
+  assert.match(route, /await askBot\(userId, `\/internal\/mail-file\?/);
+  assert.match(route, /"Content-Security-Policy": "sandbox"/);
+  assert.match(route, /viewable \? type : "application\/octet-stream"/);
+  const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
+  assert.match(view, /if \(!userId\) return res\.redirect\("\/login/);
+  assert.match(view, /"Content-Security-Policy": "default-src 'none'/, 'Closedhand\'s copy of an email runs no script');
+});
+
+// On an iPhone a Gmail address opened Gmail's phone site at the inbox, in
+// Safari: the Gmail app takes no links from mail.google.com. Its own
+// googlegmail: link opened the app at the inbox, never at the email, so the
+// copy says which mailbox it is from in words, as a chat booking does.
+test("on an iPhone a Gmail email opens as Closedhand keeps it, saying which mailbox it is from, with no button to the app", () => {
+  const dash = read('webapp/views/dashboard.html');
+  assert.match(dash, /var IOS = \/\\biP\(hone\|ad\|od\)\\b\/\.test\(navigator\.userAgent\);/);
+  assert.match(dash, /var mail = sm && \(IOS && sm\.mailbox === 'gmail' && sm\.copy_url \? sm\.copy_url : sm\.open_url\);/, 'Outlook and every other phone keep the mailbox\'s own address');
+  const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
+  assert.doesNotMatch(view, /googlegmail|Open in|class="open"/, 'a button to the app went to the inbox, not the email');
+  assert.match(view, /const from = box \? `<p class="from"><img src="\$\{box\.logo\}" alt="" width="14" height="14">From your \$\{box\.name\}<\/p>` : "";/);
+  assert.match(view, /<p class="meta">\$\{when\}<\/p>\$\{from\}/);
+});
+
+test('the dashboard opens the email from its own chip, lists the files and moves finished bookings to Past', () => {
+  const dash = read('webapp/views/dashboard.html');
+  assert.match(dash, /'<a class="source-doc source-mail" href="' \+ escHtml\(mail\)/);
+  assert.doesNotMatch(dash, /openSourceMail|has-source/, 'the card itself is not a second link to the same email');
+  assert.match(dash, /\(docs\.length > 2 \? '<button type="button" class="source-doc-more"/);
+  assert.match(dash, /var over = live\.filter\(function\(b\) \{ return b\.over; \}\);/);
+  assert.match(dash, /<div id="recent-bookings"><\/div>/);
+});
+
+test("Upcoming reads everything connected, and a booking from a chat says where it came from", () => {
+  const dash = read("webapp/views/dashboard.html");
+  assert.match(dash, />Nothing coming up\. Reminders and bookings from everything you've connected show here\.</);
+  assert.doesNotMatch(dash, /from your mail show here/);
+  assert.match(dash, /appointment: lineIcon\('M4 5h16v15H4zM4 10h16M8 3v4M16 3v4'\),/, "an appointment drawn as a calendar, in the app's line style");
+  assert.match(dash, /docs: sourceDocsHtml\(b\.source_mail\), from: chatSourceHtml\(det\.from_chat\),/);
+  // Said in words, not a button: there is no way to open one chat from here.
+  const chat = dash.slice(dash.indexOf("    function chatSourceHtml(c) {"), dash.indexOf("    // The email a booking came from"));
+  assert.match(chat, /'<span>' \+ escHtml\('From your ' \+ c\.app \+ ' chat' \+ \(c\.name \? ' with ' \+ c\.name : ''\)\) \+ '<\/span><\/div>'/);
+  assert.doesNotMatch(chat, /source-doc|<a |<button/, "not shaped like the email's chip");
+  const defs = read("lib/tools/definitions.js");
+  assert.match(defs, /Upcoming bookings picked out of the user's email, chats and connected services/);
+  assert.match(read("lib/engine.js"), /"bookings from mail and chats \(trains, hotels, tickets, appointments\): list, scan, record a change, settle plans that clash"/);
+});
+
+// Closedhand's copy of an email showed every link's address in full beside
+// its words: a tracking address took up half a phone's screen. The words are
+// the link now; a calendar file is left out, as on the card.
+test("Closedhand's copy of an email makes a link of its words and leaves calendar files out", () => {
+  const server = read("webapp/server.js");
+  const src = server.slice(server.indexOf("const CALENDAR_FILE ="), server.indexOf("// Closedhand's own copy of one email"));
+  const { linkedBody, CALENDAR_FILE } = new Function(src + "; return { linkedBody, CALENDAR_FILE };")();
+  const e = (v) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const body = "Example Trips (https://email.example.com/c/eJxLongTrackingToken123)\n\nFor more info, open Help & support (https://email.example.com/c/help)\nSee https://www.example.com/trips/123 for the rest.";
+  const html = linkedBody(body, e);
+  assert.match(html, /^<a href="https:\/\/email\.example\.com\/c\/eJxLongTrackingToken123" target="_blank" rel="noopener noreferrer">Example Trips<\/a>/);
+  assert.match(html, /For <a href="https:\/\/email\.example\.com\/c\/help"[^>]*>more info, open Help &amp; support<\/a>/, "the six words before it at most");
+  assert.match(html, /See <a href="https:\/\/www\.example\.com\/trips\/123"[^>]*>example\.com<\/a> for the rest\./, "a bare address shows as its site");
+  assert.doesNotMatch(html.replace(/href="[^"]*"/g, ""), /https?:\/\//, "no address shown");
+  assert.equal(linkedBody("<b>not a tag</b>", e), "&lt;b&gt;not a tag&lt;/b&gt;", "the rest is text");
+  assert.ok(CALENDAR_FILE.test("SP69152801_80304326.ics") && !CALENDAR_FILE.test("E-ticket.pdf"));
+  const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
+  assert.match(view, /CALENDAR_FILE\.test\(f\.filename\) \|\| \/calendar\/i\.test\(f\.mimeType \|\| ""\) \? "" :/);
+  assert.match(view, /<div class="body">\$\{linkedBody\(m\.body \|\| m\.snippet \|\| "", e\)\}<\/div>/);
+});

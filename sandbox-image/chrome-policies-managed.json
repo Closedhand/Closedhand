@@ -1,0 +1,8 @@
+{
+  "SyncTypesListDisabled": ["apps", "extensions", "themes", "preferences", "tabs", "savedTabGroups", "typedUrls", "readingList", "productComparison", "wifiConfigurations"],
+  "MetricsReportingEnabled": false,
+  "SpellCheckServiceEnabled": false,
+  "UrlKeyedAnonymizedDataCollectionEnabled": false,
+  "BrowserAddPersonEnabled": false,
+  "BrowserGuestModeEnabled": false
+}

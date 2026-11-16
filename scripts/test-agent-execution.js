@@ -1,0 +1,394 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const path = require("node:path");
+const evidence = require("../lib/task-evidence");
+const { createToolScope, prefetchReads } = require("../lib/task-tools");
+const { makeBudget, withTaskRun, modelCall, workShare, countToolCall } = require("../lib/task-model");
+const lease = require("../lib/task-lease");
+function fakeDb(tables = {}) {
+  return { tables, from(name) {
+    tables[name] ||= []; let action = "select", values, conflict, filters = [];
+    const q = { limit() { return q; }, select() { return q; }, update(v) { action = "update"; values = v; return q; },
+      insert(v) { action = "insert"; values = v; return q; }, upsert(v, o) { action = "upsert"; values = v; conflict = o.onConflict.split(","); return q; },
+      eq(k, v) { filters.push(r => r[k] === v); return q; }, in(k, vs) { filters.push(r => vs.includes(r[k])); return q; },
+      or() { filters.push(r => !r.lease_until || new Date(r.lease_until) < new Date()); return q; },
+      then(resolve, reject) { return Promise.resolve().then(() => {
+        let rows = tables[name].filter(r => filters.every(f => f(r)));
+        if (action === "insert") { rows = [structuredClone(values)]; tables[name].push(...rows); }
+        if (action === "upsert") {
+          let row = tables[name].find(r => conflict.every(k => r[k] === values[k]));
+          if (row) Object.assign(row, structuredClone(values)); else tables[name].push(row = structuredClone(values)); rows = [row];
+        }
+        if (action === "update") rows.forEach(r => Object.assign(r, structuredClone(values)));
+        return { data: structuredClone(rows), error: null };
+      }).then(resolve, reject); },
+    }; return q;
+  } };
+}
+const metrics = fakeDb();
+require.cache[require.resolve("../lib/db")] = { exports: { supabase: metrics } };
+function exchange(id, name, input, output, failed = false) { return [
+  { role: "assistant", content: [{ type: "tool_use", id, name, input }] },
+  { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify(output), is_error: failed }] },
+]; }
+for (const [question, value] of [["And London?", "London"], ["Find the shipping reference", "REFERENCE-123"], ["Flight departure time", "20:00+07:00"], ["Compare weather", "humidity now 72%"], ["Find my report", "report-456"]]) {
+  test("handover preserves current evidence and isolates old work: " + question, () => {
+    const boundary = { role: "user", content: question };
+    const messages = [{ role: "user", content: "Earlier unrelated question" }, ...exchange("old", "search_cache", {}, { text: "UNRELATED" }), boundary,
+      ...exchange("new", "search_cache", { query: question }, { id: "source-1", value }), { role: "user", content: "Correction: use the latest source." }];
+    const snapshot = evidence.captureRequest(messages, question, boundary, { userId: "one", threadId: "thread" });
+    assert.equal(evidence.evidenceFrom(snapshot.messages).length, 1);
+    const handed = JSON.stringify(evidence.handoverMessages(snapshot));
+    assert.ok(handed.includes(value)); assert.ok(handed.includes("Correction"));
+    assert.ok(!JSON.stringify(snapshot.messages).includes("UNRELATED"));
+    assert.deepEqual(messages.at(-1), { role: "user", content: "Correction: use the latest source." });
+  });
+}
+test("a missing compressed boundary never imports old tool evidence", () => {
+  const s = evidence.captureRequest(exchange("old", "search_cache", {}, { data: "old" }), "new question", {});
+  assert.equal(evidence.evidenceFrom(s.messages).length, 0);
+});
+for (const [result, failed, expected] of [[{ success: true }, false, 1], [{ error: "network" }, false, 0], [{ success: false }, false, 0], [{ ok: true }, true, 0]]) {
+  test("restart delivery receipt: " + JSON.stringify(result) + failed, () => {
+    const keys = evidence.successfulDeliveryKeys(exchange("send", "file_send", { id: "file" }, result, failed), (name, input) => input.id);
+    assert.equal(keys.size, expected);
+  });
+}
+function verifier(client) {
+  const module = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../lib/verification.js"), "utf8"), {
+    module, exports: module.exports, console, require(name) {
+      if (name === "./llm") return { getInternalClient: () => ({ client, model: "fixture" }) };
+      return require("../lib/" + name.slice(2));
+    },
+  }); return module.exports;
+}
+for (const payload of [{ passed: true, criteria_results: [{ criterion: "Correct time", met: true }] }, { passed: false, criteria_results: [{ criterion: "Correct time", met: false }] }, { passed: "true", criteria_results: [] }, { passed: true, criteria_results: [] }, { passed: true, criteria_results: [{ criterion: "Correct time", met: false }] }, { nonsense: true }]) {
+  test("completion evidence and strict verdict: " + JSON.stringify(payload), async () => {
+    let request;
+    const v = verifier({ messages: { create: async p => { request = p; return { content: [{ type: "text", text: JSON.stringify(payload) }] }; } } });
+    const result = await v.verifyCompletion("Read departure", ["Correct time"], "20:00", ["search_cache"], "owner", exchange("x", "search_cache", {}, { departure: "20:00+07:00", source_id: "booking" }));
+    assert.equal(result.passed, payload.passed === true && payload.criteria_results.every(x => x.met));
+    assert.ok(request.messages[0].content.includes("20:00+07:00")); assert.ok(request.messages[0].content.includes("booking"));
+  });
+}
+test("a verdict without its outcome by outcome list is still a verdict; a list must cover every outcome", async () => {
+  // As one LLM answered: passed, the two flags and feedback, no list.
+  const reply = (payload) => verifier({ messages: { create: async () => ({ content: [{ type: "text", text: JSON.stringify(payload) }] }) } });
+  const fail = await reply({ passed: false, claims_supported: false, needs_person: false, feedback: "The sources are not named." }).verifyCompletion("Sum up the rules", ["Sources named"], "Answer", [], "owner");
+  assert.equal(fail.status, "failed", "not unavailable: the task gets its one rewrite");
+  assert.equal(fail.feedback, "The sources are not named.");
+  assert.equal(fail.retry, true);
+  const pass = await reply({ passed: true, claims_supported: true, needs_person: false, feedback: "" }).verifyCompletion("Sum up the rules", ["Sources named"], "Answer", [], "owner");
+  assert.equal(pass.status, "passed");
+  const other = await reply({ passed: true, criteria_results: [{ criterion: "Something else", met: true }] }).verifyCompletion("Sum up the rules", ["Sources named"], "Answer", [], "owner");
+  assert.equal(other.passed, false, "a list that leaves out an outcome asked for does not pass");
+  assert.match(fs.readFileSync(path.join(__dirname, "../lib/verification.js"), "utf8"), /const CHECK_MS = 60000;[\s\S]*purpose: "verification", timeoutMs: CHECK_MS/, "a minute to read a long task's evidence");
+});
+test("the check says whether a rewrite could help", async () => {
+    // Only skip the rewrite when both answers agree: every claim holds up, and
+    // what is left needs the person. Either one alone still rewrites.
+    for (const [claims_supported, needs_person, expected] of [[true, true, false], [false, true, true], [true, false, true], [undefined, true, true], ["true", "true", true]]) {
+      const payload = { passed: false, claims_supported, needs_person, criteria_results: [{ criterion: "Booking moved", met: false }] };
+      const v = verifier({ messages: { create: async () => ({ content: [{ type: "text", text: JSON.stringify(payload) }] }) } });
+      const result = await v.verifyCompletion("Move booking", ["Booking moved"], "No booking found in the connected account", [], "owner");
+      assert.equal(result.passed, false); assert.equal(result.retry, expected);
+    }
+  });
+test("a failed checker stays unavailable", async () => {
+  const v = verifier({ messages: { create: async () => { throw Error("offline"); } } });
+  const result = await v.verifyCompletion("Goal", ["Outcome"], "Answer", [], "owner");
+  assert.equal(result.passed, false); assert.equal(result.status, "unavailable");
+});
+test("caller criteria avoid an unnecessary preparation call", async () => {
+  const v = verifier({ messages: { create: () => { throw Error("must not call"); } } });
+  const result = await v.prepareTask("Goal", "owner", {}, ["Requested outcome"]);
+  assert.equal(result.criteria[0], "Requested outcome");
+});
+test("parallel requests share an aggregate allowance", async () => {
+  const budget = makeBudget({}, { input_tokens: 100, output_tokens: 20 });
+  let release; const client = { messages: { create: () => new Promise(r => release = r) } };
+  await withTaskRun({ budget }, async () => {
+    const first = modelCall(client, { messages: [], max_tokens: 15 });
+    await assert.rejects(modelCall(client, { messages: [], max_tokens: 15 }), e => e.code === "TASK_BUDGET_EXCEEDED");
+    release({ usage: { input_tokens: 4, output_tokens: 3 } }); await first;
+  });
+  assert.equal(budget.output, 3); assert.equal(budget.reservedOutput, 0);
+});
+test("a timeout aborts the underlying request and preserves failure accounting", async () => {
+  let signal; const budget = makeBudget();
+  await withTaskRun({ userId: "owner", taskId: "task", budget }, async () => {
+    await assert.rejects(modelCall({ messages: { create: (_, opts) => { signal = opts.signal; return new Promise(() => {}); } } }, { messages: [], max_tokens: 8 }, { timeoutMs: 5 }), /timed out/);
+  });
+  assert.equal(signal.aborted, true); assert.equal(budget.calls, 1);
+  assert.equal(metrics.tables.task_model_calls.at(-1).status, "failed_usage_unknown");
+});
+// A task on DeepSeek once spent its allowance on 2M input tokens, 1.6M of them
+// cached, where Claude counts cache reads apart: every provider now counts
+// only what was read afresh.
+test("the work allowance counts input the same for every provider", async () => {
+  const replies = [
+    { input_tokens: 100, output_tokens: 1, cache_read_input_tokens: 80, input_includes_cache: true },
+    { prompt_tokens: 100, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 80 } },
+    { input_tokens: 20, output_tokens: 1, cache_read_input_tokens: 80 },
+  ];
+  for (const usage of replies) {
+    const budget = makeBudget({}, { input_tokens: 1000 });
+    await withTaskRun({ budget }, () => modelCall({ messages: { create: async () => ({ usage }) } }, { messages: [], max_tokens: 8 }));
+    assert.equal(budget.input, 20, JSON.stringify(usage));
+  }
+  const spent = makeBudget({}, { input_tokens: 1000, tool_calls: 10 });
+  spent.input = 700; spent.toolCalls = 2;
+  assert.equal(withTaskRun({ budget: spent }, () => workShare()), 0.7);
+  const late = makeBudget({ startedAt: Date.now() - 20 * 60 * 1000 });
+  await withTaskRun({ budget: late }, () => assert.rejects(modelCall({ messages: { create: async () => ({}) } }, { messages: [] }), /time allowance/));
+  assert.throws(() => withTaskRun({ budget: late }, () => countToolCall()), /time allowance/);
+});
+test("usage separates cached reads and writes with task identity", async () => {
+  await withTaskRun({ userId: "owner", taskId: "task", kind: "agent" }, () => modelCall({ messages: { create: async () => ({ usage: { input_tokens: 20, output_tokens: 5, cache_read_input_tokens: 12, cache_creation_input_tokens: 4 } }) } }, { messages: [], model: "fixture" }));
+  const row = metrics.tables.task_model_calls.at(-1);
+  assert.equal(row.task_id, "task"); assert.equal(row.cache_read_tokens, 12); assert.equal(row.cache_write_tokens, 4);
+});
+test("two workers cannot claim the same task", async () => {
+  const db = fakeDb({ agent_tasks: [{ id: "task", user_id: "owner", status: "pending" }] });
+  const results = await Promise.all([lease.claim(db, "agent_tasks", "task", "owner"), lease.claim(db, "agent_tasks", "task", "owner")]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(await lease.claim(db, "agent_tasks", "task", "other"), null);
+});
+test("a stopped task cannot renew its execution lease", async () => {
+  const db = fakeDb({ agent_tasks: [{ id: "task", user_id: "owner", status: "pending" }] });
+  await lease.claim(db, "agent_tasks", "task", "owner"); db.tables.agent_tasks[0].status = "cancelled";
+  await assert.rejects(lease.renew(db, "agent_tasks", "task"), /stopped/);
+});
+test("tool discovery stays within worker permissions and preserves names", () => {
+  const tools = ["get_tool_details", "search_cache", "rare_service"].map(name => ({ name, description: name, input_schema: {} }));
+  const scope = createToolScope(tools, "mail");
+  assert.ok(!scope.definitions().some(t => t.name === "rare_service"));
+  assert.ok(scope.definitions(exchange("d", "get_tool_details", { tool_name: "rare_service" }, {})).some(t => t.name === "rare_service"));
+  assert.ok(scope.describe("agent_start").error);
+});
+test("independent reads run concurrently within a bound", async () => {
+  let active = 0, peak = 0;
+  const blocks = Array.from({ length: 7 }, (_, i) => ({ type: "tool_use", name: "web_search", id: String(i) }));
+  const pending = prefetchReads(blocks, async b => { peak = Math.max(peak, ++active); await new Promise(r => setTimeout(r, 3)); active--; return b.id; });
+  assert.deepEqual(await Promise.all(pending.values()), blocks.map(b => b.id)); assert.equal(peak, 3);
+  assert.equal(prefetchReads([{ type: "tool_use", name: "gmail_send" }], () => { throw Error("must not run"); }).size, 0);
+});
+for (const scenario of ["superseded", "other-thread", "replacement-during-call", "deliver"]) {
+  test("deferred reply: " + scenario, async () => {
+    const { deferReply, finishReply } = require("../lib/deferred-reply");
+    const db = fakeDb();
+    const info = { userId: "owner", platform: "whatsapp_linked", chatId: "phone", threadId: "thread", requestId: "request", goal: "London", messages: exchange("x", "web_search", {}, { city: "London", value: 12 }) };
+    await deferReply(db, info); const row = structuredClone(db.tables.task_followups[0]); let sent = 0;
+    await finishReply(db, row, { current: async () => ({ threadId: scenario === "other-thread" ? "different" : "thread", recent: [], model: "fixture", client: { messages: { create: async () => {
+      if (scenario === "replacement-during-call") await deferReply(db, { ...info, requestId: "new" });
+      return { content: [{ type: "text", text: JSON.stringify({ send: scenario !== "superseded", answer: "On London: 12." }) }] };
+    } } } }), deliver: async () => { sent++; } });
+    assert.equal(sent, scenario === "deliver" ? 1 : 0);
+    await finishReply(db, row, { current: () => { throw Error("duplicate"); }, deliver: () => { throw Error("duplicate"); } });
+  });
+}
+
+// Three messages arrived together after a dropped connection: the first was
+// set aside for the second, the second for the third, and the first question
+// was never answered. Set-aside requests now join one follow-up, and each is
+// saved in the conversation before the newer message is read.
+test("requests set aside one after another are answered together, and kept", async () => {
+  const { deferReply } = require("../lib/deferred-reply");
+  const db = fakeDb();
+  const base = { userId: "owner", platform: "whatsapp_linked", chatId: "phone", threadId: "thread" };
+  await deferReply(db, { ...base, requestId: "one", goal: "Does it go from my other address?", messages: exchange("a", "search_cache", {}, { from: "ana@harbour.test" }) });
+  await deferReply(db, { ...base, requestId: "two", goal: "?", messages: exchange("b", "search_cache", {}, { draft: "r-draft-1" }) });
+  assert.equal(db.tables.task_followups.length, 1, "one follow-up per chat");
+  const row = db.tables.task_followups[0];
+  assert.equal(row.request_id, "two");
+  assert.equal(row.payload.goal, "Does it go from my other address?\n?");
+  assert.equal(evidence.evidenceFrom(row.payload.messages).length, 2, "both requests' findings");
+  await deferReply(db, { ...base, requestId: "two", goal: "?", messages: [] });
+  assert.equal(db.tables.task_followups[0].payload.goal, "?", "the same request again is not doubled");
+  db.tables.task_followups[0].status = "sent";
+  await deferReply(db, { ...base, requestId: "three", goal: "And the tracking?", messages: [] });
+  assert.equal(db.tables.task_followups[0].payload.goal, "And the tracking?", "an answered one is not asked again");
+
+  const engine = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
+  const yieldAt = engine.indexOf("[Engine] Yielding to newer message");
+  const setAside = engine.slice(yieldAt, engine.indexOf("return null;", yieldAt));
+  assert.match(setAside, /conversation\.push\(\{ role: "assistant", content: busyLine \}\);\n\s*if \(ctx\.activeUserStore\) \{\n\s*require\("\.\/storage"\)\.syncAdapterBack\(\);\n\s*await ctx\.activeUserStore\.save\(\)/, "saved, and waited for, before the newer message loads it");
+});
+
+test("the line for work moving to the background names nothing the request does not", async () => {
+  const engine = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
+  const at = engine.indexOf("async function composeHandover(");
+  let said = "";
+  const fake = { "./llm": { getInternalClient: () => ({ client: {}, model: "fixture" }) },
+    "./task-model": { modelCall: async () => ({ content: [{ type: "text", text: said }] }) },
+    "./plain-dashes": require("../lib/plain-dashes") };
+  const compose = new Function("require", "ctx", engine.slice(at, engine.indexOf("\n}\n", at) + 2) + "\nreturn composeHandover;")((m) => fake[m], {});
+  const request = "Why does the second paragraph sound so stiff? Make it plainer.";
+  said = "I'm reworking your wording for the Leeds pickup on the 9th and the £250 budget, and will post it here.";
+  assert.match(await compose("u1", request, [], 100, "whatsapp_linked"), /^I'm carrying on with this in the background and will post the answer here when it's done\.$/, "and no dashboard link after it");
+  said = "I'm reworking the wording you asked about and will post the new version here.";
+  assert.match(await compose("u1", request, [], 100, "whatsapp_linked"), /^I'm reworking the wording you asked about/);
+  said = "I'm finding the 3 cheapest flights to Lisbon on the 14th and will post them here.";
+  assert.match(await compose("u1", "Find me the 3 cheapest flights to Lisbon on the 14th", [], 100, "web"), /^I'm finding the 3 cheapest/, "figures the request has are fine");
+  assert.match(engine.slice(at, at + 1600), /never add a place, date, amount, name or detail it does not contain/);
+});
+
+test("full source pages preserve exact details and isolate user/source identity", async () => {
+  const { readCachedRecord } = require("../lib/task-retrieval");
+  const db = fakeDb({data_cache:[
+    {user_id:"owner",external_id:"record",source:"gmail",data:{subject:"Invoice",body:"Intro ".repeat(2000)+"Exact reference ZQ-104729-B, GBP 417.08"}},
+    {user_id:"other",external_id:"record",source:"gmail",data:{body:"OTHER_USER_PRIVATE"}}
+  ]});
+  const first=await readCachedRecord(db,"owner",{id:"record",source:"gmail",limit:8000});
+  assert.equal(first.complete,false);assert.equal(first.next_offset,8000);
+  const second=await readCachedRecord(db,"owner",{id:"record",source:"gmail",offset:first.next_offset});
+  assert.ok(second.content.includes("ZQ-104729-B"));assert.ok(!JSON.stringify([first,second]).includes("OTHER_USER_PRIVATE"));
+  assert.ok((await readCachedRecord(db,"owner",{id:"record",source:"outlook"})).error);
+});
+test("a missing action receipt is retained as uncertainty, not permission to repeat", () => {
+  const { prepareAgentMessages }=require("../lib/agent-context");
+  const original=[{role:"assistant",content:[{type:"tool_use",id:"send",name:"send_file",input:{id:"file"}}]}];
+  const request=prepareAgentMessages({messages:original},"custom");
+  assert.equal(request[1].content[0].is_error,true);assert.match(request[1].content[0].content,/may or may not have happened/);
+  assert.equal(original.length,1);
+});
+test("an external stop aborts even a provider adapter that ignores the signal", async () => {
+  const controller=new AbortController();
+  const p=withTaskRun({signal:controller.signal},()=>modelCall({messages:{create:()=>new Promise(()=>{})}},{messages:[],max_tokens:10},{timeoutMs:1000}));
+  controller.abort();await assert.rejects(p,/stopped/);
+});
+
+test("an answer sent back by the quality check is rewritten as the only answer", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "verification.js"), "utf8");
+  const start = src.indexOf("function retryNote");
+  const box = {};
+  vm.runInNewContext(src.slice(start, src.indexOf("\n}\n", start) + 2) + "\nthis.f = retryNote;", box);
+  const note = box.f(1, 2, "Prices are weekly totals, not nightly.");
+  assert.match(note, /Prices are weekly totals/);
+  assert.match(note, /has not seen your previous answer/);
+  assert.match(note, /do not mention a correction, an earlier version or this check/);
+  for (const f of ["lib/agents.js", "lib/automations.js"]) {
+    const caller = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    assert.match(caller, /text: retryNote\(/, `${f} uses the shared note`);
+    assert.doesNotMatch(caller, /improved response/, `${f} has no wording of its own`);
+  }
+});
+
+test("a background model call survives a dropped connection; a stopped task is not retried", async () => {
+  let calls = 0;
+  const client = { messages: { create: async () => { calls++; if (calls === 1) throw new Error("fetch failed"); return { content: [{ type: "text", text: "ok" }], usage: {} }; } } };
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "task-model.js"), "utf8");
+  assert.match(src, /retryNetwork\(error, \(\) => client\.messages\.create\(params, \{ signal: controller\.signal, onLimits: options\.onLimits \}\), \{ pauses: \[3000, 10000\] \}\)/);
+  assert.match(src, /if \(active\?\.signal\?\.aborted \|\| error\.code === "TASK_STOPPED" \|\| error\.code === "MODEL_TIMEOUT"\) \{ failed = true; throw error; \}/);
+  const sw = require("../lib/sleep-watch");
+  const original = sw.retryNetwork;
+  sw.retryNetwork = (e, fn) => original(e, fn, { pauses: [1] });
+  try {
+    const res = await modelCall(client, { model: "m", max_tokens: 10, messages: [] }, { timeoutMs: 5000 });
+    assert.equal(res.content[0].text, "ok");
+    assert.equal(calls, 2);
+  } finally { sw.retryNetwork = original; }
+});
+
+test("a background job that failed with nothing to show says what and why, and how to restart", () => {
+  const { failedNote } = require("../lib/task-delivery");
+  assert.equal(failedNote({ goal: "can you find me a couple of good coworking spaces in District 1 with day passes, for next week?", error: "fetch failed" }),
+    'I couldn\'t finish "can you find me a couple of good coworking spaces in District 1 with day passes, for next…": the connection to the LLM provider kept dropping. Say "try again" and I\'ll start it fresh.');
+  assert.match(failedNote({ goal: "x", error: "This task reached its work allowance." }), /work allowance/);
+  // The clock and the work allowance are separate limits; a stopped task's
+  // answer names the one that stopped it.
+  const { stopReason } = require("../lib/task-delivery");
+  assert.equal(stopReason(new Error("This task reached its time allowance.")), "it ran out of time");
+  assert.equal(stopReason(new Error("This task reached its work allowance. Keep the findings gathered so far.")), "it reached the work allowance for one task");
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "lib", "task-outcome.js"), "utf8"), /`This stopped before it finished: \$\{stopReason\(error\)\}\. What it found:/);
+  assert.doesNotMatch(failedNote({ goal: "x" }), /dashboard/);
+});
+
+test("a routine that failed says so in plain words, that it tries again by itself, and says a used-up allowance once", () => {
+  const { failedNote, stopReason } = require("../lib/task-delivery");
+  const used = "The LLM said its allowance is used up.";
+  // It was read as the work allowance of one task, and told to try again.
+  assert.equal(failedNote({ automation_id: "a1", runtime: { config: { name: "Morning briefing", trigger_type: "scheduled" } }, error: used }),
+    'I couldn\'t finish "Morning briefing": your LLM\'s allowance ran out. It will try again at its next scheduled time.');
+  assert.match(failedNote({ automation_id: "a2", runtime: { config: { name: "New invoice", trigger_type: "event" } }, error: used }), /It will try again next time\.$/);
+  assert.match(failedNote({ automation_id: "a3", runtime: { config: { name: "Tidy inbox", trigger_type: "manual" } }, error: used }), /Say "try again" and I'll start it fresh\.$/, "one that runs only when asked waits to be asked");
+  const managed = { profile: { settings: { model_config: { included: true }, included_api_key: "sealed" } } };
+  assert.equal(stopReason(used, managed), "this month's use of DeepSeek V4.1 Flash Abliterated has reached its fair-use limit", "the words a paused task uses");
+  assert.equal(stopReason("The LLM kept asking to slow down."), "your LLM kept asking it to slow down");
+  assert.match(failedNote({ automation_id: "a1", runtime: { config: { name: "Book the table", trigger_type: "scheduled", run_once: true } }, error: "fetch failed" }), /Say "try again" and I'll start it fresh\.$/, "one set for a single date does not run again");
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "task-delivery.js"), "utf8");
+  assert.match(src, /const toldAlready = !report && row\.automation_id && ALLOWANCE_USED\.test\(String\(row\.error \|\| ""\)\)/, "a routine's next run that hits the same wall says nothing more");
+  assert.match(src, /for \(const dest of toldAlready \? \[\] : destinations\)/);
+});
+
+test("a background job gets a short name, and until then its first sentence cut at a word", () => {
+  const verification = fs.readFileSync(path.join(__dirname, "..", "lib", "verification.js"), "utf8");
+  assert.match(verification, /The title is 3 to 7 words/);
+  // A job's name must not read as done while it runs, or after it fails.
+  assert.match(verification, /For doing something, name the job, never its outcome/);
+  const agents = fs.readFileSync(path.join(__dirname, "..", "lib", "agents.js"), "utf8");
+  assert.match(agents, /\.\.\.\(prepared\.title && !task\.runtime\?\.named \? \{ title: prepared\.title \} : \{\}\)/, 'a name given on the Agents tab stays');
+  const start = agents.indexOf("  // Until preparation names it");
+  const body = agents.slice(start, agents.indexOf("\n  const task = await createTask", start));
+  const box = { goal: "I need somewhere to stay in Saigon from the 7th for a week. Can you find me a few good options?" };
+  vm.runInNewContext(body + "\nthis.out = title;", box);
+  assert.equal(box.out, "I need somewhere to stay in Saigon from the 7th for a week");
+  const long = { goal: "can you find me a couple of good coworking spaces in District 1 with day passes for the week" };
+  vm.runInNewContext(body + "\nthis.out = title;", long);
+  assert.equal(long.out, "can you find me a couple of good coworking spaces in District 1 with…");
+});
+
+// A task stopped by its step allowance once ended with nothing: the one call
+// that writes up its findings met a reset connection and, alone among model
+// calls, did not try again.
+test("the write-up of a stopped task tries a dropped connection again", async () => {
+  const { writeUpFromEvidence } = require("../lib/task-outcome");
+  let calls = 0;
+  const client = { messages: { create: async () => { calls++; if (calls === 1) throw new Error("fetch failed"); return { content: [{ type: "text", text: "Two of the five hotels showed a price." }] }; } } };
+  const stub = (rel, exports) => {
+    const key = require.resolve(rel); const before = require.cache[key];
+    require.cache[key] = { id: key, filename: key, loaded: true, exports };
+    return () => { if (before) require.cache[key] = before; else delete require.cache[key]; };
+  };
+  const undo = [stub("../lib/llm", { getInternalClient: () => ({ client, model: "m" }) }), stub("../user-store", { UserStore: { load: async () => ({}) } })];
+  const sw = require("../lib/sleep-watch"); const original = sw.retryNetwork;
+  sw.retryNetwork = (e, fn) => original(e, fn, { pauses: [1] });
+  try {
+    const text = await writeUpFromEvidence({ id: "t", user_id: "owner", goal: "Compare hotels near the harbour", runtime: {} },
+      [{ tool: "web_search", result: "Harbour Inn from 9,000 a night" }], new Error("This task reached its step allowance."));
+    assert.equal(text, "Two of the five hotels showed a price.");
+    assert.equal(calls, 2);
+  } finally { sw.retryNetwork = original; undo.forEach((f) => f()); }
+});
+
+// A task that was to make or change something says whether it was made: one
+// asked to put a different racket into a photo reported the pixel ranges it
+// had measured on the way.
+test("a stopped task that was to make something says whether it was made, not how far its workings got", async () => {
+  const { writeUpFromEvidence } = require("../lib/task-outcome");
+  let asked = "";
+  const client = { messages: { create: async ({ messages }) => { asked = messages[0].content; return { content: [{ type: "text", text: "The edited picture wasn't made." }] }; } } };
+  const stub = (rel, exports) => {
+    const key = require.resolve(rel); const before = require.cache[key];
+    require.cache[key] = { id: key, filename: key, loaded: true, exports };
+    return () => { if (before) require.cache[key] = before; else delete require.cache[key]; };
+  };
+  const undo = [stub("../lib/llm", { getInternalClient: () => ({ client, model: "m" }) }), stub("../user-store", { UserStore: { load: async () => ({}) } })];
+  try {
+    await writeUpFromEvidence({ id: "t", user_id: "owner", goal: "Put the green racket into the tennis photo", runtime: {} },
+      [{ tool: "sandbox_exec", result: "racket head x 315-828, y 136-593" }], new Error("This task reached its work allowance."));
+    assert.match(asked, /If the task was to make or change something \(a picture, a file, a message, a booking\), say first, plainly, whether it was made or done, never the working steps, measurements or coordinates that went into it\./);
+  } finally { undo.forEach((f) => f()); }
+});
+
+// The steps are a limit too: a task once used all 50 in nine minutes, warned
+// only of the clock.
+test("an agent is warned of whichever limit runs out first, steps included", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "agents.js"), "utf8");
+  assert.match(src, /const steps = iteration \/ MAX_ITERATIONS;\n\s+const share = Math\.max\(usedShare, work, steps\);/);
+  assert.match(src, /: share === steps \? `\$\{stepsLeft\} step\$\{stepsLeft === 1 \? "" : "s"\} of your step allowance remain`/);
+  assert.match(src, /if \(share >= 0\.85 && allowanceNotes < 2\)/);
+});

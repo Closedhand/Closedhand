@@ -1,0 +1,417 @@
+// Videos are understood with the best method the person's chosen models
+// support, decided from the same checked capabilities as images: a link the
+// model opens itself, the whole video, frames with their times and what's said
+// in one request (by the image model when the primary is text only), or
+// what's said alone. Nothing fetched is kept. Invented links and models only.
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const lib = (f) => path.join(__dirname, '../lib', f);
+const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+const policy = require('../lib/model-policy');
+const wire = require('../lib/model-wire');
+
+test('video abilities come from the provider or a known family, never a guess', () => {
+  const gemini = policy.capabilities({ backend: 'gemini' }, 'gemini-2.5-flash');
+  assert.equal(gemini.video, true); assert.equal(gemini.videoLinks, true);
+  const router = policy.capabilities({ backend: 'custom', baseUrl: 'https://openrouter.ai/api/v1' }, 'vendor/vl-model', { architecture: { input_modalities: ['text', 'image', 'video'] } });
+  assert.equal(router.video, true); assert.equal(router.videoLinks, false, 'only a provider known to open links gets them');
+  assert.equal(policy.capabilities({ backend: 'anthropic' }, 'claude-opus-5-5').video, null);
+  assert.equal(policy.capabilities({ backend: 'custom', baseUrl: 'https://api.deepseek.com/v1' }, 'deepseek-flash').video, null);
+});
+
+test('video travels in each provider format, and never to a model that does not take it', async () => {
+  const msgs = [{ role: 'user', content: [{ type: 'video', source: { type: 'url', url: 'https://www.youtube.com/watch?v=abc' } }, { type: 'video', source: { type: 'base64', media_type: 'video/mp4', data: 'AAAA' } }] }];
+  assert.deepEqual(wire.convertMessagesToGemini('', msgs).contents[0].parts, [{ fileData: { fileUri: 'https://www.youtube.com/watch?v=abc' } }, { inlineData: { mimeType: 'video/mp4', data: 'AAAA' } }]);
+  assert.deepEqual(wire.convertMessagesToOpenAI('', msgs).at(-1).content.map((p) => p.video_url.url), ['https://www.youtube.com/watch?v=abc', 'data:video/mp4;base64,AAAA']);
+  const realFetch = global.fetch; let sent = 0; global.fetch = async () => { sent++; throw new Error('not reached'); };
+  try {
+    await assert.rejects(wire.request({ backend: 'custom', baseUrl: 'https://api.deepseek.com/v1', apiKey: 'k', capabilities: { vision: true } }, { model: 'deepseek-flash', messages: msgs }), (e) => e.code === 'video_not_supported');
+    assert.equal(sent, 0);
+  } finally { global.fetch = realFetch; }
+});
+
+test('the model check proves video with a made-up clip, and a failure never blocks saving', async () => {
+  const wirePath = require.resolve('../webapp/model-wire');
+  const realWire = require(wirePath);
+  const run = async (watches) => {
+    require.cache[wirePath].exports = { ...realWire, listModels: async () => [],
+      request: async (conn, params) => {
+        const parts = params.messages.at(-1).content;
+        const has = (t) => Array.isArray(parts) && parts.some((b) => b.type === t);
+        if (params.tools) return params.messages.length > 1 ? { content: [{ type: 'text', text: 'done' }] } : { content: [{ type: 'tool_use', id: 't', name: 'capability_check', input: { value: 4 } }] };
+        if (has('video')) { if (!watches) throw Object.assign(new Error('HTTP 400'), { status: 400 }); return { content: [{ type: 'text', text: 'Red, then blue.' }] }; }
+        if (has('image')) return { content: [{ type: 'text', text: 'Red' }] };
+        return { content: [{ type: 'text', text: 'ready' }] };
+      } };
+    delete require.cache[require.resolve('../webapp/model-config')];
+    return require('../webapp/model-config').prepare({ primary: { provider: 'gemini', apiKey: 'k' }, model: 'gemini-2.5-flash', visionMode: 'same' }, {});
+  };
+  try {
+    const ok = await run(true);
+    assert.equal(ok.roles.chat.capabilities.video, true); assert.equal(ok.roles.chat.capabilities.videoLinks, true);
+    const no = await run(false);
+    assert.equal(no.roles.chat.capabilities.video, false, 'saved, with videos watched through frames');
+    assert.equal(no.roles.chat.capabilities.videoLinks, false);
+  } finally { require.cache[wirePath].exports = realWire; delete require.cache[require.resolve('../webapp/model-config')]; }
+});
+
+test('a model whose provider does not say is given the clip too, so an omni model is never left on frames', async () => {
+  const wirePath = require.resolve('../webapp/model-wire');
+  const realWire = require(wirePath);
+  const run = async ({ watches, catalog = [], input }) => {
+    const clips = [];
+    require.cache[wirePath].exports = { ...realWire, listModels: async () => catalog,
+      request: async (conn, params) => {
+        const parts = params.messages.at(-1).content;
+        const has = (t) => Array.isArray(parts) && parts.some((b) => b.type === t);
+        if (params.tools) return params.messages.length > 1 ? { content: [{ type: 'text', text: 'done' }] } : { content: [{ type: 'tool_use', id: 't', name: 'capability_check', input: { value: 4 } }] };
+        if (has('video')) { clips.push(params.model); if (!watches) throw Object.assign(new Error('HTTP 400'), { status: 400 }); return { content: [{ type: 'text', text: 'Red at the start, blue at the end.' }] }; }
+        // DeepSeek reads no pictures, so a separate image and video model is used.
+        if (has('image')) return { content: [{ type: 'text', text: params.model === 'deepseek-flash' ? 'I cannot see images.' : 'Red' }] };
+        return { content: [{ type: 'text', text: 'ready' }] };
+      } };
+    delete require.cache[require.resolve('../webapp/model-config')];
+    const config = await require('../webapp/model-config').prepare(input, {});
+    return { config, clips };
+  };
+  const omni = { primary: { provider: 'custom', baseUrl: 'https://omni.example.test/v1', apiKey: 'k' }, model: 'vendor/omni-flash', visionMode: 'same' };
+  try {
+    const seen = await run({ watches: true, input: omni });
+    assert.deepEqual(seen.clips, ['vendor/omni-flash'], 'asked once, for the one model doing both jobs');
+    assert.equal(seen.config.roles.vision.capabilities.video, true);
+    assert.equal(seen.config.roles.chat.capabilities.video, true, 'videos go to it whole');
+    const not = await run({ watches: false, input: omni });
+    assert.equal(not.config.roles.vision.capabilities.video, false, 'saved, watched through frames');
+    const separate = await run({ watches: true, input: { primary: { provider: 'deepseek', apiKey: 'k' }, model: 'deepseek-flash', visionMode: 'separate',
+      vision: { provider: 'custom', baseUrl: 'https://omni.example.test/v1', apiKey: 'k2' }, visionModel: 'vendor/omni-flash' } });
+    assert.ok(separate.clips.includes('vendor/omni-flash'));
+    assert.equal(separate.config.roles.vision.capabilities.video, true, 'a separate image and video model is asked too');
+    const said = await run({ watches: true, input: { primary: { provider: 'openrouter', apiKey: 'k' }, model: 'vendor/vl-model', visionMode: 'same' },
+      catalog: [{ id: 'vendor/vl-model', metadata: { architecture: { input_modalities: ['text', 'image'] } } }] });
+    assert.deepEqual(said.clips, [], 'a provider that says it takes no video is believed');
+  } finally { require.cache[wirePath].exports = realWire; delete require.cache[require.resolve('../webapp/model-config')]; }
+});
+
+// --- lib/video.js with the sandbox, the models and speech to text stood in for ---
+const calls = { exec: [], downloads: [], requests: [], heard: [] };
+// The vision language model on this computer, stood in for: every frame it
+// is shown is a red ball on grass.
+const usiPath = require.resolve('../lib/services/usi');
+require.cache[usiPath] = { id: usiPath, filename: usiPath, loaded: true, exports: { describeHere: async () => 'A red ball on grass.' } };
+let sandboxReply = null, failWhole = false;
+const PARTS = {
+  'meta.json': () => Buffer.from(JSON.stringify(sandboxReply.meta)),
+  'frames.bin': () => Buffer.from('AAAABBBB'),
+  'video.mp4': () => Buffer.from('MP4DATA'),
+  'speech-0.pcm': () => Buffer.alloc(32000 * 3),
+  'speech-1.pcm': () => Buffer.alloc(32000 * 2),
+};
+function stub(rel, exports) { const file = require.resolve(lib(rel)); require.cache[file] = { id: file, filename: file, loaded: true, exports }; }
+stub('sandbox.js', {
+  ensureSandbox: async () => {},
+  sandboxExec: async (u, lang, code) => {
+    calls.exec.push(code.includes('CLOSEDHAND_VIDEO') ? 'gather' : code.includes('rmtree') ? 'cleanup' : 'other');
+    if (code.includes('CLOSEDHAND_VIDEO')) return { stdout: 'CLOSEDHAND_VIDEO ' + JSON.stringify(sandboxReply.out) };
+    return { stdout: '' };
+  },
+  sandboxFileDownload: async (u, p) => { calls.downloads.push(p.split('/').pop()); return { content: PARTS[p.split('/').pop()]().toString('base64') }; },
+  // A link is watched in the background, as a file is: started, then its log
+  // read until the last line comes.
+  sandboxRequest: async (u, method, route, body) => {
+    if (route === '/exec' && body.code.includes('subprocess.Popen')) {
+      const script = Buffer.from(/b64decode\("([^"]+)"\)/.exec(body.code)[1], 'base64').toString();
+      calls.args = JSON.parse(Buffer.from(/b64decode\("([^"]+)"\)/.exec(script)[1], 'base64').toString());
+      calls.exec.push('gather');
+      return { stdout: 'started' };
+    }
+    if (route === '/files/read') return { content: 'CLOSEDHAND_PROGRESS download 1\nCLOSEDHAND_VIDEO ' + JSON.stringify(sandboxReply.out) + '\n' };
+    // Each job starts by clearing what earlier ones left (lib/video.js startJob).
+    if (route === '/exec' && body.code.includes('disk_usage')) { calls.exec.push('sweep'); return { stdout: 'free 99999999999\n' }; }
+    if (route === '/exec') { calls.exec.push(body.code.includes('rmtree') ? 'cleanup' : 'other'); return { stdout: '' }; }
+    return {};
+  },
+});
+stub('services/listen.js', { transcribe: async (pcm) => { calls.heard.push(pcm.length); return { language: 'en', lines: [{ start: 1, text: 'hello' }] }; } });
+stub('llm.js', { settingsOf: (store) => store.profile.settings });
+stub('usage.js', { recordUsage() {} });
+const progress = [];
+stub('user-mutex.js', { touchMutexProgress: (u) => progress.push(u) });
+stub('model-wire.js', { ...wire, request: async (conn, params) => {
+  calls.requests.push({ model: conn.model, content: params.messages[0].content });
+  if (failWhole && params.messages[0].content.some((b) => b.type === 'video')) throw new Error('too big');
+  return { content: [{ type: 'text', text: 'account from ' + conn.model }] };
+} });
+const video = require('../lib/video');
+
+const conn = (model, capabilities, backend = 'custom') => ({ provider: 'x', backend, baseUrl: 'https://api.example.com/v1', apiKey: 'k', model, capabilities });
+function setup({ chat, vision }) {
+  const connections = { primary: conn(chat.model, chat.cap, chat.backend) };
+  const roles = { chat: { connection: 'primary', model: chat.model, capabilities: chat.cap }, background: { connection: 'primary', model: chat.model } };
+  if (vision === 'same') roles.vision = { connection: 'primary', model: chat.model, capabilities: chat.cap };
+  else if (vision) { connections.vision = conn(vision.model, vision.cap); roles.vision = { connection: 'vision', model: vision.model, capabilities: vision.cap }; }
+  return { profile: { settings: { model_config: { version: 1, connections, roles } } } };
+}
+const downloaded = ({ parts = {}, meta = {} } = {}) => ({ out: { ok: true, dir: '.closedhand-video/j1', parts: { meta: 'meta.json', frames: 'frames.bin', video: null, speech: [], ...parts } },
+  meta: { title: 'A clip', duration: 9, frames: [{ time: 1, offset: 0, size: 4 }, { time: 5, offset: 4, size: 4 }], frame_source: 'video', captions: null, speech_parts: [], ...meta } });
+const reset = (reply) => { calls.exec = []; calls.downloads = []; calls.requests = []; calls.heard = []; sandboxReply = reply; failWhole = false; };
+
+test('a model that opens YouTube links itself gets the link, and nothing is fetched', async () => {
+  reset(null);
+  const store = setup({ chat: { model: 'gemini-2.5-flash', backend: 'gemini', cap: { vision: true, video: true, videoLinks: true } }, vision: 'same' });
+  const r = await video.watchVideo({ userId: 'u1', store, url: 'https://www.youtube.com/watch?v=abc', question: 'What happens?' });
+  assert.equal(r.method, 'watched from the link');
+  assert.deepEqual(calls.exec, [], 'no sandbox work at all');
+  assert.equal(calls.requests[0].content.find((b) => b.type === 'video').source.url, 'https://www.youtube.com/watch?v=abc');
+});
+
+test('a model that takes video gets the whole video and what is said, and the parts are deleted', async () => {
+  reset(downloaded({ parts: { video: 'video.mp4', speech: ['speech-0.pcm'] }, meta: { speech_parts: ['speech-0.pcm'], speech_seconds: 3 } }));
+  const store = setup({ chat: { model: 'video-model', cap: { vision: true, video: true } }, vision: 'same' });
+  const r = await video.watchVideo({ userId: 'u1', store, url: 'https://www.tiktok.com/@someone/video/1' });
+  assert.equal(r.method, 'watched whole');
+  const content = calls.requests[0].content;
+  assert.equal(content.find((b) => b.type === 'video').source.data, Buffer.from('MP4DATA').toString('base64'));
+  assert.match(content.at(-1).text, /^What's said \(from speech written out by Closedhand\):\n\[0:01\] hello/, 'a model that sees but cannot hear still gets every word');
+  assert.deepEqual(calls.exec, ['sweep', 'gather', 'cleanup']);
+});
+
+test('if the whole video fails, frames and speech go in one request, in order with their times', async () => {
+  reset(downloaded({ parts: { video: 'video.mp4', speech: ['speech-0.pcm', 'speech-1.pcm'] }, meta: { speech_parts: ['speech-0.pcm', 'speech-1.pcm'], speech_seconds: 5 } }));
+  failWhole = true;
+  const store = setup({ chat: { model: 'video-model', cap: { vision: true, video: true } }, vision: 'same' });
+  const r = await video.watchVideo({ userId: 'u1', store, url: 'https://www.tiktok.com/@someone/video/1' });
+  assert.equal(r.method, "frames and what's said");
+  const last = calls.requests.at(-1).content;
+  const shape = last.map((b) => (b.type === 'image' ? 'image' : b.text.startsWith('[') ? b.text : b.type));
+  assert.deepEqual(shape.slice(2, 6), ['[0:01]', 'image', '[0:05]', 'image'], 'each frame follows its time');
+  assert.match(last.at(-1).text, /\[0:01\] hello[\s\S]*\[0:04\] hello/, 'speech parts keep their place in time');
+  assert.deepEqual(calls.heard, [96000, 64000]);
+  assert.equal(calls.exec.at(-1), 'cleanup');
+});
+
+test('with a text-only primary model, the chosen image model does the looking', async () => {
+  reset(downloaded({ meta: { captions: { source: 'written', lines: [{ start: 2, text: 'hi' }] } } }));
+  const store = setup({ chat: { model: 'text-model', cap: { vision: false } }, vision: { model: 'image-model', cap: { vision: true } } });
+  const r = await video.watchVideo({ userId: 'u1', store, url: 'https://x.com/someone/status/1' });
+  assert.equal(calls.requests.length, 1);
+  assert.equal(calls.requests[0].model, 'image-model');
+  assert.equal(r.account, 'account from image-model');
+  assert.match(calls.requests[0].content.at(-1).text, /captions written for the video/);
+});
+
+test('YouTube without a link-opening model uses captions and preview frames, never a download', async () => {
+  reset(downloaded({ meta: { frame_source: 'preview', captions: { source: 'automatic', lines: [{ start: 0, text: 'intro' }] } } }));
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  const r = await video.watchVideo({ userId: 'u1', store, url: 'https://youtu.be/abc' });
+  assert.equal(r.method, 'preview frames and captions');
+  assert.match(read('lib/video.js'), /gather\(userId, href, \{ youtube, videoBytes/);
+  const script = read('lib/video-sandbox.py');
+  assert.match(script, /"skip_download": True/, 'YouTube is read, not downloaded');
+  assert.match(script, /meta, frames, video = \(local\(ARGS\["file"\]\) if ARGS\.get\("file"\) else youtube\(ARGS\["url"\]\) if ARGS\.get\("youtube"\)\n\s*else download\(ARGS\["url"\]\)\)/);
+});
+
+test('with no model that sees, frames are described on this computer and read with what is said, with no extra model call', async () => {
+  reset(downloaded({ meta: { captions: { source: 'written', lines: [{ start: 3, text: 'the words' }] } } }));
+  const store = setup({ chat: { model: 'text-model', cap: { vision: false } }, vision: null });
+  const r = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/1' });
+  assert.equal(r.method, "frames described on this computer and what's said");
+  assert.equal(calls.requests.length, 0);
+  assert.match(r.account, /What's on screen, described on this computer:\n\[0:01\] A red ball on grass\.\n\[0:05\] A red ball on grass\./);
+  assert.match(r.account, /\[0:03\] the words/, 'and everything said');
+});
+
+test('a site that wants a sign-in says so plainly, and private addresses are refused', async () => {
+  reset({ out: { ok: false, kind: 'login', error: 'login required' } });
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://www.instagram.com/reel/abc/' }), (e) => e.userFacing && /sign in to it once in the browser on Closedhand's sandbox computer/.test(e.message));
+  await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'http://192.168.1.10/clip.mp4' }), (e) => e.userFacing);
+});
+
+test('the parts are deleted even when the model fails', async () => {
+  reset(downloaded());
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  const wireStub = require.cache[require.resolve(lib('model-wire.js'))].exports;
+  const real = wireStub.request;
+  wireStub.request = async () => { throw new Error('provider down'); };
+  try { await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/1' })); }
+  finally { wireStub.request = real; }
+  assert.equal(calls.exec.at(-1), 'cleanup');
+});
+
+test('the tool is offered, guarded like the web reader, and kept away from Pulse', () => {
+  const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'watch_video');
+  assert.ok(def && def.core);
+  assert.match(read('lib/tools/handlers.js'), /case "watch_video":/);
+  assert.match(read('lib/outbound-guard.js'), /toolName === "web_fetch" \|\| toolName === "watch_video"/);
+  assert.match(read('lib/engine.js'), /RESEARCH_TOOLS = \/\^\(web_search\|web_fetch\|watch_video\|sandbox_browse\)\$\//);
+  assert.equal(require('../lib/read-only-tools').READ_ONLY_TOOLS.has('watch_video'), false, 'Pulse never fetches a link');
+  assert.equal(video.isVideoPage('https://www.instagram.com/reel/abc/'), true);
+  assert.equal(video.isVideoPage('https://www.instagram.com/someone/'), false);
+});
+
+test('the sandbox script parses captions, spaces frames and never keeps the download', { skip: !hasPython() }, () => {
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print(json.dumps({
+  "vtt": m.parse_vtt("WEBVTT\\n\\n00:00:01.000 --> 00:00:03.000\\nHello <c>there</c>\\n\\n00:00:03.000 --> 00:00:04.000\\nHello there\\n\\n01:01:05.000 --> 01:01:06.000\\nBye"),
+  "json3": m.parse_json3(json.dumps({"events": [{"tStartMs": 1500, "segs": [{"utf8": "a "}, {"utf8": "b"}]}, {"tStartMs": 2000, "segs": [{"utf8": "\\n"}]}]})),
+  "times": m.frame_times(10, 24), "long": len(m.frame_times(3600, 24)),
+  "login": m.problem("rate-limit reached or login required"), "blocked": m.problem("Your IP address is blocked from accessing this post")}))`]).toString();
+  const r = JSON.parse(out);
+  assert.deepEqual(r.vtt, [{ start: 1, text: 'Hello there' }, { start: 3665, text: 'Bye' }]);
+  assert.deepEqual(r.json3, [{ start: 1.5, text: 'a b' }]);
+  assert.deepEqual(r.times, [1, 3, 5, 7, 9]);
+  assert.equal(r.long, 24);
+  assert.equal(r.login, 'login'); assert.equal(r.blocked, 'blocked');
+  const script = read('lib/video-sandbox.py');
+  assert.match(script, /    finally:\n        shutil.rmtree\(tmp, ignore_errors=True\)/, 'the downloaded video is deleted whatever happens');
+});
+
+function hasPython() { try { execFileSync('python3', ['--version']); return true; } catch { return false; } }
+
+test('the sandbox writes speech out in parts as it decodes, to its end', { skip: !hasPython() }, () => {
+  // av stood in: 0.5 s frames of 16 kHz mono samples, 7 of them (3.5 s).
+  const run = () => JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, sys, tempfile, types, io, contextlib
+class Frame:
+    def __init__(self, n): self.samples = n; self.planes = [bytes(2 * n)]
+class Resampler:
+    def __init__(self, **k): pass
+    def resample(self, frame): return [frame]
+class Container:
+    def __init__(self): self.streams = types.SimpleNamespace(audio=["a"])
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def decode(self, stream):
+        for _ in range(7): yield Frame(8000)
+sys.modules["av"] = types.SimpleNamespace(open=lambda p, options=None: Container(), AudioResampler=Resampler)
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.OUT = tempfile.mkdtemp(); m.CHUNK_SECONDS = 1
+log = io.StringIO()
+with contextlib.redirect_stdout(log):
+    parts = m.speech("talk.m4a")
+import os
+print(json.dumps({"parts": parts, "sizes": [os.path.getsize(os.path.join(m.OUT, p)) for p in parts], "log": log.getvalue().splitlines()}))`]).toString());
+  const whole = run();
+  assert.deepEqual(whole.parts, ['speech-0.pcm', 'speech-1.pcm', 'speech-2.pcm', 'speech-3.pcm']);
+  assert.deepEqual(whole.sizes, [32000, 32000, 32000, 16000], 'each part written as soon as it is full, the rest at the end: 3.5 s, to its end');
+  assert.deepEqual(whole.log, ['CLOSEDHAND_PROGRESS speech 1', 'CLOSEDHAND_PROGRESS speech 2', 'CLOSEDHAND_PROGRESS speech 3', 'CLOSEDHAND_PROGRESS speech 4'], 'a line for each, read by the bot as work still going');
+  assert.match(read('lib/video-sandbox.py'), /time\.time\(\) - os\.path\.getmtime\(full\) > 86400:/, 'a job still being written out is not swept away');
+});
+
+// A file the bot lends is opened at its gateway address with the sandbox's
+// own token, never from a copy on the sandbox's disk.
+test("the sandbox reads a lent file at the gateway, with its own token", { skip: !hasPython() }, () => {
+  const out = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys, tempfile, types
+opened = []
+class Container:
+    duration = 90 * 1000000
+    def __init__(self): self.streams = types.SimpleNamespace(audio=[], video=[])
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+def open_(p, options=None):
+    opened.append([p, (options or {}).get("headers")])
+    return Container()
+sys.modules["av"] = types.SimpleNamespace(open=open_, time_base=1000000)
+os.environ.update(GATEWAY_URL="bot.internal:3000", SANDBOX_TOKEN="tok-123", USER_ID="admin")
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.OUT = tempfile.mkdtemp(); m.ARGS = {"job": "j", "title": "Harbour walk.mov"}
+meta, frames, video = m.local({"id": "ab" * 16, "size": 6 * 1024 ** 3, "ext": "mov"})
+print(json.dumps({"opened": opened, "duration": meta["duration"], "title": meta["title"]}))`]).toString());
+  const url = 'http://bot.internal:3000/gateway/file/' + 'ab'.repeat(16);
+  assert.deepEqual(out.opened, [[url, 'X-Sandbox-Token: tok-123\r\nX-User-Id: admin\r\n'], [url, 'X-Sandbox-Token: tok-123\r\nX-User-Id: admin\r\n'], [url, 'X-Sandbox-Token: tok-123\r\nX-User-Id: admin\r\n']], 'its length, its frames and its sound, each read there');
+  assert.equal(out.duration, 90);
+  assert.equal(out.title, 'Harbour walk.mov');
+});
+
+test('the sandbox images and the Mac Workspace install the same video tools', () => {
+  assert.match(read('sandbox-image/Dockerfile'), /yt-dlp av\n/);
+  assert.match(read('sandbox-image/agent/server.js'), /"yt-dlp", "av"\]/);
+});
+
+test('watching counts as progress at each stage, so a long video keeps a background task alive', async () => {
+  reset(downloaded({ parts: { speech: ['speech-0.pcm'] }, meta: { speech_parts: ['speech-0.pcm'], speech_seconds: 3 } }));
+  progress.length = 0;
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/1' });
+  assert.ok(progress.length >= 3, 'after fetching, before writing out speech and before the model watches');
+  assert.match(fs.readFileSync(lib('video.js'), 'utf8'), /effort: "fast"/, 'quick effort, so long reasoning cannot crowd out the account');
+});
+
+test('a model whose window is too small gets fewer frames and less transcript until it fits', async () => {
+  reset(downloaded({ meta: { frames: Array.from({ length: 12 }, (_, i) => ({ time: i * 2, offset: 0, size: 4 })), captions: { source: 'written', lines: Array.from({ length: 30 }, (_, i) => ({ start: i * 2, text: 'y'.repeat(2000) })) } } }));
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  const wireStub = require.cache[require.resolve(lib('model-wire.js'))].exports;
+  const real = wireStub.request; let tries = 0;
+  wireStub.request = async (conn, params) => {
+    calls.requests.push({ model: conn.model, content: params.messages[0].content });
+    if (++tries === 1) throw Object.assign(new Error('window'), { code: 'context_length_exceeded', limit: 4000, used: 8000 });
+    return { content: [{ type: 'text', text: 'fits now' }] };
+  };
+  try {
+    const r = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/1' });
+    assert.equal(r.account, 'fits now');
+    const images = (c) => c.filter((b) => b.type === 'image').length;
+    assert.equal(images(calls.requests[0].content), 12);
+    assert.equal(images(calls.requests[1].content), 3, 'scaled to a quarter: half the window over what was sent');
+    assert.ok(calls.requests[1].content.at(-1).text.length < calls.requests[0].content.at(-1).text.length);
+  } finally { wireStub.request = real; }
+});
+
+test('a link to several videos is not guessed at: their titles come back to ask which, and a live stream says so', async () => {
+  reset({ out: { ok: false, kind: 'several', count: 40, videos: [{ title: 'Kettle care, part 1', url: 'https://videos.test/1' }, { title: 'Kettle care, part 2', url: 'https://videos.test/2' }] } });
+  const store = setup({ chat: { model: 'vision-model', cap: { vision: true } }, vision: 'same' });
+  await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://videos.test/playlist' }),
+    (e) => e.userFacing && /^This link holds more than 2 videos, so ask which one to watch:\n1\. Kettle care, part 1 \(https:\/\/videos\.test\/1\)\n2\. Kettle care, part 2 \(https:\/\/videos\.test\/2\)$/.test(e.message));
+  assert.deepEqual(calls.exec, ['sweep', 'gather', 'cleanup'], 'its folder is cleared');
+  reset({ out: { ok: false, kind: 'live', error: 'This is a live stream' } });
+  await assert.rejects(video.watchVideo({ userId: 'u1', store, url: 'https://videos.test/live' }), (e) => e.userFacing && /^This is a live stream, so there is no end to watch to yet\./.test(e.message));
+});
+
+test('a link is watched whole, however long, and a long transcript is read a part at a time', async () => {
+  const lines = Array.from({ length: 4000 }, (_, i) => ({ start: i * 3, text: `Line ${i} of a long talk about kettles and the people who make them.` }));
+  reset(downloaded({ meta: { duration: 12000, captions: { source: 'written', lines } } }));
+  const store = setup({ chat: { model: 'text-model', cap: { vision: false } }, vision: null });
+  const first = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/2' });
+  assert.deepEqual(Object.keys(calls.args).sort(), ['job', 'max_frames', 'url', 'video_bytes', 'youtube'], 'no cap on length or speech');
+  assert.match(first.account, /\[Part 1 of \d+ of what's said\. Call watch_video again with part 2 for what follows\.\]/);
+  assert.doesNotMatch(first.account, /left out for length/);
+  const second = await video.watchVideo({ userId: 'u1', store, url: 'https://vimeo.com/2', part: 2 });
+  assert.match(second.account, /^Video: https:\/\/vimeo\.com\/2\nTitle: A clip[\s\S]*\[Part 2 of \d+ of what's said/);
+  assert.equal(calls.exec.filter((x) => x === 'gather').length, 1, 'the next part is not watched again');
+  assert.doesNotMatch(read('lib/video-sandbox.py'), /max_filesize|too long|AUDIO_CAP/);
+});
+
+test('the sandbox finds the one video a link is to', { skip: !hasPython() }, () => {
+  const out = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, types
+spec = importlib.util.spec_from_file_location("vs", ${JSON.stringify(lib('video-sandbox.py'))}); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+INFO = {
+    "https://v.test/list": {"_type": "playlist", "playlist_count": 30, "entries": [{"title": "One", "url": "https://v.test/1"}, {"title": "Two", "url": "https://v.test/2"}]},
+    "https://v.test/watch?v=1&list=x": {"_type": "playlist", "entries": [{"title": "One", "url": "https://v.test/1"}]},
+    "https://v.test/live": {"title": "Now", "is_live": True},
+    "https://v.test/2": {"title": "Two"},
+}
+class Y:
+    def __init__(self, opts): self.opts = opts
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def extract_info(self, url, download=False): return INFO[url]
+res = {}
+for url in INFO:
+    try: res[url] = m.one_video(types.SimpleNamespace(YoutubeDL=Y), {}, url)
+    except m.Several as e: res[url] = {"several": e.count, "titles": [v["title"] for v in e.videos]}
+    except Exception as e: res[url] = {"problem": m.problem(str(e))}
+print(json.dumps(res))`]).toString());
+  assert.deepEqual(out, {
+    'https://v.test/list': { several: 30, titles: ['One', 'Two'] },
+    'https://v.test/watch?v=1&list=x': 'https://v.test/1',
+    'https://v.test/live': { problem: 'live' },
+    'https://v.test/2': 'https://v.test/2',
+  });
+});
