@@ -212,6 +212,24 @@ test("a job on a sign-in page asks in its chat, waits, and carries on from there
   assert.equal(h.db.tables.agent_tasks[0].result, "Order 1 arrives Monday.");
 });
 
+test("an answer that finishes while another is being delivered goes straight after it", async () => {
+  // Delivery is asked for when each answer is saved, not on a quick timer, so
+  // one saved in the middle of a pass must not wait for the slow one.
+  let delivery, asked = false;
+  const h = harness({ tables: { agent_tasks: [row({ platform: "web", chat_id: "self", status: "completed", delivery_status: "pending", completed_at: new Date().toISOString(), result: "The first answer." })] },
+    send: (args, sends) => {
+      sends.push(args);
+      if (asked) return;
+      asked = true;
+      h.db.tables.agent_tasks.push(row({ id: "task-2", platform: "web", chat_id: "self", status: "completed", delivery_status: "pending", completed_at: new Date().toISOString(), result: "The second answer." }));
+      delivery.deliverFinished();
+    } });
+  delivery = h.load("task-delivery", true);
+  await delivery.deliverFinished();
+  await until(() => h.db.tables.agent_tasks.every((t) => t.delivery_status === "sent"));
+  assert.deepEqual(h.sends.map((x) => x[2]), ["The first answer.", "The second answer."]);
+});
+
 test("an answer whose chat app is offline waits and goes once it is back, once", async () => {
   let online = false;
   const h = harness({ tables: { agent_tasks: [row({ platform: "whatsapp_linked", chat_id: "self", status: "completed", delivery_status: "pending", completed_at: new Date().toISOString(), result: "The train leaves at 20:00." })] },
