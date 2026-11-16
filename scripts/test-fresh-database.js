@@ -198,3 +198,30 @@ test("dates and times come back as text, as the code that reads them expects", a
   await pool.query("DELETE FROM schedules WHERE user_id = $1", [user]);
   await pool.query("DELETE FROM profiles WHERE id = $1", [user]);
 });
+
+// A one-off that did not run stayed enabled, and cron has no year: it would
+// have fired twelve months on. The real table, the real driver.
+test("a one-off reminder whose time has passed is retired, and one still to come is not", async () => {
+  const { createPgClient } = require("../lib/db-driver-pg");
+  const oneOffs = require("../lib/one-off-reminders");
+  const db = createPgClient({ pool });
+  const user = "00000000-0000-4000-8000-0000000000d2";
+  await pool.query("INSERT INTO profiles (id) VALUES ($1) ON CONFLICT DO NOTHING", [user]);
+  const add = (name, cron, zone, once, made) => pool.query(
+    "INSERT INTO schedules (user_id, name, cron_expression, task, enabled, run_once, timezone, created_at) VALUES ($1, $2, $3, 't', true, $4, $5, $6)", [user, name, cron, once, zone, made]);
+  await add("call-the-dentist", "40 22 16 10 *", "Asia/Ho_Chi_Minh", true, "2026-10-16T14:25:00Z");
+  await add("water-the-ferns", "0 9 20 12 *", "Europe/Lisbon", true, "2026-11-01T00:00:00Z");
+  await add("weekly-shop", "0 10 * * 6", "Europe/Lisbon", false, "2026-10-01T00:00:00Z");
+  const quiet = console.log; console.log = () => {};
+  let gone;
+  try { gone = await oneOffs.retirePassed(db, { before: new Date("2026-11-16T12:00:00Z") }); } finally { console.log = quiet; }
+  assert.deepEqual(gone, ["call-the-dentist"]);
+  const { rows } = await pool.query("SELECT name, enabled, archived_at IS NOT NULL AS archived FROM schedules WHERE user_id = $1 ORDER BY name", [user]);
+  assert.deepEqual(rows, [
+    { name: "call-the-dentist", enabled: false, archived: true },
+    { name: "water-the-ferns", enabled: true, archived: false },
+    { name: "weekly-shop", enabled: true, archived: false },
+  ]);
+  await pool.query("DELETE FROM schedules WHERE user_id = $1", [user]);
+  await pool.query("DELETE FROM profiles WHERE id = $1", [user]);
+});

@@ -6510,6 +6510,7 @@ app.get("/api/reminders", async (req, res) => {
       .map((r) => ({ ...r, archived: true }));
     res.json(live.concat(past));
   } catch (e) {
+    console.error("[reminders] could not list them:", e.message);
     res.status(500).json({ error: "Failed to load reminders" });
   }
 });
