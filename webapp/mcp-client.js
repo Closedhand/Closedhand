@@ -30,12 +30,6 @@ const CLIENT_INFO = { name: "Closedhand", version: "1.0.0" };
 const TOOL_PREFIX = "umcp_";
 const MAX_TOOL_NAME = 64; // Anthropic and the OpenAI-compatible APIs agree on [a-zA-Z0-9_-]{1,64}
 
-// stdio servers run on this machine, so only a self-host install can have
-// them. The hosted bot is shared, and must never run a command a user typed.
-function isSelfHost() {
-  return process.env.DB_DRIVER === "pg" || (!!process.env.DATABASE_URL && !process.env.SUPABASE_URL);
-}
-
 // ---------------------------------------------------------------------------
 // Parsing what the user pasted
 // ---------------------------------------------------------------------------
@@ -381,7 +375,6 @@ async function openClient(row, io = {}) {
   const kind = row.transport || "http";
 
   if (kind === "stdio") {
-    if (!isSelfHost()) throw Object.assign(new Error("Command-style servers only work when Closedhand runs on your own computer."), { code: "ENOSTDIO" });
     if (!row.command) throw new Error("This connection has no command to run");
     const stderrChunks = [];
     const transport = new StdioClientTransport({
@@ -682,7 +675,6 @@ async function closeQuietly(client, transport) {
 
 module.exports = {
   publicConnectionError,
-  isSelfHost,
   parseServerInput,
   splitArgs,
   stdioAddress,

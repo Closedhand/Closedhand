@@ -42,3 +42,28 @@ test("image builds run one at a time, so :latest always ends on the newest commi
     assert.match(workflow, /:latest/, f + " pushes :latest");
   }
 });
+
+// The database is Postgres, through one driver. A second client library was
+// still loaded by every process and chosen between at start, from when
+// Closedhand was hosted, and a switch asked whether this was a Closedhand its
+// person runs: it always is.
+test("one database client, and no switch for who runs Closedhand", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+  for (const f of ["package.json", "webapp/package.json"]) assert.equal(JSON.parse(read(f)).dependencies["@supabase/supabase-js"], undefined, f);
+  for (const f of ["lib/db.js", "webapp/db.js", "lib/mcp-client.js", "webapp/server.js", "docker-compose.yml"]) {
+    assert.doesNotMatch(read(f), /@supabase\/supabase-js|SUPABASE_URL|DB_DRIVER|isSelfHost/, f);
+  }
+  // With no database set up, asking for anything answers plainly instead of throwing.
+  const was = process.env.DATABASE_URL; delete process.env.DATABASE_URL;
+  try {
+    const id = require.resolve("../lib/db"); delete require.cache[id];
+    const db = require("../lib/db");
+    assert.equal(db.isDbConfigured(), false);
+    return db.supabase.from("profiles").select("id").eq("id", "x").single().then((r) => {
+      assert.equal(r.data, null);
+      assert.equal(r.error.code, "DB_NOT_CONFIGURED");
+      delete require.cache[id];
+    });
+  } finally { if (was !== undefined) process.env.DATABASE_URL = was; }
+});

@@ -54,7 +54,6 @@ services:
         condition: service_healthy
     env_file: [.env]
     environment:
-      DB_DRIVER: pg
       DATABASE_URL: postgres://postgres@db:5432/${POSTGRES_DB:-closedhand}?application_name=closedhand-bot
       STORAGE_DIR: /data/storage
       SANDBOX_URL: http://sandbox:8080
@@ -89,7 +88,6 @@ services:
         condition: service_healthy
     env_file: [.env]
     environment:
-      DB_DRIVER: pg
       DATABASE_URL: postgres://postgres@db:5432/${POSTGRES_DB:-closedhand}?application_name=closedhand-webapp
       STORAGE_DIR: /data/storage
       BASE_URL: ${BASE_URL:-http://localhost:3000}

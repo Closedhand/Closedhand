@@ -974,7 +974,7 @@ app.post("/api/wallet/confirm", async (req, res) => {
 
 function walletAvailable() {
   const { encryptString } = require("./crypto-tokens");
-  return mcpClient.isSelfHost() && encryptString("probe") !== "probe";
+  return encryptString("probe") !== "probe";
 }
 
 function cardBrand(number) {
@@ -1040,7 +1040,6 @@ async function billingRef(userId, billing) {
 app.get("/api/wallet", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!(await requireSetupAccess(req, res))) return;
-  if (!mcpClient.isSelfHost()) return res.json({ available: false, reason: "self-host only" });
   if (!walletAvailable()) return res.json({ available: false, reason: "no encryption key", cards: [], limits: {}, ledger: [] });
   try {
     const { data: cards, error } = await supabase.from("wallet_cards")
@@ -1064,7 +1063,6 @@ app.get("/api/wallet", async (req, res) => {
 app.post("/api/wallet", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!(await requireSetupAccess(req, res))) return;
-  if (!mcpClient.isSelfHost()) return res.status(400).json({ error: "The Wallet is for a Closedhand you run yourself." });
   if (!(await walletConfirmed(req))) return walletNeedsPassword(res);
   if (!walletAvailable()) return res.status(400).json({ error: "Closedhand has no encryption key, so a card cannot be stored safely. Set TOKEN_ENCRYPTION_KEY in .env (the installer normally does) and restart." });
   try {
@@ -1148,7 +1146,6 @@ app.delete("/api/wallet/:id", async (req, res) => {
 app.post("/api/wallet/addresses", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!(await requireSetupAccess(req, res))) return;
-  if (!mcpClient.isSelfHost()) return res.status(400).json({ error: "The Wallet is for a Closedhand you run yourself." });
   try {
     const { address, error: bad, field } = cleanAddress(req.body || {});
     if (bad) return res.status(400).json({ error: bad, field });
@@ -2640,7 +2637,6 @@ async function connectMcpHandler(req, res) {
     if (parsed.entries.some(entry => require('./mcp-input-resolver').PLACEHOLDER.test(JSON.stringify(entry)))) {
       return res.json({setup_choices:parsed.entries.map(require('./mcp-input-resolver').choice)});
     }
-    const selfHost = mcpClient.isSelfHost();
     const connected = [];
     const problems = [];
 
@@ -2648,12 +2644,10 @@ async function connectMcpHandler(req, res) {
       const row = { ...entry, user_id: userId };
       if (body.name && parsed.entries.length === 1) row.name = String(body.name).trim();
 
-      if (row.transport === "stdio") {
-        if (!selfHost) { problems.push({ server_url: row.server_url, error: "Command-style servers run on your own machine. This Closedhand runs on ours, so paste the server's web address instead, or run Closedhand yourself." }); continue; }
-      } else {
+      if (row.transport !== "stdio") {
         let u;
         try { u = new URL(row.server_url); } catch { problems.push({ server_url: row.server_url, error: "Invalid URL" }); continue; }
-        if (u.protocol !== "https:" && !(selfHost && u.protocol === "http:")) { problems.push({ server_url: row.server_url, error: "HTTPS required for MCP servers" }); continue; }
+        if (u.protocol !== "https:" && u.protocol !== "http:") { problems.push({ server_url: row.server_url, error: "HTTPS required for MCP servers" }); continue; }
       }
 
       if (body.auth_token) {
@@ -6179,13 +6173,8 @@ app.get("/api/flights", async (req, res) => {
 
 // Who may change the models: the dashboard's setup access on a self-host.
 async function authorizeModels(req, res) {
-  if (mcpClient.isSelfHost()) {
-    if (!(await requireSetupAccess(req, res))) return null;
-    return getAdminUserId();
-  }
-  const id = getUserIdFromRequest(req);
-  if (!id) res.status(401).json({ error: "Sign in to change your models." });
-  return id;
+  if (!(await requireSetupAccess(req, res))) return null;
+  return getAdminUserId();
 }
 // A job's LLM run on this computer instead of the provider (run-here.js).
 require("./run-here").install(app, { supabase, getAdminUserId, authorize: authorizeModels });
@@ -7288,7 +7277,7 @@ app.post("/api/bridge/file-upload", bridgeUploadToken, _bridgeUpload.single("fil
 // the Workspace panel said "No active sandbox" and its browser never showed.
 function staticSandbox() {
   // Docker reaches its container; the Mac app reaches its local VM controller.
-  const url = process.env.SANDBOX_URL || (mcpClient.isSelfHost() && !process.env.CLOSEDHAND_DESKTOP ? "http://sandbox:8080" : "");
+  const url = process.env.SANDBOX_URL || (!process.env.CLOSEDHAND_DESKTOP ? "http://sandbox:8080" : "");
   if (!url) return null;
   let u;
   try { u = new URL(url.includes("://") ? url : `http://${url}`); } catch (_) { return null; }

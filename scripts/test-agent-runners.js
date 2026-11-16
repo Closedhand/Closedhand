@@ -68,7 +68,6 @@ function harness(options = {}) {
       setInterval:fn=>{intervals.push(fn);return {unref(){}};},clearInterval(){},
       require(request) {
         if(request==="../user-store")return stubs[request];
-        if(request==="@supabase/supabase-js")return {createClient:()=>db};
         if(request==="node-cron")return {schedule:()=>({stop(){}})};
         if(request.startsWith("./"))return load(path.posix.normalize(path.posix.join(path.posix.dirname(name),request)));
         return require(request);

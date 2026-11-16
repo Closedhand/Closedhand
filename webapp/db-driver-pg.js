@@ -1,10 +1,9 @@
-// lib/db-driver-pg.js — Vanilla-Postgres driver.
+// lib/db-driver-pg.js — the Postgres driver.
 //
-// Emulates the subset of the supabase-js / PostgREST query surface that
-// Closedhand actually uses, so the app can run on plain Postgres + pgvector
-// (the OSS default) with no call-site changes. Selected in db.js via
-// DB_DRIVER=pg. A hosted deployment can stay on the supabase-js driver until
-// the P6 migration; this driver is the OSS golden path.
+// Speaks the query shape the code was written against (the supabase-js /
+// PostgREST one: from().select().eq()..., { data, error } results), over plain
+// Postgres with pgvector, so no call site knows which database library runs
+// underneath.
 //
 // Implemented: SELECT with
 //   .eq .neq .in .gt .gte .lt .lte .like .ilike .is .not .or

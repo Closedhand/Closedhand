@@ -1,39 +1,19 @@
-// webapp/db.js — Lazy Supabase client so the webapp boots with no DB configured.
+// webapp/db.js — the database client, made when first used, so the webapp starts
+// with no database set up.
 //
-// createClient() throws synchronously at import ("supabaseUrl is required.") when
-// the URL/key are missing, which made a zero-key first-run boot impossible. This
-// module defers construction to first *use*, and when the DB is not configured it
-// returns a guard whose queries resolve to `{ data: null, error }` instead of
-// throwing — so the webapp can serve first-run setup rather than crashing. When the
-// DB is configured, every call forwards to the real client unchanged.
+// The client is the Postgres driver (db-driver-pg.js), which speaks the query
+// shape the code was written against. With no DATABASE_URL every query
+// resolves to `{ data: null, error }` instead of throwing, so first-run setup
+// can be served rather than crashing.
 //
-// This is a copy of lib/db.js. The webapp is a separate Railway service and cannot
+// This is a copy of lib/db.js. The webapp is a separate service and cannot
 // import lib/, so the two files must be kept in sync (same as crypto-tokens.js).
 
-const { createClient } = require("@supabase/supabase-js");
-
-// Which backend to use. Inference, not a fixed default, so a Supabase deployment
-// (creds set, DB_DRIVER unset) is never silently switched: an explicit DB_DRIVER
-// wins (but only if its creds are present); else Supabase if configured; else the
-// vanilla-pg driver if DATABASE_URL is set (the OSS container default); else null
-// = unconfigured -> setup mode.
-function activeDriver() {
-  const explicit = process.env.DB_DRIVER;
-  const haveSupabase = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
-  const havePg = !!process.env.DATABASE_URL;
-  if (explicit === "supabase") return haveSupabase ? "supabase" : null;
-  if (explicit === "pg") return havePg ? "pg" : null;
-  if (haveSupabase) return "supabase";
-  if (havePg) return "pg";
-  return null;
-}
-
 function isDbConfigured() {
-  return activeDriver() !== null;
+  return !!process.env.DATABASE_URL;
 }
 
-// Storage backend for the pg path (the supabase path keeps supabase-js Storage).
-// Default: local disk, with the app serving /storage/logos/* itself (one box, no
+// Where files are kept. Default: local disk, with the app serving /storage/logos/* itself (one box, no
 // external accounts). STORAGE_DRIVER=pg keeps files in the database instead, for
 // hosts where the bot and the dashboard can't share a folder (Railway).
 function buildStorage(client) {
@@ -49,12 +29,7 @@ let _tried = false;
 function realClient() {
   if (!_tried) {
     _tried = true;
-    const driver = activeDriver();
-    if (driver === "supabase") {
-      _client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    } else if (driver === "pg") {
-      // pg is require()d lazily inside the factory, so the supabase path and the
-      // not-configured guard never depend on pg being installed.
+    if (isDbConfigured()) {
       _client = require("./db-driver-pg").createPgClient({ connectionString: process.env.DATABASE_URL, applicationName: "closedhand-webapp" });
       _client.storage = buildStorage(_client); // real storage instead of the data driver's stub
       const rt = require("./realtime-driver-poll").createPollRealtime(_client);
@@ -111,7 +86,7 @@ const guard = {
 };
 
 // Forward to the real client when configured, else to the guard. Property access
-// is lazy, so importing this module never touches createClient.
+// is lazy, so importing this module connects to nothing.
 const supabase = new Proxy({}, {
   get(_t, prop) {
     const target = realClient() || guard;

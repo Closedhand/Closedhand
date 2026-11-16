@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const path = require("node:path");
 
-function onboarding({ env = { DB_DRIVER: "pg" }, engineFails = false, sendFails = false, saveFails = false, settings = {}, displayName = "Alex Example", facts = {}, readings = null } = {}) {
+function onboarding({ env = {}, engineFails = false, sendFails = false, saveFails = false, settings = {}, displayName = "Alex Example", facts = {}, readings = null } = {}) {
   const conversation = [], sent = [], calls = [];
   const ctx = { store: { facts: { ...facts } }, activeUserStore: { userId: "fixture-user", profile: { display_name: displayName, settings } } };
   let saved = structuredClone(settings);
