@@ -10,14 +10,14 @@ const quoted = (name) => '"' + String(name).replace(/"/g, '""') + '"';
 // "Your profile and connected services are kept, and mail and calendar keep
 // syncing": the connections themselves, what was synced from them and what is
 // worked out from that, the person's saved cards and what was spent on them,
-// and the record of use. conversations and the assistant-email tables are
-// cleared by their own steps in the route.
+// and the record of use. The assistant-email tables are cleared by their own
+// steps in the route.
 const KEPT_ON_WIPE = new Set([
   "connections", "connection_clients", "chat_links", "user_mcps", "user_bridges", "sandboxes", "user_skills",
   "data_cache", "data_vectors", "index_progress", "mail_coverage", "email_scans",
   "person_names", "person_links", "bookings", "paying_for",
   "wallet_cards", "wallet_addresses", "spend_ledger", "token_usage",
-  "conversations", "assistant_email_accounts", "assistant_email_threads", "assistant_email_messages",
+  "assistant_email_accounts", "assistant_email_threads", "assistant_email_messages",
 ]);
 
 async function userTables(pool, schema = "public") {

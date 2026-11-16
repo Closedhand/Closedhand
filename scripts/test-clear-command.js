@@ -44,7 +44,6 @@ test("clearing takes conversations and their Context Notes, everywhere, and leav
     assistant_email_accounts: [{ user_id: "u1", address: "pip@closedhand.ai" }],
     assistant_email_threads: [{ user_id: "u1" }],
     conversation_threads: [{ user_id: "u1" }, { user_id: "u2" }],
-    conversations: [{ user_id: "u1", messages: [{ role: "user", content: "hi" }], summary: "s" }],
     web_messages: [{ user_id: "u1" }],
     data_cache: [{ user_id: "u1", source: "conversation" }, { user_id: "u1", source: "assistant_email" }, { user_id: "u1", source: "gmail" }],
     data_vectors: [
@@ -65,7 +64,6 @@ test("clearing takes conversations and their Context Notes, everywhere, and leav
   assert.deepEqual(relayed, [["pip@closedhand.ai", "clear", "POST", { remove: false, resume: true }]], "the email relay's copy too");
   assert.equal(d.assistant_email_threads.length, 0);
   assert.deepEqual(d.conversation_threads, [{ user_id: "u2" }], "only this person's");
-  assert.deepEqual(d.conversations[0].messages, []);
   assert.equal(d.web_messages.length, 0);
   assert.deepEqual(d.data_cache.map((r) => r.source), ["gmail"]);
   assert.deepEqual(d.data_vectors.map((r) => r.item_type || r.source_metadata.source), ["fact", "gmail"], "Context Notes go, Pinned Facts stay");

@@ -233,17 +233,6 @@ CREATE TABLE conversation_threads (
   CONSTRAINT conversation_threads_pkey PRIMARY KEY (id)
 );
 
-CREATE TABLE conversations (
-  id uuid DEFAULT gen_random_uuid() NOT NULL,
-  user_id uuid NOT NULL,
-  messages jsonb DEFAULT '[]'::jsonb,
-  summary text,
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT conversations_pkey PRIMARY KEY (id),
-  CONSTRAINT conversations_user_id_key UNIQUE (user_id),
-  CONSTRAINT conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
-);
-
 -- The (user_id, source, external_id) uniqueness is a UNIQUE INDEX, not a table
 -- constraint (created below). ON CONFLICT works against either, so upserts are
 -- fine — but it must be created for them to work.

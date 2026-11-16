@@ -6968,7 +6968,8 @@ app.get("/api/context-status", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Not logged in" });
   try {
-    const { data } = await supabase.from("conversations").select("messages").eq("user_id", userId).single();
+    const { data } = await supabase.from("conversation_threads").select("messages").eq("user_id", userId).eq("is_active", true)
+      .order("updated_at", { ascending: false }).limit(1).maybeSingle();
     const msgs = data?.messages || [];
     const tokens = Math.ceil(JSON.stringify(msgs).length / 4);
     const windowTokens = 500000;
@@ -9052,7 +9053,6 @@ app.post("/api/account/clear-data", async (req, res) => {
     const wipe = require("./account-wipe");
     await wipe.wipeUser(supabase._pool, userId, { keep: wipe.KEPT_ON_WIPE });
     const wiped = await Promise.all([
-      supabase.from("conversations").update({ messages: [], summary: null }).eq("user_id", userId),
       // The synced cache stays (it re-syncs from the connections that stay),
       // but conversation raw is not resyncable from anywhere and belongs to
       // the conversations this action promises to delete.

@@ -68,13 +68,8 @@ class UserStore {
     const store = new UserStore(userId);
 
     // Fetch everything in parallel for speed
-    const [convoRes, notesRes, schedRes, attRes, pulseRes, connRes, profileRes, sandboxRes, bridgeRes, rulesRes, ragDocsRes] =
+    const [notesRes, schedRes, attRes, pulseRes, connRes, profileRes, sandboxRes, bridgeRes, rulesRes, ragDocsRes] =
       await Promise.all([
-        supabase
-          .from("conversations")
-          .select("messages")
-          .eq("user_id", userId)
-          .single(),
         supabase
           .from("facts")
           .select("key, value, category, subject")
@@ -126,12 +121,7 @@ class UserStore {
           .eq("status", "ready"),
       ]);
 
-    // Conversations (legacy table)
-    if (convoRes.data) {
-      store.conversations = convoRes.data.messages || [];
-    }
-
-    // Try loading from conversation_threads (new system)
+    // The conversation is the active thread.
     try {
       const { data: activeThread } = await supabase
         .from("conversation_threads")
@@ -184,12 +174,6 @@ class UserStore {
             .insert({ user_id: userId, is_active: true })
             .select("id").single();
           if (newThread) store.activeThreadId = newThread.id;
-        } else if (store.conversations && store.conversations.length > 0) {
-          // Legacy migration
-          const { data: migratedThread } = await supabase.from("conversation_threads")
-            .insert({ user_id: userId, messages: store.conversations, is_active: true })
-            .select("id").single();
-          if (migratedThread) store.activeThreadId = migratedThread.id;
         } else {
           // Fresh thread
           const { data: newThread } = await supabase.from("conversation_threads")
@@ -208,8 +192,8 @@ class UserStore {
         .limit(20);
       store.threadList = threadList || [];
     } catch (e) {
-      // conversation_threads table may not exist yet - fall back to legacy
-      console.log("[Threads] Falling back to legacy conversations:", e.message);
+      // With no thread known, the next save makes one.
+      console.error("[Threads] could not load the conversation:", e.message);
       store.activeThreadId = null;
       store.threadList = [];
     }
@@ -426,23 +410,18 @@ class UserStore {
       // said meanwhile. Only a copy whose contents are known is skipped.
       const sig = conversationSig(convo);
       if (sig !== this._savedSig) {
-        promises.push(
-          supabase.from("conversations").upsert(
-            {
-              user_id: this.userId,
-              messages: this.conversations,
-              updated_at: nowIso,
-            },
-            { onConflict: "user_id" }
-          )
-        );
-
-        // Also save to conversation_threads if we have a thread ID
         if (this.activeThreadId) {
           const patch = { messages: this.conversations };
           if (changed) patch.updated_at = nowIso;
           promises.push(
             supabase.from("conversation_threads").update(patch).eq("id", this.activeThreadId)
+          );
+        } else {
+          // No thread could be made or found when this was loaded: one is
+          // made now, so what was said is kept.
+          promises.push(
+            supabase.from("conversation_threads").insert({ user_id: this.userId, messages: this.conversations, is_active: true }).select("id").single()
+              .then((made) => { if (made?.data?.id) this.activeThreadId = made.data.id; return made; })
           );
         }
       }

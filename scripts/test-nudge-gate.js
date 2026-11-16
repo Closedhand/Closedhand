@@ -228,7 +228,8 @@ test("a sign-in to do again is told once it can be, and again after the next fai
 // what was said meanwhile, the message kept above included.
 test("a save writes the conversation only when its copy changed", async () => {
   const writes = [];
-  const fakeDb = { from: (table) => ({ upsert: async () => { writes.push(table); return {}; }, update: () => ({ eq: async () => { writes.push(table); return {}; } }) }) };
+  const fakeDb = { from: (table) => ({ upsert: async () => { writes.push(table); return {}; }, update: () => ({ eq: async () => { writes.push(table); return {}; } }),
+    insert: (row) => ({ select: () => ({ single: async () => { writes.push(table + " (new)"); return { data: { id: "t-new", ...row } }; } }) }) }) };
   const dbPath = require.resolve("../lib/db"), usPath = require.resolve("../user-store");
   const before = { db: require.cache[dbPath], us: require.cache[usPath] };
   require.cache[dbPath] = { id: dbPath, loaded: true, exports: { supabase: fakeDb } };
@@ -239,13 +240,25 @@ test("a save writes the conversation only when its copy changed", async () => {
     store.activeThreadId = "t1";
     store.conversations = [{ role: "user", content: "Is the dinner still on?" }];
     store.markDirty("conversations"); await store.save();
-    assert.deepEqual(writes, ["conversations", "conversation_threads"], "a copy not known to be as saved is written");
+    assert.deepEqual(writes, ["conversation_threads"], "a copy not known to be as saved is written, to its thread and nowhere else");
     writes.length = 0;
     store.markDirty("conversations"); await store.save();
     assert.deepEqual(writes, [], "unchanged since it was saved: not written over what others said since");
     store.conversations.push({ role: "assistant", content: "Yes, Tue at 8." });
     store.markDirty("conversations"); await store.save();
-    assert.deepEqual(writes, ["conversations", "conversation_threads"], "changed: written");
+    assert.deepEqual(writes, ["conversation_threads"], "changed: written");
+    // No thread could be made when it was loaded: the save makes one, so
+    // what was said is kept, and the next save goes to that thread.
+    const adrift = new UserStore("u1");
+    adrift.conversations = [{ role: "user", content: "Book the table for four." }];
+    writes.length = 0;
+    adrift.markDirty("conversations"); await adrift.save();
+    assert.deepEqual(writes, ["conversation_threads (new)"]);
+    assert.equal(adrift.activeThreadId, "t-new");
+    adrift.conversations.push({ role: "assistant", content: "Booked." });
+    writes.length = 0;
+    adrift.markDirty("conversations"); await adrift.save();
+    assert.deepEqual(writes, ["conversation_threads"]);
     const src = read("user-store.js");
     assert.equal((src.match(/store\._savedSig = conversationSig\(store\.conversations\);/g) || []).length, 2, "a loaded thread is known as it was loaded");
   } finally {
