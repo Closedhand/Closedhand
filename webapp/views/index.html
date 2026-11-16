@@ -2368,14 +2368,6 @@
     <div class="page-panel-body" id="pagePanelBody"></div>
   </div>
 
-  <!-- Worker status bar (shows when agents/teams are running) -->
-  <div id="workerStatusBar" style="display:none;position:fixed;bottom:12.5rem;left:16.25rem;right:0;padding:0.5rem 1.25rem;background:rgba(var(--accent-rgb),0.06);border-bottom:1px solid rgba(var(--accent-rgb),0.1);font-size:0.8125rem;color:var(--muted);cursor:pointer;z-index:10;backdrop-filter:blur(0.625rem);" onclick="if(window.openDashSlide)window.openDashSlide('#agents')">
-    <div style="display:flex;align-items:center;gap:0.5rem;max-width:56.25rem;margin:0 auto;">
-      <span style="animation:typingBounce 1.4s ease-in-out infinite;color:var(--accent);font-size:0.875rem;">&#9881;</span>
-      <span id="workerStatusText">Agents at work</span>
-      <span style="margin-left:auto;font-size:0.6875rem;color:rgba(var(--fg-rgb),0.5);">Tap to view</span>
-    </div>
-  </div>
 
   <div class="docked-input" id="dockedInput">
     <div class="input-box-wrap">
@@ -4819,6 +4811,7 @@
     // My Account opens as its popup, wherever the link came from.
     if (/^#account(\/|$)/.test(hash || '')) { openMyAccount('chat'); return; }
     overlay.classList.add('active');
+    try { iframe.contentWindow.postMessage({ type: 'dash-shown' }, '*'); } catch (e) {}
     // First open on a touch screen: the panel peeks right once, a nod that
     // it can be swiped away.
     try {
@@ -4918,7 +4911,7 @@
   });
   // Active agents indicator in header
   function pollAgentStatus() {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || document.hidden) return;
     fetch('/api/agents/stats').then(function(r) { return r.json(); }).then(function(data) {
       var indicator = document.getElementById('agentIndicator');
       var countEl = document.getElementById('agentCount');
@@ -4948,6 +4941,7 @@
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible' && isAuthenticated) {
       connectChat();
+      pollAgentStatus();
       // Poll for any missed messages
       fetch('/api/chat/history').then(function(r) { return r.json(); }).then(function(data) {
         var allShown = messagesEl.querySelectorAll('.message');
@@ -5116,27 +5110,6 @@ function toggleMobileActivity() {
   }
 }
 
-// Check bridge status and update pill
-// Poll for active worker projects and show status bar
-function pollWorkerStatus() {
-  fetch('/api/teams').then(function(r) { return r.json(); }).then(function(teams) {
-    var bar = document.getElementById('workerStatusBar');
-    var text = document.getElementById('workerStatusText');
-    if (!bar || !text) return;
-    var running = (teams || []).filter(function(t) { return t.status === 'running' || t.status === 'planning'; });
-    if (running.length > 0) {
-      var t = running[0];
-      var name = t.name || 'Project';
-      text.textContent = name + ': agents at work';
-      bar.style.display = 'block';
-    } else {
-      bar.style.display = 'none';
-    }
-  }).catch(function() {});
-}
-if (document.body.classList.contains('chat-active') || window._chatModeActive) pollWorkerStatus();
-setInterval(pollWorkerStatus, 8000);
-
 function winBridgeSoon(e) {
   if (e) e.preventDefault();
   chatNotice('Closedhand Bridge is for Mac only');
@@ -5219,7 +5192,8 @@ function checkBridgeStatus() {
   }).catch(function() {});
 }
 checkBridgeStatus();
-setInterval(function(){ checkBridgeStatus(); }, 15000);
+setInterval(function(){ if (!document.hidden) checkBridgeStatus(); }, 15000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) checkBridgeStatus(); });
 
 // The computer at the top: whether Closedhand can reach the person's Mac and,
 // while it can, what it may use there, as the Mac reported it
@@ -5796,7 +5770,7 @@ async function ragLoadSources() {
       + '<span class="rag-source-icon"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>'
       + 'Add a source</button>';
     listEl.innerHTML = html;
-    if (hasIndexing) ragStartPolling();
+    if (hasIndexing) ragStartPolling(); else ragStopPolling();
   } catch (e) { console.error('RAG load error:', e); }
 }
 

@@ -14,7 +14,7 @@ window.Delight = {
   init: function () {
     // Copy feedback (delegated)
     document.addEventListener("click", function (e) {
-      var copyable = e.target.closest(".activation-code, [data-copy], .mcp-url-copy");
+      var copyable = e.target.closest("[data-copy], .mcp-url-copy");
       if (!copyable) return;
       copyable.classList.add("copy-flash");
       copyable.style.position = "relative";

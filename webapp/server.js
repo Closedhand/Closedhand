@@ -4322,7 +4322,7 @@ app.get("/api/status", async (req, res) => {
 
     const { data: chatLinks } = await supabase
       .from("chat_links")
-      .select("platform, platform_user_id, activation_code, expires_at, linked_at")
+      .select("platform, platform_user_id, linked_at")
       .eq("user_id", userId);
 
     const { data: connections } = await supabase
@@ -4331,7 +4331,6 @@ app.get("/api/status", async (req, res) => {
       .eq("user_id", userId);
     const health = require("./connection-health").split(connections);
 
-    const now = new Date();
     const platforms = {};
     // Self-host: WhatsApp is the person's own number as a linked device, the
     // Telegram bot is the one they made in BotFather, and the other apps only
@@ -4347,14 +4346,10 @@ app.get("/api/status", async (req, res) => {
     };
     for (const [key, info] of Object.entries(SUPPORTED_PLATFORMS)) {
       const link = chatLinks?.find((l) => l.platform === key);
-      const codeExpired = link?.expires_at && new Date(link.expires_at) < now;
-      const pendingCode = (link?.activation_code && !codeExpired) ? link.activation_code : null;
-
       platforms[key] = {
         ...info,
         connected: !!(link && link.platform_user_id),
         connectedAt: link?.platform_user_id ? link.linked_at || null : null,
-        pendingCode,
       };
       if (key === "whatsapp" && waLinkedRow) {
         platforms[key].connected = true;
@@ -4499,10 +4494,6 @@ app.post("/api/connect-shopify-token", async (req, res) => {
     res.status(400).json({ error: safe ? e.message : "Could not connect to your store. Check your details and try again." });
   }
 });
-
-// Generate activation code
-// Removed: /api/generate-code (activation-code linking) — single-tenant maps any
-// inbound sender to the admin; "connect a platform" is just messaging the bot.
 
 // Connect multiple services (queue-based)
 app.post("/api/connect-multiple", (req, res) => {

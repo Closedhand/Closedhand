@@ -132,6 +132,18 @@ test('a list is drawn again only when it changed, and the tab on screen is asked
   h.timers.at(-1).fn();
   assert.equal(h.requests.filter((u) => u === '/api/agents').length, 3, 'not while something is being typed to a task');
   h.telling.on = false;
+  // The dashboard is a frame over the web chat that stays loaded when its
+  // panel is closed: nobody is reading it then, so it asks nothing.
+  let open = false, account = false;
+  h.context.window = { frameElement: {}, parent: { document: { getElementById: (id) => (id === 'dashOverlay' ? { classList: { contains: (c) => (c === 'active' ? open : c === 'account' ? account : false) } } : null) } } };
+  h.timers.at(-1).fn();
+  assert.equal(h.requests.filter((u) => u === '/api/agents').length, 3, 'not while its panel is closed');
+  account = true;
+  h.timers.at(-1).fn();
+  assert.equal(h.requests.filter((u) => u === '/api/agents').length, 4, 'My Account shows the same frame');
+  account = false; open = true;
+  h.timers.at(-1).fn();
+  assert.equal(h.requests.filter((u) => u === '/api/agents').length, 5, 'and again once the panel is open');
   h.context.startTabPolling('upcoming');
   assert.equal(h.timers.at(-1).ms, 30000);
   h.timers.at(-1).fn();
