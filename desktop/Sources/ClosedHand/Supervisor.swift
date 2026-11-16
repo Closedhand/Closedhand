@@ -288,6 +288,11 @@ final class Supervisor: ObservableObject {
             proc.currentDirectoryURL = appDir
             proc.arguments = ["index.js"]
             env["PORT"] = "\(botPort)"
+            // The bot answers this Mac only, as the dashboard does: the
+            // dashboard and the sandbox computer's host reach it on 127.0.0.1.
+            // It listened on every interface, so anything on the same network
+            // could knock on its routes.
+            env["LISTEN_HOST"] = "127.0.0.1"
         case "agent":
             // This host process only starts and proxies the Linux VM. Browser,
             // code and packages never run directly on the Mac.

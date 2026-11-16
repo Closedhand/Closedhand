@@ -325,3 +325,25 @@ test("the words people see", () => {
     assert.match(read(page), /In the Mac app, when the LLM chosen for a job comes through OpenRouter and OpenRouter's public list of models links it to Hugging Face, or comes through DeepInfra, which names its models by their Hugging Face repository, Settings looks it up on Hugging Face to see whether it could run on the computer running Closedhand\. Hugging Face sees that computer's internet address and the model's name\. If you choose to run it there, it is downloaded from Hugging Face, and your LLM provider still answers whenever it isn't running, such as while it starts up\./, page);
   }
 });
+
+// In the Mac app the bot's own web server listened on every network
+// interface, so anything on the same Wi-Fi could knock on its routes; only the
+// dashboard was kept to this Mac. Both are now, and Docker and a host, where
+// other containers call the bot, leave LISTEN_HOST unset.
+test("the Mac app keeps the bot, like the dashboard, to this computer", async () => {
+  const supervisor = read("desktop/Sources/ClosedHand/Supervisor.swift");
+  const bot = supervisor.slice(supervisor.indexOf('case "bot":'), supervisor.indexOf('case "agent":'));
+  assert.match(bot, /env\["LISTEN_HOST"\] = "127\.0\.0\.1"/, "the bot");
+  assert.match(supervisor.slice(supervisor.indexOf("default:")), /env\["LISTEN_HOST"\] = "127\.0\.0\.1"/, "the dashboard");
+  assert.match(read("index.js"), /ctx\.expressApp\.listen\(WA_PORT, process\.env\.LISTEN_HOST \|\| undefined, /);
+  assert.match(read("lib/move-idle.js"), /app\.listen\(port, process\.env\.LISTEN_HOST \|\| undefined, /);
+  assert.doesNotMatch(read("docker-compose.yml"), /LISTEN_HOST/, "containers reach the bot by name");
+  // What that call does: this computer only with a host, as before with none.
+  const express = require("express");
+  const listen = (host) => new Promise((resolve, reject) => { const s = express().listen(0, host || undefined, () => resolve(s)); s.once("error", reject); });
+  const here = await listen("127.0.0.1"), anywhere = await listen("");
+  try {
+    assert.equal(here.address().address, "127.0.0.1");
+    assert.ok(["::", "0.0.0.0"].includes(anywhere.address().address), anywhere.address().address);
+  } finally { here.close(); anywhere.close(); }
+});

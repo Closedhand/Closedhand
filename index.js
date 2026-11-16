@@ -272,7 +272,10 @@ async function main() {
   await whatsappHandler.subscribeWhatsAppWebhook();
 
   // Start Express server for webhooks
-  const server = ctx.expressApp.listen(WA_PORT, () => {
+  // LISTEN_HOST keeps the bot to this computer where nothing else needs to
+  // reach it (the Mac app); Docker and a host leave it unset, since other
+  // containers and the host's own network call it.
+  const server = ctx.expressApp.listen(WA_PORT, process.env.LISTEN_HOST || undefined, () => {
     console.log(`🌐 Webhook server listening on port ${WA_PORT}`);
   });
 
