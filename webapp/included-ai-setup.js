@@ -20,11 +20,10 @@ function modelName(models) {
 }
 
 // Which provider and models do which job, as closedhand.com gave them:
-// support falls back to the chat model; pictures and videos go to their own
-// only when one is given.
+// support falls back to the chat model.
 function pickOf(models) {
   const valid = (id) => MODEL.test(String(id || ""));
-  return { provider: models.provider, chat: models.chat, background: valid(models.background) ? models.background : models.chat, ...(valid(models.vision) ? { vision: models.vision } : {}), name: modelName(models) };
+  return { provider: models.provider, chat: models.chat, background: valid(models.background) ? models.background : models.chat, name: modelName(models) };
 }
 
 async function settings() {
@@ -85,14 +84,9 @@ async function use({ unlessOwn = false, fresh = false } = {}) {
     }
   };
   // Pictures and videos by the chat LLM when it reads them, checked with a
-  // real image and clip, as reading them itself beats any other model; else
-  // by the model Closedhand picks for them; else by the vision language model
-  // on this computer, so an image check never stops the models being used.
-  let config = await prepare({ visionMode: "same" });
-  if (!config.roles.vision && models.vision) {
-    config = await prepare({ visionMode: "separate", visionModel: models.vision })
-      .catch((error) => { if (!error.visionNeeded) throw error; return config; });
-  }
+  // real image and clip; else by the vision language model on this computer,
+  // so an image check never stops the models being used.
+  const config = await prepare({ visionMode: "same" });
   config.included = true;
   // Saved against the settings as they are now, unless the person set up an
   // LLM provider of their own while this was being checked. Their own setup,
@@ -201,7 +195,7 @@ async function refresh() {
   if (prices && JSON.stringify(prices) !== JSON.stringify(had.prices)) next.prices = prices;
   if (usage && JSON.stringify(usage) !== JSON.stringify(had.usage)) next.usage = usage;
   let switchTo = false;
-  if (before.included_api_key && pick && (had.models?.provider !== pick.provider || had.models?.chat !== pick.chat || had.models?.background !== pick.background || had.models?.vision !== pick.vision || had.name !== pick.name)) {
+  if (before.included_api_key && pick && (had.models?.provider !== pick.provider || had.models?.chat !== pick.chat || had.models?.background !== pick.background || had.name !== pick.name)) {
     next.models = pick;
     next.name = pick.name;
     switchTo = !!before.model_config?.included;

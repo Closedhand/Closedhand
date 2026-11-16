@@ -283,9 +283,9 @@ test('deleting the account deletes its key', async () => {
 
 test('the provider and models come from the settings: chat first, support second', async () => {
   const near = nearAi();
-  const ai = create({ db: database(), env: env({ INCLUDED_AI_MODELS: MODEL + ', zai-org/GLM-5.3-Flash', INCLUDED_AI_TRIAL_USD: '5', INCLUDED_AI_VISION_MODEL: 'some/vision-model' }), request: near.request });
+  const ai = create({ db: database(), env: env({ INCLUDED_AI_MODELS: MODEL + ', zai-org/GLM-5.3-Flash', INCLUDED_AI_TRIAL_USD: '5' }), request: near.request });
   const given = await ai.forOwner(owner(), from());
-  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: 'zai-org/GLM-5.3-Flash', name: 'DeepSeek V4.1 Flash Abliterated' }, 'never a vision model on NEAR: its encryption carries words');
+  assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: 'zai-org/GLM-5.3-Flash', name: 'DeepSeek V4.1 Flash Abliterated' }, 'never a vision model: the encryption carries words, and pictures are read on the person\'s computer');
   assert.deepEqual(ai.current(), given.models, 'computers asking get the same pick');
   assert.equal(create({ db: database(), env: {}, request: near.request }).current(), null, 'none without a sign-in at NEAR');
   assert.equal([...near.keys.values()][0].limit, 5);
@@ -320,94 +320,12 @@ test('one connection gets it a few times a month, then no more; others still do'
   assert.equal(db.grants.filter(g => g.network_hash === null).length, 11);
 }));
 
-// OpenRouter, kept so Managed Models can move back (INCLUDED_AI_PROVIDER):
-// the same rules, keys made with the provisioning key from the settings,
-// each behind one guardrail. A stand-in OpenRouter as far as Closedhand uses it.
-const MANAGEMENT = 'sk-or-v1-' + 'm'.repeat(64);
-function openRouter({ failAssign = false, credits = { total_credits: 0, total_usage: 0 }, activity = [] } = {}) {
-  const keys = new Map(), guardrails = [], calls = [];
-  const reply = (status, body) => new Response(body === undefined ? '' : JSON.stringify(body), { status });
-  const request = async (url, opts = {}) => {
-    const method = opts.method || 'GET', where = url.replace('https://openrouter.ai/api/v1', '');
-    calls.push(method + ' ' + where);
-    assert.equal(opts.headers.Authorization, 'Bearer ' + MANAGEMENT, 'only the provisioning key from the settings is used');
-    const body = opts.body ? JSON.parse(opts.body) : null;
-    if (method === 'GET' && where.startsWith('/guardrails')) return reply(200, { data: guardrails });
-    if (method === 'POST' && where === '/guardrails') { const g = { id: crypto.randomUUID(), ...body }; guardrails.push(g); return reply(201, { data: g }); }
-    if (method === 'PATCH' && where.startsWith('/guardrails/')) { Object.assign(guardrails.find(g => g.id === where.split('/')[2]), body); return reply(200, { data: {} }); }
-    let m = where.match(/^\/guardrails\/([^/]+)\/assignments\/keys$/);
-    if (m && method === 'POST') {
-      if (failAssign) return reply(500, { error: 'unavailable' });
-      for (const hash of body.key_hashes) keys.get(hash).guardrail = m[1];
-      return reply(200, { assigned_count: body.key_hashes.length });
-    }
-    if (method === 'POST' && where === '/keys') {
-      const hash = crypto.randomBytes(32).toString('hex'), key = 'sk-or-v1-' + crypto.randomBytes(32).toString('hex');
-      keys.set(hash, { name: body.name, limit: body.limit, limit_reset: body.limit_reset || null, usage: 0, usage_monthly: 0, key, guardrail: null });
-      return reply(201, { data: { hash, name: body.name, limit: body.limit, usage: 0 }, key });
-    }
-    m = where.match(/^\/keys\/([a-f0-9]{64})$/);
-    if (m && method === 'GET') { const k = keys.get(m[1]); return k ? reply(200, { data: { hash: m[1], name: k.name, limit: k.limit, usage: k.usage } }) : reply(404, { error: 'not found' }); }
-    if (m && method === 'PATCH') { Object.assign(keys.get(m[1]), body); return reply(200, { data: keys.get(m[1]) }); }
-    if (m && method === 'DELETE') { keys.delete(m[1]); return reply(200, { deleted: true }); }
-    if (method === 'GET' && where === '/credits') return reply(200, { data: credits });
-    if (method === 'GET' && where === '/activity') return reply(200, { data: activity });
-    m = where.match(/^\/keys\?offset=(\d+)$/);
-    if (m && method === 'GET') return reply(200, { data: [...keys].slice(Number(m[1]), Number(m[1]) + 100).map(([hash, k]) => ({ hash, name: k.name, limit: k.limit, usage: k.usage, usage_monthly: k.usage_monthly })) });
-    throw new Error('unexpected ' + method + ' ' + url);
-  };
-  return { request, keys, guardrails, calls };
-}
-const onOpenRouter = (more = {}) => ({ INCLUDED_AI_PROVIDER: 'openrouter', OPENROUTER_PROVISIONING_KEY: MANAGEMENT, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, ...more });
-
-test('on OpenRouter: the same free days, a key behind a guardrail of the chosen models on providers that keep nothing, and the computer told so', async () => {
-  const router = openRouter(), db = database();
-  const ai = create({ db, env: onOpenRouter(), request: router.request });
-  const id = owner(db);
-  const given = await ai.forOwner(id, from());
-  assert.match(given.key, /^sk-or-v1-/);
-  assert.deepEqual(given.models, { provider: 'openrouter', chat: 'deepseek/deepseek-v4.1-flash', background: 'deepseek/deepseek-v4.1-flash', vision: 'xiaomi/mimo-v2.6-flash', name: 'DeepSeek V4.1 Flash' });
-  const [hash, made] = [...router.keys][0];
-  assert.equal(made.limit, 12);
-  assert.equal(made.guardrail, router.guardrails[0].id, 'never without its guardrail');
-  assert.deepEqual(router.guardrails[0].allowed_models, ['deepseek/deepseek-v4.1-flash', 'xiaomi/mimo-v2.6-flash']);
-  for (const f of ['enforce_zdr_anthropic', 'enforce_zdr_openai', 'enforce_zdr_google', 'enforce_zdr_xai', 'enforce_zdr_other']) assert.equal(router.guardrails[0][f], true, f);
-  assert.equal(router.guardrails[0].enable_paid_model_training, false);
-  assert.equal(db.rows[0].key_id, hash, 'only OpenRouter\'s id for it is kept');
-  made.usage = 3.456;
-  db.rows[0].ends_at = new Date(Date.now() - 1000);
-  assert.equal(await ai.sweep(), 1);
-  assert.equal(made.limit, 3.46, 'stopped where it stands, to the cent OpenRouter takes');
-  assert.equal(made.limit_reset, null);
-  await ai.forget(id);
-  assert.equal(router.keys.size, 0);
-});
-
-test('on OpenRouter: a key its guardrail could not be attached to never leaves; spend and credit come from OpenRouter\'s own counts', quiet(async () => {
-  const broken = openRouter({ failAssign: true }), db = database();
-  assert.equal(await create({ db, env: onOpenRouter(), request: broken.request }).forOwner(owner(db), from()), null);
-  assert.equal(broken.keys.size, 0, 'deleted at once');
-  assert.equal(db.grants.length, 0, 'the free days it held are given back');
-  const at = new Date('2027-03-11T09:00:00Z');
-  const router = openRouter({ credits: { total_credits: 100, total_usage: 40 }, activity: [{ date: '2027-03-05', usage: 3 }, { date: '2027-03-09', usage: 3 }] });
-  const ai = create({ db: database(), env: onOpenRouter(), request: router.request });
-  router.keys.set('a'.repeat(64), { name: 'Closedhand one', limit: 15, usage: 2, usage_monthly: 2.5 });
-  router.keys.set('b'.repeat(64), { name: 'Closedhand two', limit: 15, usage: 1, usage_monthly: 1.25 });
-  assert.equal(await ai.spentThisMonth(at), 3.75);
-  assert.deepEqual(await ai.credit(at), { left: 60, days: 60 }, '$6 over six days, a dollar a day');
-  assert.deepEqual((await ai.allKeys()).map(k => [k.name, k.limit, k.usage]), [['Closedhand one', 15, 2], ['Closedhand two', 15, 1]]);
-  const op = await ai.forOperator();
-  assert.equal(op.base, 'https://openrouter.ai/api/v1');
-  assert.equal([...router.keys.values()].find(k => k.name === 'Closedhand insights').limit_reset, 'monthly');
-}));
-
-test('the provider is one setting; an unknown one or one without its settings makes nothing, and no key is ever in the code', async () => {
-  assert.equal(create({ db: database(), env: onOpenRouter({ INCLUDED_AI_PROVIDER: 'elsewhere' }) }).enabled(), false);
-  assert.equal(create({ db: database(), env: onOpenRouter({ OPENROUTER_PROVISIONING_KEY: '' }) }).enabled(), false);
-  assert.equal(create({ db: database(), env: env() }).current().provider, 'near', 'NEAR unless set otherwise');
-  for (const f of ['included-ai.js', 'included-ai-near.js', 'included-ai-openrouter.js', 'near-session.js']) {
+test('NEAR makes the keys, and no key is ever in the code', async () => {
+  assert.equal(create({ db: database(), env: env() }).current().provider, 'near');
+  for (const f of ['included-ai.js', 'included-ai-near.js', 'near-session.js']) {
     assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'lib', f), 'utf8'), /sk-or-v1-[A-Za-z0-9]{20,}|rt_[A-Za-z0-9]{20,}|sk-[a-f0-9]{32}/, f);
   }
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'lib', 'included-ai-openrouter.js')), false, 'one provider, the one whose hardware is sealed');
 });
 
 test('this month\'s spend, apart: the maintainer\'s own keys closedhand.com did not make, their own Managed Models, and everyone else\'s', async () => {

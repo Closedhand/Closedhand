@@ -1,6 +1,6 @@
 // Possible misuse of Closedhand Managed Models, for the insights page: signs
 // read from what closedhand.com already holds and from the provider's own
-// count of each key (NEAR AI, or OpenRouter), then a few lines an LLM writes
+// count of each key (NEAR AI), then a few lines an LLM writes
 // from those signs saying what is most likely going on and what, if anything,
 // to do. Code finds the signs and sets the bar; the LLM only reads them. It
 // sees personal URL names, counts and amounts, never an email. With nothing

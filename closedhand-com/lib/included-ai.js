@@ -5,11 +5,9 @@
 // passes through here; what stays here is the provider's id for the key and
 // when its free 14 days end.
 //
-// The provider is one setting (INCLUDED_AI_PROVIDER): NEAR AI's private
-// inference (lib/included-ai-near.js), or OpenRouter's per-account keys
-// (lib/included-ai-openrouter.js), kept so Managed Models can move back.
-// Both make, read, limit and delete keys the same way; everything else here
-// is the same for either. Computers follow the provider closedhand.com names.
+// The provider is NEAR AI's private inference (lib/included-ai-near.js), which
+// makes, reads, limits and deletes the keys. Computers follow the provider
+// and models closedhand.com names.
 //
 // A key's limit is a lifetime total, never reset by the provider. An account
 // has one key: claiming again makes a new key with whatever was left and the
@@ -55,7 +53,6 @@ const crypto = require('crypto');
 const { isMaintainer } = require('./maintainer');
 const { monthIn, fairUseMonth } = require('./months');
 
-const BACKENDS = { near: './included-ai-near', openrouter: './included-ai-openrouter' };
 const cents = n => Math.round(n * 100) / 100;
 
 // The part of an address that is one connection: all of an IPv4 address, the
@@ -74,8 +71,7 @@ function connection(ip) {
 const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
 
 function create({ db, env = process.env, request = fetch, notices = null }) {
-  const choice = String(env.INCLUDED_AI_PROVIDER || 'near').trim().toLowerCase();
-  const keys = BACKENDS[choice] ? require(BACKENDS[choice]).create({ db, env, request, notices }) : null;
+  const keys = require('./included-ai-near').create({ db, env, request, notices });
   const fairUse = fairUseUsd(env);
   const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
   const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 14);
@@ -85,13 +81,10 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   const pepper = String(env.TOKEN_ENCRYPTION_KEY || '');
   const fingerprint = (kind, text) => crypto.createHmac('sha256', pepper).update('included-ai-' + kind + ':' + text).digest('hex');
   const list = value => String(value || '').split(',').map(s => s.trim()).filter(Boolean);
-  const models = keys ? list(env.INCLUDED_AI_MODELS || keys.defaults.models) : [];
+  const models = list(env.INCLUDED_AI_MODELS || keys.defaults.models);
   // The chat model's name as the person reads it in Settings and setup.
-  const modelName = keys ? String(env.INCLUDED_AI_MODEL_NAME || keys.defaults.name).trim().slice(0, 80) : '';
-  // Pictures and videos go to a model of their own where the provider has
-  // one; else the vision language model on the person's computer reads them.
-  const visionModel = keys && keys.defaults.vision ? String(env.INCLUDED_AI_VISION_MODEL ?? keys.defaults.vision).trim() : '';
-  const enabled = () => !!keys && keys.configured() && pepper.length >= 16 && fairUse > 0 && trialUsd > 0 && trialDays > 0 && models.length > 0;
+  const modelName = String(env.INCLUDED_AI_MODEL_NAME || keys.defaults.name).trim().slice(0, 80);
+  const enabled = () => keys.configured() && pepper.length >= 16 && fairUse > 0 && trialUsd > 0 && trialDays > 0 && models.length > 0;
 
   // Deletes a key at the provider now; one that can't be deleted yet waits in
   // retired_ai_keys for the hourly sweep, so it never stays live unlisted.
@@ -362,8 +355,8 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return true;
   }
 
-  // Run hourly: the provider is settled (NEAR's sign-in renewed, OpenRouter's
-  // guardrail brought up to date), free days that have run out, with no
+  // Run hourly: the provider is settled (NEAR's sign-in renewed), free days
+  // that have run out, with no
   // subscription to take over, stop their key, and keys replaced or left by a
   // deleted account are deleted at the provider. Subscription months follow
   // Polar's own renewals (lib/plus.js).
@@ -435,9 +428,9 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   }
 
   // Which provider and models do which job: the person's computer uses these
-  // as given.
+  // as given. Pictures are read by the vision language model on that computer.
   function roles() {
-    return { provider: keys.provider, chat: models[0], background: models[1] || models[0], ...(visionModel ? { vision: visionModel } : {}), name: modelName };
+    return { provider: keys.provider, chat: models[0], background: models[1] || models[0], name: modelName };
   }
 
   // Deleting an account deletes its key. Its row goes with the account.

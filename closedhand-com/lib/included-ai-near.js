@@ -1,5 +1,5 @@
 // NEAR AI as the provider of Closedhand Managed Models' keys
-// (lib/included-ai.js, INCLUDED_AI_PROVIDER=near, the default). Each key is
+// (lib/included-ai.js). Each key is
 // made with closedhand.com's sign-in at NEAR (lib/near-session.js) in its
 // organisation; the person's computer then talks to NEAR directly, encrypted
 // into the sealed hardware the model runs in.
@@ -86,7 +86,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     // checks (webapp/model-config.js), and NEAR's other private models that
     // read them did no better on handwriting (tried 2026-11-13). One can be
     // named here; NEAR's encryption carries pictures (near-private.js).
-    defaults: { models: 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated', name: 'DeepSeek V4.1 Flash Abliterated', vision: '' },
+    defaults: { models: 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated', name: 'DeepSeek V4.1 Flash Abliterated' },
     configured: () => session.configured(),
     // The sign-in, renewed as closedhand.com starts and each hour, so one NEAR
     // stopped taking is told to the maintainer before anyone needs a key.
