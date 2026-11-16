@@ -139,7 +139,8 @@ test("WhatsApp says who is who: its pairing of ids, saved names and the names pe
   assert.match(wa, /pairStoredIds\(sock\)/, "and the chats already stored, paired when it links");
   assert.match(wa, /\.filter\(\(j\) => !j\.endsWith\("@g\.us"\) && !isSelfJid\(j\)\)/);
   const server = read("webapp/server.js");
-  assert.match(server, /"person_links", "person_names",/, "deleting the account deletes them");
+  // Deleting the account empties every table that has a user_id (account-wipe.js, checked against the real schema in test-fresh-database.js).
+  assert.match(server, /await wipe\.wipeUser\(supabase\._pool, userId\);/, "deleting the account deletes them");
   assert.match(server, /from\("person_links"\)\.delete\(\)\.eq\("user_id", userId\)\.eq\("source", "whatsapp"\)/, "disconnecting WhatsApp deletes what it said");
   assert.match(read("migrations/089_people.sql"), /PRIMARY KEY \(user_id, handle, kind\)/);
 });

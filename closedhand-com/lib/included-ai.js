@@ -70,10 +70,13 @@ function connection(ip) {
   return full.slice(0, 4).map(part => parseInt(part || '0', 16).toString(16)).join(':');
 }
 
+// A paid month's fair use, in one place: the misuse watch had its own, 15.
+const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
+
 function create({ db, env = process.env, request = fetch, notices = null }) {
   const choice = String(env.INCLUDED_AI_PROVIDER || 'near').trim().toLowerCase();
   const keys = BACKENDS[choice] ? require(BACKENDS[choice]).create({ db, env, request, notices }) : null;
-  const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
+  const fairUse = fairUseUsd(env);
   const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
   const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 14);
   // Ten, so an office or a household sharing one connection all get theirs,
@@ -467,4 +470,4 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
-module.exports = { create, connection };
+module.exports = { create, connection, fairUseUsd };

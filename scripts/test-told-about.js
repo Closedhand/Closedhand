@@ -251,6 +251,8 @@ test("each turn reads what it made as it is now: sent, replied to, moved, gone, 
   assert.equal(await made.nowLine("u2", { db }), "", "nothing made, nothing said");
   assert.match(read("lib/engine.js"), /require\("\.\/made"\)\.nowLine\(userId, \{ tz: require\("\.\/time-context"\)\.personZone\(ctx\.store\) \}\)/, "the chat sees it every turn");
   assert.match(read("lib/pulse.js"), /\$\{madeNow \? `\\n\\n\$\{madeNow\}` : ""\}/, "and so does Pulse");
-  assert.match(read("webapp/server.js"), /"person_links", "person_names", "made_items",/);
+  // With the account, and with a wipe of all data: both empty every table that has a user_id but the ones a wipe keeps.
+  assert.ok(!require("../webapp/account-wipe").KEPT_ON_WIPE.has("made_items"));
+  assert.match(read("migrations/090_made_items.sql"), /user_id uuid NOT NULL/);
   assert.match(read("migrations/090_made_items.sql"), /PRIMARY KEY \(user_id, kind, ref\)/);
 });

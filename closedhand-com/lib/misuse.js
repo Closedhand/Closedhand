@@ -13,7 +13,7 @@ const PERSON_KEY = /^Closedhand ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}
 const usd = n => '$' + Number(n || 0).toFixed(2);
 
 function create({ db, env = process.env, includedAi, request = fetch }) {
-  const fairUse = Number(env.INCLUDED_AI_FAIR_USE_USD || 15);
+  const fairUse = require('./included-ai').fairUseUsd(env);
   const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
   const label = () => includedAi?.label || 'NEAR AI';
   const perConnection = Number(env.INCLUDED_AI_PER_CONNECTION || 10);
