@@ -5850,7 +5850,7 @@ app.post("/api/automations/:id/run", async (req, res) => {
 app.post("/api/automations/:id/pause", async (req, res) => {
   try {
     const userId = getUserIdFromRequest(req);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("automations")
       .update({ status: "paused", updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
@@ -5873,7 +5873,7 @@ app.post("/api/automations/:id/resume", async (req, res) => {
     const { data: was } = await supabase.from("automations").select("trigger_type, run_once, expires_at").eq("id", req.params.id).eq("user_id", userId).maybeSingle();
     const more = was && was.trigger_type === "event" && was.run_once && (!was.expires_at || Date.parse(was.expires_at) <= Date.now())
       ? { expires_at: new Date(Date.now() + 30 * 86400000).toISOString() } : {};
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("automations")
       .update({ status: "active", ...more, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
@@ -8150,8 +8150,6 @@ async function syncUserFiles(userId) {
         // Cloud file changed → push to local
         console.log(`[Sync] Cloud changed, downloading: ${sync.cloudPath} → ${sync.localPath}`);
         const destLocal = sync.localPath;
-        const name = destLocal.split("/").pop();
-        const localDir = destLocal.substring(0, destLocal.length - name.length);
         try {
           const fileData = await sandboxFetch(info, "POST", "/files/download", { path: sync.cloudPath });
           const content = fileData.content || fileData.raw || "";
@@ -8682,13 +8680,6 @@ app.get("/api/bridge/files", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   try {
     const dirPath = req.query.path || "~";
-    // Use the internal bridge request relay (same process, same server)
-    const fakeReq = { body: { userId, action: "files.list", params: { path: dirPath }, secret: process.env.BRIDGE_RELAY_SECRET || process.env.COOKIE_SECRET } };
-    const fakeRes = {
-      _status: 200, _body: null,
-      status(s) { this._status = s; return this; },
-      json(d) { this._body = d; },
-    };
     // Find the WS and send request directly using the bridge request handler logic
     const ws = bridgeConnections.get("user:" + userId);
     if (!ws || ws.readyState !== 1) {
@@ -9488,7 +9479,7 @@ wss.on("connection", (ws) => {
             // Reject any pending callbacks on the old connection
             if (existingWs._pendingCallbacks && existingWs._pendingCallbacks.size > 0) {
               console.log(`[Bridge] Rejecting ${existingWs._pendingCallbacks.size} pending callbacks on stale connection`);
-              for (const [id, pending] of existingWs._pendingCallbacks) {
+              for (const [, pending] of existingWs._pendingCallbacks) {
                 clearTimeout(pending.timer);
                 pending.reject(new Error("Bridge reconnected, old connection replaced"));
               }
@@ -9544,7 +9535,7 @@ wss.on("connection", (ws) => {
     // Reject any pending callbacks so relay requests fail fast instead of waiting 30s
     if (ws._pendingCallbacks && ws._pendingCallbacks.size > 0) {
       console.log(`[Bridge] Rejecting ${ws._pendingCallbacks.size} pending callbacks due to disconnect`);
-      for (const [id, pending] of ws._pendingCallbacks) {
+      for (const [, pending] of ws._pendingCallbacks) {
         clearTimeout(pending.timer);
         pending.reject(new Error("Bridge disconnected while request was pending"));
       }
