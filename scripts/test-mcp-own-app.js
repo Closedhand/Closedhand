@@ -16,7 +16,7 @@ const {createCatalogue}=require('../webapp/connection-catalogue');
 
 const PERSONAL='https://example-name.closedhand.ai';
 const CALLBACK=PERSONAL+'/auth/mcp-oauth/callback';
-const catalogueWith=(personal,services={slack:{name:'Slack'}})=>createCatalogue({db:null,services,userId:()=>'person-1',baseUrl:'http://localhost:3000',personalUrl:async()=>personal});
+const catalogueWith=(personal,services={slack:{name:'Slack'}},fetchFn)=>createCatalogue({db:null,services,userId:()=>'person-1',baseUrl:'http://localhost:3000',personalUrl:async()=>personal,fetchFn});
 
 // A server like Slack's: it names its sign-in pages and permissions, has no
 // way for an app to register itself, and hands out a token only to the app
@@ -80,7 +80,7 @@ function webapp(catalogue){
   });
   const ask=async(body,elsewhere=false)=>{let reply;await routes.connect({body,elsewhere},{json(v){reply=v;return this;},status(){return this;}});return reply;};
   const comeBack=async query=>{let to;await routes['/auth/mcp-oauth/callback']({query},{redirect(v){to=decodeURIComponent(v);}});return to;};
-  return {ask,comeBack,open:routes.open,saved,oauthStates};
+  return {ask,comeBack,open:routes.open,routes,saved,oauthStates};
 }
 
 test('a server that turns Closedhand away is connected through an app the person made',async()=>{
@@ -180,20 +180,62 @@ test('the callback address: this computer for a sign-in Closedhand registered, t
   assert.equal(await unclaimed.mcpCallback({installed_via:'own_app'}),'http://localhost:3000/auth/mcp-oauth/callback','with no personal URL yet, this computer');
 });
 
-test('Slack’s server gets Slack’s steps and a manifest with the callback address and permissions in it',async()=>{
-  const catalogue=catalogueWith(PERSONAL);
-  const slack=await catalogue.ownApp('https://mcp.slack.com/mcp',{scopes_supported:['chat:write','search:read.public','not a scope',7]});
+test('Slack’s app is made by Closedhand from a token: its callback address, permissions and MCP server in one call',async()=>{
+  const asked=[];
+  let answer={ok:true,app_id:'A0FIXTURE',credentials:{client_id:'1111.2222',client_secret:'made-secret',verification_token:'v',signing_secret:'s'}};
+  const fetchFn=async(url,init)=>{asked.push({url,init});return {status:200,json:async()=>answer};};
+  const catalogue=catalogueWith(PERSONAL,undefined,fetchFn);
+  const slack=await catalogue.ownApp('https://mcp.slack.com/mcp',{scopes_supported:['chat:write']});
   assert.equal(slack.name,'Slack');
-  assert.equal(slack.steps.length,4);
-  assert.match(slack.guide,/^https:\/\/api\.slack\.com\/apps/);
-  assert.equal(slack.secretOptional,false);
-  assert.deepEqual(JSON.parse(slack.copy.text),{display_information:{name:'Closedhand'},oauth_config:{redirect_urls:[CALLBACK],scopes:{user:['chat:write','search:read.public']}}},
-    'only well-formed permissions from the server go into the manifest');
-  assert.deepEqual(slack.scopes,[],'the manifest already lists them');
-  // Any other server: the same form, by its address, with nothing invented.
+  assert.equal(slack.steps.length,3);
+  assert.equal(slack.guide,'https://api.slack.com/apps','the app list, where its configuration tokens are made');
+  assert.equal(slack.token,'Configuration token');
+  assert.deepEqual([slack.redirectUri,slack.scopes],[null,[]],'nothing to copy across: Closedhand writes both into the app');
+
+  const made=await catalogue.createOwnApp('https://mcp.slack.com/mcp','  xoxe.xoxp-1-fixture  ',{scopes_supported:['chat:write','search:read.public','not a scope',7]});
+  assert.deepEqual(made,{clientId:'1111.2222',clientSecret:'made-secret'});
+  assert.equal(asked.length,1);
+  assert.equal(asked[0].url,'https://slack.com/api/apps.manifest.create');
+  const form=new URLSearchParams(asked[0].init.body);
+  assert.equal(form.get('token'),'xoxe.xoxp-1-fixture');
+  assert.deepEqual(JSON.parse(form.get('manifest')),{display_information:{name:'Closedhand'},oauth_config:{redirect_urls:[CALLBACK],scopes:{user:['chat:write','search:read.public']}},settings:{is_mcp_enabled:true}},
+    'the personal URL to come back to, only well-formed permissions from the server, and the MCP server on');
+
+  // What Slack refuses is said in words the person can act on.
+  answer={ok:false,error:'invalid_auth'};
+  await assert.rejects(catalogue.createOwnApp('https://mcp.slack.com/mcp','xoxe.xoxp-1-old',{}),{plain:true,message:'Slack didn’t take that token. Generate a new one and paste it here.'});
+  answer={ok:false,error:'invalid_manifest',errors:[{pointer:'/settings',message:'fixture'}]};
+  await assert.rejects(catalogue.createOwnApp('https://mcp.slack.com/mcp','xoxe.xoxp-1-fixture',{}),{plain:true,message:'Slack couldn’t make the app. Try again.'});
+  await assert.rejects(catalogue.createOwnApp('https://mcp.slack.com/mcp','',{}),{plain:true});
+  await assert.rejects(catalogue.createOwnApp('https://mcp.example-crm.test/v1','token',{}),/no way for Closedhand to make the app/);
+  assert.equal(asked.length,3,'no call to Slack without a token, nor for another service');
+
+  // Any other server: the form for an app's client ID and secret, by its
+  // address, with nothing invented.
   const other=await catalogue.ownApp('https://mcp.example-crm.test/v1',{scopes_supported:['crm.read']});
   assert.equal(other.name,'example-crm.test');
-  assert.deepEqual([other.steps,other.copy,other.guide,other.scopes,other.redirectUri],[[],null,null,['crm.read'],CALLBACK]);
+  assert.deepEqual([other.steps,other.token,other.guide,other.scopes,other.redirectUri],[[],null,null,['crm.read'],CALLBACK]);
+});
+
+test('a token pasted in the form makes the app, and the sign-in starts with it',async()=>{
+  const server=await standIn(),real=catalogueWith(PERSONAL),tokens=[];
+  const app=webapp({...real,createOwnApp:async(url,token,published)=>{tokens.push([url,token,published&&published.scopes_supported]);return {clientId:'app-1',clientSecret:'app-secret'};}});
+  try{
+    const started=await app.ask({input:server.url,app_token:'xoxe.xoxp-1-fixture'});
+    assert.deepEqual(tokens,[[server.url,'xoxe.xoxp-1-fixture',['notes:read','notes:write']]],'with the permissions the server names');
+    const signIn=new URL(started.redirect_url);
+    assert.equal(signIn.searchParams.get('client_id'),'app-1');
+    assert.equal(signIn.searchParams.get('redirect_uri'),CALLBACK);
+    server.state.challenge=signIn.searchParams.get('code_challenge');
+    assert.match(await app.comeBack({code:'code-1',state:signIn.searchParams.get('state')}),/mcp_connected=Notes/);
+    const {row}=app.saved[0];
+    assert.equal(row.installed_via,'own_app');
+    assert.equal(JSON.stringify(row).includes('xoxe.xoxp-1-fixture'),false,'the token is kept nowhere');
+    // A refusal from the company comes back as the form's message.
+    const refused=webapp({...real,createOwnApp:async()=>{throw Object.assign(new Error('Slack didn’t take that token. Generate a new one and paste it here.'),{plain:true});}});
+    let code,reply;await refused.routes.connect({body:{input:server.url,app_token:'old'}},{status(c){code=c;return this;},json(v){reply=v;return this;}});
+    assert.equal(code,400);assert.equal(reply.error,'Slack didn’t take that token. Generate a new one and paste it here.');
+  }finally{await server.close();}
 });
 
 test('the dashboard has one own-app form, and the paste box opens it instead of fields of its own',()=>{

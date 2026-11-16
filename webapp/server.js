@@ -2420,7 +2420,7 @@ async function sealStoredMcps() {
 }
 
 // The one connect handler. Body: { input | server_url, name?, auth_token?,
-// header_name?, client_id?, client_secret?, accept_warnings? }.
+// header_name?, client_id?, client_secret?, app_token?, accept_warnings? }.
 async function connectMcpHandler(req, res) {
   try {
     const userId = getUserIdFromRequest(req);
@@ -2475,8 +2475,20 @@ async function connectMcpHandler(req, res) {
         row.auth_token = String(body.auth_token).trim();
         row.auth_type = mcpAuthTypeFor(body.header_name);
       }
-      // An app the person made with the service, from the own-app form.
-      if (body.client_id) {
+      // The person's own app with the service, from the own-app form: one
+      // Closedhand makes in their account with the token the service handed
+      // them (used here once, never kept), or one they made themselves.
+      if (body.app_token) {
+        try {
+          const made = await connectionCatalogue.createOwnApp(row.server_url, String(body.app_token), await mcpClient.oauthMetadata(row.server_url));
+          row.oauth_client_id = made.clientId;
+          row.oauth_client_secret = made.clientSecret;
+        } catch (e) {
+          if (!e.plain) console.error("[own app] could not make the app:", e.message);
+          return res.status(400).json({ error: e.plain ? e.message : "Could not make the app. Try again." });
+        }
+        row.installed_via = "own_app";
+      } else if (body.client_id) {
         row.oauth_client_id = String(body.client_id).trim();
         row.oauth_client_secret = body.client_secret ? String(body.client_secret).trim() : null;
         row.installed_via = "own_app";

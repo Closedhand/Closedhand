@@ -179,7 +179,7 @@
   // Something to copy across to the service: what it is, the text and Copy.
   function copyBox(label,text,status){
     const what=label.toLowerCase();
-    const wrap=el('div','catalogue-callback'),field=el('div','catalogue-copybox'+(text.includes('\n')?' block':''));
+    const wrap=el('div','catalogue-callback'),field=el('div','catalogue-copybox');
     const copy=el('button','catalogue-copy-btn');copy.type='button';copy.title='Copy';
     const idle=()=>{copy.classList.remove('done');copy.innerHTML=COPY_ICON;copy.setAttribute('aria-label','Copy '+what);};
     idle();
@@ -198,14 +198,14 @@
   // connection, however it then signs in: `save` keeps what was typed and
   // hands back where the sign-in starts, or nothing once it has connected.
   // A service may ask for something of its own first (`fields`: a store's
-  // address) or take a key the person already holds in the app's place
-  // (`instead`).
+  // address), take a key the person already holds in the app's place
+  // (`instead`), or take only the token Closedhand makes the app with
+  // (`token`, its label).
   function ownAppForm(s,save){
     const {box,title}=openSetup(s);
-    // A manifest carries the callback address inside it; a service that signs
-    // in with the app's ID and secret alone has none.
-    const copy=s.copy||(s.redirectUri?{label:'Callback address',text:s.redirectUri}:null);
-    const help=el('p','',copy&&!s.copy?s.instruction+' Add the callback address below, then paste its client ID and secret here.':s.instruction);
+    // A service that signs in with the app's ID and secret alone, or whose
+    // app Closedhand makes, has no callback address to copy.
+    const help=el('p','',s.redirectUri?s.instruction+' Add the callback address below, then paste its client ID and secret here.':s.instruction);
     const steps=el('ol','catalogue-steps');(s.steps||[]).forEach(t=>steps.append(el('li','',t)));
     const link=el('a','catalogue-deep',s.linkText||'Open '+s.name+' settings');link.href=s.guide;link.target='_blank';link.rel='noopener noreferrer';
     const form=el('form','catalogue-form');
@@ -216,14 +216,15 @@
       wrap.append(input);return {wrap,input};
     };
     const own=(s.fields||[]).map(f=>{const made=field(f.label,f.name);made.input.placeholder=f.placeholder||'';return made;});
-    const id=field('Client ID','clientId'),secret=field(s.secretOptional?'Client secret, if the app has one':'Client secret','clientSecret',true);
-    secret.input.required=!s.secretOptional;
+    const token=s.token?field(s.token,'appToken',true):null;
+    const id=token?null:field('Client ID','clientId'),secret=token?null:field(s.secretOptional?'Client secret, if the app has one':'Client secret','clientSecret',true);
+    if(secret)secret.input.required=!s.secretOptional;
     const status=el('p','catalogue-status');status.setAttribute('role','status');
     const submit=el('button','catalogue-action',s.submitText||'Save and sign in');submit.type='submit';
     form.append(...own.map(f=>f.wrap));
-    if(copy)form.append(copyBox(copy.label,copy.text,status));
+    if(s.redirectUri)form.append(copyBox('Callback address',s.redirectUri,status));
     if(s.scopes.length){const permissions=el('p','','Enable these permissions in the application: '+s.scopes.join(', ')+'.');form.append(permissions);}
-    form.append(id.wrap,secret.wrap);
+    form.append(...(token?[token.wrap]:[id.wrap,secret.wrap]));
     let instead=null;
     if(s.instead){
       instead=field(s.instead.label,s.instead.name,true);instead.input.required=false;
@@ -235,8 +236,9 @@
     form.onsubmit=async event=>{
       event.preventDefault();submit.disabled=true;status.textContent='Saving…';
       try{
-        const next=await save(Object.fromEntries([...own,id,secret,...(instead?[instead]:[])].map(f=>[f.input.name,f.input.value.trim()])));
-        secret.input.value='';if(instead)instead.input.value='';
+        const typed=[...own,token,id,secret,instead].filter(Boolean);
+        const next=await save(Object.fromEntries(typed.map(f=>[f.input.name,f.input.value.trim()])));
+        typed.filter(f=>f.input.type==='password').forEach(f=>{f.input.value='';});
         if(next)(window.top||window).location.href=next;
       }catch(e){
         submit.disabled=false;status.textContent='';
@@ -278,8 +280,9 @@
   // the sign-in starts at the server with the app's client ID.
   window.openOwnApp=function(app){
     const input=byId('mcp-url-input');input.value='';window.mcpGrowInput(input);
-    ownAppForm(app,async({clientId,clientSecret})=>{
-      const response=await fetch('/api/mcps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:app.serverUrl,client_id:clientId,client_secret:clientSecret})});
+    ownAppForm(app,async({clientId,clientSecret,appToken})=>{
+      const response=await fetch('/api/mcps',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(appToken?{input:app.serverUrl,app_token:appToken}:{input:app.serverUrl,client_id:clientId,client_secret:clientSecret})});
       const data=await response.json().catch(()=>({}));
       if(data.auth_required&&data.redirect_url)return data.redirect_url;
       if(data.connected&&data.connected.length)return '/dashboard?mcp_connected='+encodeURIComponent(data.connected[0].name);
