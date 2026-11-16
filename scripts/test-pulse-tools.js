@@ -80,3 +80,32 @@ test('a tool Pulse asks for and cannot use is turned down with what to do instea
   assert.match(src, /pulseToolScope\(getPulseTools\(store\), \(name\) => mcpToolReadOnly\(userId, name\)\)/);
   assert.match(src, /say so in your message and they can ask for it in chat/);
 });
+
+// A tool renamed or removed dropped out of these lists without a sound: the
+// read-only list named list_datasets (the tool is dataset_list) and three
+// Google Calendar tools long gone, and "ask first" held two names no tool had,
+// so deleting a calendar event went unasked.
+test('every tool named in a safety or read-only list is a real tool', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const real = new Set(INTERNAL_TOOLS.map((t) => t.name));
+  const lists = {
+    'lib/confirmation.js': /ACTIONS_NEEDING_CONFIRMATION = \[([\s\S]*?)\];/g,
+    'lib/read-only-tools.js': /new Set\(\[([\s\S]*?)\]\)/g,
+    'lib/task-tools.js': /new Set\(\[([\s\S]*?)\]\)/g,
+    'lib/send-gate.js': /new Set\(\[([\s\S]*?)\]\)/g,
+    'lib/recipient-guard.js': /new Set\(\[([\s\S]*?)\]\)/g,
+    'lib/self-send.js': /new Set\(\[([\s\S]*?)\]\)/g,
+    'lib/pulse-tools.js': /new Set\(\[([\s\S]*?)\]\)/g,
+  };
+  let seen = 0;
+  for (const [file, list] of Object.entries(lists)) {
+    const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    for (const block of src.matchAll(list)) for (const m of block[1].matchAll(/["']([a-z][a-z0-9]*(?:_[a-z0-9]+)+)["']/g)) {
+      seen++;
+      assert.ok(real.has(m[1]), `${file} names ${m[1]}, which is not a tool`);
+    }
+  }
+  assert.ok(seen > 80, 'the lists were found');
+  const asks = fs.readFileSync(path.join(__dirname, '..', 'lib/confirmation.js'), 'utf8').match(/ACTIONS_NEEDING_CONFIRMATION = \[([\s\S]*?)\];/)[1];
+  for (const name of [...real].filter((n) => /_delete_event$/.test(n))) assert.ok(asks.includes(`"${name}"`), `${name} asks first`);
+});
