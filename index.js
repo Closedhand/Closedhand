@@ -291,7 +291,6 @@ async function main() {
   console.log("User data: Supabase");
   console.log("Waiting for Telegram + WhatsApp messages...");
 
-
   // Notice the lid closing: a frozen process wakes with a jumped clock.
   require("./lib/sleep-watch").start();
 
@@ -302,18 +301,6 @@ async function main() {
       .catch(e => console.error("[Resume] startup pass failed:", e.message));
   }, 12000);
 
-  // Clean up stale automation runs from before this deploy
-  try {
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
-    ctx.supabase
-      .from("automation_runs")
-      .update({ status: "failed", error: "Stale after redeploy", completed_at: new Date().toISOString() })
-      .in("status", ["running", "pending"])
-      .lt("started_at", cutoff)
-      .then(({ data }) => {
-        if (data && data.length > 0) console.log(`[Startup] Cleaned up ${data.length} stale automation runs`);
-      });
-  } catch (e) { /* non-critical */ }
 }
 
 main();
