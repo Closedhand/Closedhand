@@ -135,7 +135,6 @@ button, input, textarea, select { font-family: var(--font-ui); }
 /* The header's link to the person's own dashboard is drawn as the main
    actions are, and as closedhand.com's header link (the ink rule below). */
 .claw-swap { margin: 0 0.12em; }
-.header-center .auth-row { font-size: var(--ui-small); color: var(--ui-muted); }
 body.dashboard-page { display: block; background: var(--bg); color: var(--ui-text); }
 .dashboard-page .dashboard-container { padding: 1.75rem var(--space-page) 4rem; }
 .dashboard-container > .card { padding: 0; border: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; }
@@ -175,10 +174,7 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .dashboard-container .settings-group > div:not(.settings-group-header):not(.settings-group-body) { padding: var(--space-card) !important; }
 /* A section's one muted line saying what it is for, the same on every tab. */
 .dashboard-container .section-desc { color: var(--ui-muted); font-size: var(--ui-body); line-height: 1.65; max-width: 70ch; text-wrap: pretty; }
-.dashboard-container .conn-card { padding: 1.125rem 1.25rem; }
-.dashboard-container .mc-metrics { gap: 1rem; margin-bottom: 2rem; }
 .dashboard-container .mc-metric { padding: 1.25rem; }
-.dashboard-container .mc-metric-value { margin-bottom: 0.625rem; }
 .dashboard-container .agent-tpl-grid { gap: 1rem; }
 .dashboard-container .auto-template { padding: 1.25rem; }
 .brain-toolbar { display: flex; gap: 1rem; margin-bottom: 1.25rem; align-items: center; flex-wrap: wrap; }
@@ -203,7 +199,6 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .input-textarea-wrap { padding: 1.75rem 1.75rem 1.25rem; }
 .input-toolbar { padding: 1rem 1.5rem 1.25rem; }
 .suggestions { margin-top: 1.5rem; gap: 0.75rem; }
-.hero-bridge-prompt { margin: 1.75rem 0 1rem; flex-wrap: wrap; gap: 0.75rem; }
 .features-page { padding: 3rem var(--space-page) 5rem; }
 .feat-row { gap: 2rem; margin-bottom: 5rem; }
 .feat-card { padding: 2.5rem; }
@@ -211,13 +206,11 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .feat-mini { padding: 2.5rem 2rem; }
 :is(.feat-card-title,.feat-mini-title,.feat-heading) { margin-bottom: 1rem; text-wrap: balance; }
 :is(.feat-card-desc,.feat-mini-desc,.feat-sub) { text-wrap: pretty; }
-.feat-pills { gap: 1rem; }
 .chat-messages { gap: 1.25rem; }
 .library-view { top: var(--workspace-top, 7.5rem); }
 .rag-container { padding: 2.25rem; }
 .computers-view { padding-top: 1.5rem; }
 .mon-grid { gap: 1rem; padding: 1.5rem; }
-.rag-header { margin-bottom: 1.5rem; }
 .rag-query-box { gap: 0.75rem; margin-bottom: 1.5rem; }
 :is(.rag-source,.rag-doc,.rag-result) { padding: 1.125rem 1.25rem; margin-bottom: 0.75rem; }
 .rag-empty-panel p { margin-bottom: 1.5rem; text-wrap: balance; }
@@ -384,9 +377,6 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
   .preference-row { gap: 0.75rem; }
 }
 #rules-section .settings-group-body > label { font-size: var(--ui-body) !important; padding-bottom: 1.25rem !important; margin-bottom: 1.25rem !important; }
-.approved-sites-title { font-size: var(--ui-body); color: var(--ui-text); }
-.approved-sites-desc { font-size: var(--ui-body); color: var(--ui-muted); line-height: 1.65; margin: 0.5rem 0 0.75rem; max-width: 65ch; }
-.saved-preferences-title { margin: 1.5rem 0 0.75rem; font-size: var(--ui-body); font-weight: 600; }
 #new-rule-input { min-width: 0; min-height: 2.75rem; }
 /* The label over a group inside a section, one look across the dashboard's
    tabs: connection-catalogue.css .add-sub's ("Apps", "Connect anything").
@@ -597,7 +587,6 @@ input[type=search]::-webkit-search-cancel-button {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 6l12 12M18 6L6 18' stroke='black' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 input[type=search]::-webkit-search-cancel-button:hover { background-color: var(--fg); }
-
 
 /* A card's row that opens its page (a project's, a page's): one link with a
    chevron saying so; whatever else the card holds sits outside it, so no

@@ -77,7 +77,6 @@ button, input, textarea, select { font-family: var(--font-ui); }
 .dash-slide iframe { background: var(--raised); }
 .header-right a, .page-tab { font-size: var(--ui-label); }
 .claw-swap { margin: 0 0.12em; }
-.header-center .auth-row { font-size: var(--ui-small); color: var(--ui-muted); }
 body.dashboard-page { display: block; background: var(--bg); color: var(--ui-text); }
 .dashboard-page .dashboard-container { padding: 1.75rem var(--space-page) 4rem; }
 .dashboard-container > .card { padding: 0; border: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; }
@@ -105,10 +104,7 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .dashboard-container .settings-group-body { padding: var(--space-card); }
 .dashboard-container .settings-group > div:not(.settings-group-header):not(.settings-group-body) { padding: var(--space-card) !important; }
 .dashboard-container .section-desc { line-height: 1.65; max-width: 70ch; text-wrap: pretty; }
-.dashboard-container .conn-card { padding: 1.125rem 1.25rem; }
-.dashboard-container .mc-metrics { gap: 1rem; margin-bottom: 2rem; }
 .dashboard-container .mc-metric { padding: 1.25rem; }
-.dashboard-container .mc-metric-value { margin-bottom: .625rem; }
 .dashboard-container .agent-tpl-grid { gap: 1rem; }
 .dashboard-container .auto-template { padding: 1.25rem !important; }
 .brain-toolbar { display: flex; gap: 1rem; margin-bottom: 1.25rem; align-items: center; flex-wrap: wrap; }
@@ -118,11 +114,7 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .dashboard-container .auto-card-detail-inner { padding: 0 1.25rem 1.25rem; }
 .dashboard-container .mc-section-label { margin-top: 2rem; margin-bottom: 1rem; }
 .dashboard-container .mcp-hero { padding: 3rem 2rem; }
-.mcp-logos { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: center; justify-items: center; gap: 1.5rem; max-width: 22.5rem; margin: 0 auto 2.25rem; }
-.mcp-copy { max-width: 56ch; margin: 0 auto 2rem; text-align: center; }
-.mcp-title { font-size: 1.0625rem; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; text-wrap: balance; }
 .mcp-description { font-size: .875rem; color: var(--ui-muted); line-height: 1.65; margin: 1rem 0 .75rem; text-wrap: balance; }
-.mcp-security { font-size: .8125rem; color: var(--ui-muted); line-height: 1.6; margin: 0; text-wrap: balance; }
 .dashboard-container .mcp-pill-inner { padding: 1.25rem; gap: 1rem; }
 #mcp-url-input { min-width: 0; min-height: 3em; }
 .mcp-browse { display: flex; justify-content: center; flex-wrap: wrap; gap: .75rem 1.5rem; margin-top: 1.25rem; }
@@ -134,7 +126,6 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .input-textarea-wrap { padding: 1.75rem 1.75rem 1.25rem; }
 .input-toolbar { padding: 1rem 1.5rem 1.25rem; }
 .suggestions { margin-top: 1.5rem; gap: .75rem; }
-.hero-bridge-prompt { margin: 1.75rem 0 1rem; flex-wrap: wrap; gap: .75rem; }
 .features-page { padding: 3rem var(--space-page) 5rem; }
 .feat-row { gap: 2rem; margin-bottom: 5rem; }
 .feat-card { padding: 2.5rem; }
@@ -142,13 +133,11 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .feat-mini { padding: 2.5rem 2rem; }
 :is(.feat-card-title,.feat-mini-title,.feat-heading) { margin-bottom: 1rem; text-wrap: balance; }
 :is(.feat-card-desc,.feat-mini-desc,.feat-sub) { text-wrap: pretty; }
-.feat-pills { gap: 1rem; }
 .chat-messages { gap: 1.25rem; }
 .library-view { top: var(--workspace-top, 7.5rem); }
 .rag-container { padding: 2.25rem; }
 .computers-view { padding-top: 1.5rem; }
 .mon-grid { gap: 1rem; padding: 1.5rem; }
-.rag-header { margin-bottom: 1.5rem; }
 .rag-query-box { gap: .75rem; margin-bottom: 1.5rem; }
 :is(.rag-source,.rag-doc,.rag-result) { padding: 1.125rem 1.25rem; margin-bottom: .75rem; }
 .rag-empty-panel p { margin-bottom: 1.5rem; text-wrap: balance; }
@@ -214,7 +203,6 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
   .int-card .int-badge { grid-column: 2; grid-row: 2; }
   .int-card .int-chevron { grid-column: 3; grid-row: 1 / span 2; }
   .dashboard-container .mcp-hero { padding: 2rem 1.25rem; }
-  .mcp-logos { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 15rem; margin-bottom: 1.75rem; }
   .dashboard-container .tab-bar { gap: 2px; }
   .dashboard-container .tab { padding: .75rem .5rem; }
   .setup-page header.top { flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
@@ -226,11 +214,7 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 #phone-title { font-weight: 600; }
 #phone-desc { margin: .375rem 0 0; color: var(--ui-muted); line-height: 1.6; }
 #phone-block > div:last-child { padding: var(--space-card); }
-#phone-block .dashboard-save { margin: 1.5rem 0 0; }
 #phone-block a, .platform-pills a, .notification-retry { color: var(--ui-accent, var(--accent)); text-underline-offset: .1875rem; }
-.dashboard-link-details { flex: 1; min-width: min(15rem, 100%); color: var(--ui-muted); line-height: 1.65; }
-.dashboard-link-details p { margin: .75rem 0 0; }
-.dashboard-link-details a { display: inline-block; margin-bottom: .625rem; }
 #phone-live { margin-top: 1.5rem !important; }
 #platform-pills { display: block; }
 .notification-help, #platform-pills .pulse-no-platforms { margin: 0; color: var(--ui-muted); font-size: var(--ui-body); line-height: 1.65; }
@@ -267,10 +251,7 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 #tab-settings .section-desc { color: var(--ui-muted); font-size: var(--ui-body); }
 #rules-section .settings-group-body > label { font-size: var(--ui-body) !important; padding-bottom: 1.25rem !important; margin-bottom: 1.25rem !important; }
 #rules-section .settings-group-body > div:has(> #allowed-hosts) { padding-bottom: 1.25rem !important; margin-bottom: 0 !important; }
-.approved-sites-title { font-size: var(--ui-body); color: var(--ui-text); }
-.approved-sites-desc { font-size: var(--ui-body); color: var(--ui-muted); line-height: 1.65; margin: .5rem 0 .75rem; max-width: 65ch; }
 #allowed-hosts { padding: .875rem 1rem; background: var(--ui-hover, var(--hover-bg)); border-radius: .5rem; }
-.saved-preferences-title { margin: 1.5rem 0 .75rem; font-size: var(--ui-body); font-weight: 600; }
 #allowed-hosts > span { color: var(--ui-muted) !important; font-size: var(--ui-label) !important; }
 #new-rule-input { min-width: 0; min-height: 2.75rem; font-size: var(--ui-body) !important; }
 @media (max-width: 520px) {
@@ -331,7 +312,6 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
   .site-head nav a.gh span, .site-head nav a[href="/privacy"], .site-head nav a[href="/terms"] { display: none; }
 }
 @media (max-width: 360px) { .site-head nav a.gh { display: none; } }
-
 
 /* Light or dark (theme.js): the sun for light, the moon for dark, and the
    two in one for matching the device, drawn with the fist's brush

@@ -132,4 +132,3 @@
 .insights-main .ins-section + .card { margin-top: 2rem; }
 .ins-section .ins-note { margin: 0 0 1rem; font-size: .8125rem; color: var(--dim); }
 .ins-section h2 + .tiles { margin-top: 1rem; }
-.message-from { font-size: .75rem; color: var(--dim); }

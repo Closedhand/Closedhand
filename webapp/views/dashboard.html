@@ -62,7 +62,6 @@
       padding: 0.375rem 0.875rem;
     }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-    @keyframes graphPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.7; } }
     /* Graph hover: CSS-driven transitions for smooth dimming/highlighting */
     #brain-graph g { transition: opacity 250ms ease; }
     #brain-graph line { transition: stroke-opacity 250ms ease; }
@@ -266,7 +265,6 @@
     /* Saved, but its provider stopped accepting the sign-in. */
     .conn-again { margin: 0 0 0.625rem; font-size: 0.8125rem; line-height: 1.5; color: rgba(var(--fg-rgb),0.75); }
     .usage-prices { margin-top: 1.25rem; }
-    .usage-price-line { font-size: 0.8125rem; color: var(--muted); margin: 0.5rem 0 0; }
     .usage-price-row { display: flex; align-items: center; gap: 0.5rem 1rem; flex-wrap: wrap; padding: 0.5rem 0; border-top: 1px solid rgba(var(--fg-rgb),0.08); font-size: 0.8125rem; }
     .usage-price-row .m { min-width: 8.75rem; color: var(--fg); font-weight: 500; }
     .usage-price-row label { color: var(--muted); display: inline-flex; align-items: center; gap: 0.25rem; }
@@ -531,92 +529,6 @@
     .plan-hint { margin: 0.625rem 0 0; font-size: 0.8125rem; color: var(--muted); line-height: 1.5; }
     .composer-actions { display: flex; justify-content: flex-end; align-items: center; gap: 1.5rem; margin-top: 1.375rem; }
 
-    .modal-steps {
-      margin: 0.875rem 0;
-      padding: 0;
-      list-style: none;
-      counter-reset: step;
-    }
-
-    .modal-steps li {
-      counter-increment: step;
-      font-size: 0.875rem;
-      color: var(--muted);
-      padding: 0.3125rem 0 0.3125rem 1.75rem;
-      position: relative;
-      line-height: 1.4;
-    }
-
-    .modal-steps li::before {
-      content: counter(step);
-      position: absolute;
-      left: 0;
-      top: 0.3125rem;
-      width: 1.25rem;
-      height: 1.25rem;
-      border-radius: 50%;
-      background: rgba(var(--fg-rgb),0.1);
-      color: var(--muted);
-      font-size: 0.8125rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal-steps code {
-      background: rgba(var(--fg-rgb),0.1);
-      padding: 1px 0.3125rem;
-      border-radius: 0.25rem;
-      font-size: 0.8125rem;
-      color: var(--fg);
-    }
-
-    .modal-copy-field {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin-top: 0.375rem;
-      padding: 0.375rem 0.625rem;
-      background: var(--raised);
-      border: 1px solid rgba(var(--fg-rgb),0.16);
-      border-radius: 0.375rem;
-      cursor: pointer;
-      transition: border-color 0.12s;
-    }
-
-    .modal-copy-field:hover {
-      border-color: rgba(var(--fg-rgb),0.4);
-    }
-
-    .modal-copy-field code {
-      font-size: 0.8125rem;
-      color: var(--fg);
-      background: none;
-      padding: 0;
-      word-break: break-all;
-    }
-
-    .modal-copy-hint {
-      font-size: 0.8125rem;
-      color: rgba(var(--fg-rgb),0.6);
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .modal-link {
-      display: inline-block;
-      font-size: 0.875rem;
-      color: var(--accent);
-      text-decoration: none;
-      margin-bottom: 0.875rem;
-    }
-
-    .modal-link:hover {
-      text-decoration: underline;
-    }
-
     .modal-actions {
       display: flex;
       gap: 0.5rem;
@@ -635,7 +547,6 @@
       font-family: inherit;
     }
 
-
     .btn-modal-secondary {
       background: rgba(var(--fg-rgb),0.1);
       color: var(--muted);
@@ -651,19 +562,6 @@
       color: var(--danger);
       margin-top: 0.5rem;
       display: none;
-    }
-
-    .modal-divider {
-      border: none;
-      border-top: 1px solid rgba(var(--fg-rgb),0.16);
-      margin: 0.875rem 0;
-    }
-
-    .modal-or {
-      text-align: center;
-      font-size: 0.8125rem;
-      color: rgba(var(--fg-rgb),0.6);
-      margin: 0.625rem 0;
     }
 
     /* Tab navigation */
@@ -751,106 +649,6 @@
     #connected-accounts-list {
       border-radius: 0.625rem;
       overflow: hidden;
-    }
-
-    .conn-card {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 0.875rem;
-      background: var(--raised);
-      border-bottom: 1px solid var(--raised);
-      border-left: 0.1875rem solid transparent;
-      cursor: pointer;
-      transition: background 0.12s;
-      user-select: none;
-    }
-    .conn-card.connected { border-left: 0.1875rem solid var(--ok); }
-
-    .conn-card:last-child {
-      border-bottom: none;
-    }
-
-    .conn-card:hover {
-      background: var(--raised);
-    }
-
-    .conn-card:active {
-      background: var(--raised);
-    }
-
-    .conn-card img.conn-logo {
-      width: 1.75rem;
-      height: 1.75rem;
-      border-radius: 0.4375rem;
-      flex-shrink: 0;
-    }
-
-    .conn-summary {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .conn-summary .conn-name {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--fg);
-      line-height: 1.3;
-    }
-
-    .conn-summary .conn-subtitle {
-      font-size: 0.875rem;
-      color: var(--muted);
-      margin-top: 1px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .conn-chevron {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 1.5rem;
-      height: 1.5rem;
-      border-radius: 0.375rem;
-      background: rgba(var(--fg-rgb),0.1);
-      flex-shrink: 0;
-      transition: background 0.12s;
-    }
-
-    .conn-card:hover .conn-chevron {
-      background: rgba(var(--fg-rgb),0.16);
-    }
-    .conn-card:hover .conn-chevron .chevron-down {
-      border-color: rgba(var(--fg-rgb),0.64);
-    }
-
-    .conn-card.open .conn-chevron {
-      background: rgba(var(--fg-rgb),0.16);
-    }
-    .conn-card.open .conn-chevron .chevron-down {
-      transform: rotate(-135deg);
-      border-color: var(--muted);
-    }
-
-    /* Expanded detail panel */
-    .conn-drawer {
-      display: grid;
-      grid-template-rows: minmax(0, 0fr);
-      overflow: hidden;
-      transition: grid-template-rows 0.25s ease;
-      background: var(--raised);
-      border-bottom: 1px solid var(--raised);
-    }
-
-    .conn-drawer > * { min-height: 0; overflow: hidden; }
-    .conn-drawer.open {
-      grid-template-rows: minmax(0, 1fr);
-    }
-
-    .conn-drawer-inner {
-      padding: 0 0.875rem 0.875rem 3.375rem;
     }
 
     .conn-row {
@@ -1021,76 +819,10 @@
     }
 
     /* Schedule items */
-    .sched-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid rgba(var(--fg-rgb),0.1);
-    }
-    .sched-item:last-child { border-bottom: none; }
-    .sched-icon {
-      width: 2rem;
-      height: 2rem;
-      border-radius: 0.5rem;
-      background: rgba(var(--fg-rgb),0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1rem;
-      flex-shrink: 0;
-    }
-    .sched-info {
-      flex: 1;
-      min-width: 0;
-    }
     .sched-name {
       font-size: 0.875rem;
       font-weight: 600;
       color: var(--fg);
-    }
-    .sched-task {
-      font-size: 0.875rem;
-      color: var(--muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-    .sched-when {
-      font-size: 0.8125rem;
-      color: var(--accent);
-      margin-top: 0.1875rem;
-      display: flex;
-      align-items: center;
-      gap: 0.3125rem;
-    }
-    .sched-when::before {
-      content: "";
-      width: 0.375rem;
-      height: 0.375rem;
-      border-radius: 50%;
-      background: var(--accent-strong);
-      flex-shrink: 0;
-    }
-    .sched-delete {
-      background: none;
-      border: 1px solid rgba(var(--fg-rgb),0.16);
-      color: var(--muted);
-      padding: 0.25rem 0.625rem;
-      border-radius: 0.375rem;
-      font-size: 0.875rem;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: all 0.15s;
-    }
-    .sched-delete:hover {
-      color: var(--danger);
-      border-color: rgba(var(--fg-rgb),0.1);
-    }
-    .sched-delete.confirming {
-      color: var(--danger);
-      border-color: var(--danger);
     }
     #schedules-empty {
       font-size: 0.8125rem;
@@ -1404,47 +1136,7 @@
 
     /* Sandbox / Cloud Workspace */
 
-    /* === Agent Cards (legacy, kept for button styles) === */
-    .agent-btn {
-      font-size: 0.875rem;
-      padding: 0.3125rem 0.875rem;
-      border-radius: 0.375rem;
-      cursor: pointer;
-      border: 1px solid;
-      background: transparent;
-      transition: background 0.12s;
-      font-family: inherit;
-    }
-    .agent-btn-view {
-      color: var(--accent-strong);
-      border-color: var(--accent-strong);
-    }
-    .agent-btn-view:hover { background: rgba(var(--fg-rgb),0.1); }
-    .agent-btn-cancel {
-      color: var(--warn);
-      border-color: rgba(var(--fg-rgb),0.16);
-    }
-    .agent-btn-cancel:hover { background: var(--raised); }
-    .agent-btn-delete {
-      color: var(--muted);
-      border-color: rgba(var(--fg-rgb),0.16);
-    }
-    .agent-btn-delete:hover {
-      color: var(--danger);
-      border-color: rgba(var(--fg-rgb),0.1);
-      background: var(--bg);
-    }
-
     /* Mission Control — Metrics */
-    .mc-metrics {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-    }
-    @media (max-width: 600px) {
-      .mc-metrics { grid-template-columns: repeat(2, 1fr); }
-    }
     .mc-metric {
       background: var(--raised);
       border: 1px solid rgba(var(--fg-rgb),0.1);
@@ -1465,62 +1157,10 @@
     .mc-metric.blue::before { background: var(--accent-strong); }
     .mc-metric.purple::before { background: var(--slate); }
     .mc-metric.gray::before { background: rgba(var(--fg-rgb),0.52); }
-    .mc-metric-value {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: var(--fg);
-      line-height: 1;
-      margin-bottom: 0.25rem;
-    }
     .mc-metric-label {
       font-size: 0.8125rem;
       color: var(--muted);
       letter-spacing: 0.5px;
-    }
-
-    /* Mission Control — Command Bar */
-    .mc-command {
-      display: flex;
-      gap: 0.5rem;
-      margin-bottom: 1.25rem;
-    }
-    .mc-command-input {
-      flex: 1;
-      padding: 0.625rem 0.875rem;
-      background: var(--raised);
-      border: 1px solid rgba(var(--fg-rgb),0.16);
-      border-radius: 0.625rem;
-      color: var(--fg);
-      font-size: 0.875rem;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .mc-command-input:focus {
-      border-color: rgba(var(--fg-rgb),0.28);
-    }
-    .mc-command-input::placeholder {
-      color: rgba(var(--fg-rgb),0.6);
-    }
-    .mc-deploy-btn {
-      padding: 0.625rem 1.25rem;
-      background: var(--accent-strong);
-      color: var(--bg);
-      border: none;
-      border-radius: 0.625rem;
-      font-size: 0.8125rem;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-      white-space: nowrap;
-      transition: background 0.15s;
-    }
-    .mc-deploy-btn:hover {
-      background: var(--accent-strong);
-    }
-    .mc-deploy-btn:disabled {
-      opacity: 0.4;
-      cursor: default;
     }
 
     /* Mission Control — Section Labels */
@@ -1543,7 +1183,6 @@
 
     /* Nested under a section label: lighter, indented, and without the rule
        that makes a top level heading read as a divider. */
-    .mc-subsection { margin: 0.875rem 0 0 0.375rem; padding-left: 0.75rem; border-left: 1px solid rgba(var(--fg-rgb),0.1); }
     .mc-subsection-label {
       font-size: 0.75rem;
       font-weight: 600;
@@ -1781,113 +1420,7 @@
     .auto-email-hint { font-size: 0.8125rem; color: rgba(var(--fg-rgb),0.6); margin: 0.5rem 0 0; }
     .auto-email-hint a { color: var(--muted); }
 
-
-    /* Mission Control — Agent Plan Cards (from 21st.dev Agent Plan) */
-    .mc-plan-card {
-      background: var(--raised);
-      border: 1px solid var(--raised);
-      border-radius: 0.625rem;
-      overflow: hidden;
-      margin-bottom: 0.5rem;
-    }
-    .mc-plan-header {
-      display: flex;
-      align-items: center;
-      gap: 0.625rem;
-      padding: 0.75rem 0.875rem;
-      cursor: pointer;
-      transition: background 0.12s;
-    }
-    .mc-plan-header:hover {
-      background: rgba(var(--fg-rgb),0.02);
-    }
-    /* Status icons — matching Agent Plan component colors */
-    .mc-status-icon {
-      width: 1.125rem;
-      height: 1.125rem;
-      flex-shrink: 0;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .mc-status-icon.running {
-      color: var(--accent);
-      animation: mc-pulse 2s ease-in-out infinite;
-    }
-    .mc-status-icon.completed { color: var(--ok); }
-    .mc-status-icon.failed { color: var(--danger); }
-    .mc-status-icon.cancelled { color: var(--muted); }
-    .mc-status-icon.pending { color: var(--muted); }
-
-    @keyframes mc-pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    .mc-plan-title {
-      flex: 1;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--fg);
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .mc-plan-title.completed-title {
-      color: var(--muted);
-      text-decoration: line-through;
-    }
-    .mc-plan-meta {
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-      flex-shrink: 0;
-    }
-    .mc-model-badge {
-      font-size: 0.8125rem;
-      padding: 2px 0.4375rem;
-      border-radius: 0.25rem;
-      background: rgba(var(--fg-rgb),0.1);
-      color: var(--muted);
-      font-weight: 500;
-    }
-    .mc-time-badge {
-      font-size: 0.8125rem;
-      color: rgba(var(--fg-rgb),0.6);
-    }
-    .mc-plan-chevron {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .mc-plan-card.expanded .mc-plan-chevron .chevron-down {
-      transform: rotate(-135deg);
-      border-color: rgba(var(--fg-rgb),0.64);
-    }
-
-    /* Expanded detail — Agent Plan subtask/detail style */
-    .mc-plan-detail {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease;
-      border-top: 1px solid transparent;
-    }
-    .mc-plan-card.expanded .mc-plan-detail {
-      max-height: 50rem;
-      border-top-color: var(--raised);
-    }
-    .mc-plan-detail-inner {
-      padding: 0.75rem 0.875rem 0.875rem;
-    }
     /* Subtask/step list — dashed left border from Agent Plan */
-    .mc-steps {
-      border-left: 1px dashed rgba(var(--fg-rgb),0.16);
-      margin-left: 0.5rem;
-      padding-left: 1rem;
-    }
     .mc-step {
       padding: 0.375rem 0;
       display: flex;
@@ -1906,16 +1439,6 @@
       height: 1px;
       background: rgba(var(--fg-rgb),0.16);
     }
-    .mc-step-dot {
-      width: 0.375rem;
-      height: 0.375rem;
-      border-radius: 50%;
-      margin-top: 0.3125rem;
-      flex-shrink: 0;
-    }
-    .mc-step-dot.completed { background: var(--ok); }
-    .mc-step-dot.active { background: var(--accent); }
-    .mc-step-dot.pending { background: rgba(var(--fg-rgb),0.28); }
     /* Tool pills — from Agent Plan component */
     .mc-tools {
       display: flex;
@@ -1931,46 +1454,6 @@
       color: var(--muted);
       font-weight: 500;
     }
-    /* Result preview */
-    .mc-result-preview {
-      margin-top: 0.625rem;
-      padding: 0.625rem 0.75rem;
-      background: var(--bg);
-      border: 1px solid rgba(var(--fg-rgb),0.1);
-      border-radius: 0.5rem;
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.5;
-      max-height: 7.5rem;
-      overflow: hidden;
-      position: relative;
-      white-space: pre-wrap;
-    }
-    .mc-result-preview::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 1.875rem;
-      background: linear-gradient(transparent, var(--bg));
-    }
-    .mc-plan-actions {
-      display: flex;
-      gap: 0.5rem;
-      margin-top: 0.625rem;
-      padding-top: 0.625rem;
-      border-top: 1px solid rgba(var(--fg-rgb),0.1);
-    }
-    /* Error display */
-    .mc-error {
-      margin-top: 0.5rem;
-      padding: 0.5rem 0.625rem;
-      background: rgba(var(--danger-rgb),0.08);
-      border-radius: 0.375rem;
-      font-size: 0.875rem;
-      color: var(--danger);
-    }
 
     /* Sandbox Computer CSS moved to index.html */
 
@@ -1983,8 +1466,6 @@
     .pinned-note-row:hover { background:rgba(var(--fg-rgb),0.07); }
     .pinned-note-list { display:grid; grid-template-columns:minmax(0, 1fr); gap:0.375rem; margin-bottom:0.75rem; }
     .pinned-note-key { font-size:0.8125rem; color:var(--fg); font-weight:500; }
-    .pinned-note-val { font-size:0.75rem; color:var(--muted); margin-top:2px; line-height:1.4; }
-    .pinned-note-meta { font-size:0.6875rem; color:rgba(var(--fg-rgb),0.6); margin-top:0.1875rem; }
     /* In All: which of the two kinds each part is, above its own headings. */
     .memory-group-label { font-size:0.9375rem; font-weight:600; color:var(--fg); padding:0.25rem 0 0; margin-top:1.625rem; }
     .memory-group-label:first-child { margin-top:0; }
@@ -2010,7 +1491,6 @@
       .dashboard-container { padding: 0.75rem 1rem; }
       .tab { font-size: 0.8125rem; padding: 0.625rem 0.75rem; }
       .settings-group { margin-bottom: 0.75rem; }
-      .conn-card { padding: 0.75rem; }
     }
 
     /* === Usage tab (BYOK spend) === */
@@ -2040,9 +1520,6 @@
     .usage-tile .t-name { display: flex; align-items: center; gap: 0.4375rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.375rem; }
     .usage-tile .t-val { font-size: 1.25rem; font-weight: 600; color: var(--fg); line-height: 1.2; }
     .usage-tile .t-sub { font-size: 0.6875rem; color: rgba(var(--fg-rgb),0.6); margin-top: 0.1875rem; }
-    .usage-models { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0.875rem 0 0; font-size: 0.75rem; color: var(--muted); }
-    .usage-models .m-head { grid-column: 1 / -1; font-size: 0.8125rem; font-weight: 600; color: rgba(var(--fg-rgb),0.85); text-transform: none; letter-spacing: .04em; }
-    .usage-models .m-name { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .usage-notes { margin: 0.75rem 0.25rem 0; font-size: 0.75rem; line-height: 1.6; color: rgba(var(--fg-rgb),0.5); }
     .usage-notes:empty { display: none; }
     .usage-notes .n-head { font-size: 0.8125rem; font-weight: 600; color: rgba(var(--fg-rgb),0.85); text-transform: none; letter-spacing: .06em; margin-bottom: 2px; }
@@ -4515,7 +3992,6 @@
       else showToast('Could not disconnect', true);
     }
 
-
     function filterConnections(query) {
       var q = query.toLowerCase().trim();
 
@@ -4818,7 +4294,6 @@
       }
     }
     loadIncludedAi();
-
 
     // --- Pulse Settings ---
     let pulseState = { proactiveLevel: "medium", quietStart: 22, quietEnd: 7, quietEnabled: true, deliveryPlatforms: [] };
@@ -7253,8 +6728,6 @@
       e.style.display = list && list.children.length ? 'none' : 'block';
     }
 
-
-
     // === Cloud Workspace / Sandbox ===
     function ruleOrigin(rule) {
       const labels = { assistant: 'Saved by Closedhand', observed: 'Suggested by Closedhand', user: 'Added in Settings' };
@@ -7517,7 +6990,6 @@
         if (chevron) chevron.classList.remove('open');
       }
     }
-
 
     function formatDuration(secs) {
       if (secs < 60) return secs + 's';
@@ -8317,7 +7789,6 @@
       '</div>';
     }
 
-
     // The run of a job set for once, which is a task, going or finished: its
     // name, when, and how it went; a finished one opens its result.
     function renderRoutineRun(r) {
@@ -8341,7 +7812,6 @@
         (team && r.live ? teamLines(r, team, true) : '') +
       '</div>';
     }
-
 
     // A task set in chat for a date: when it starts, and Cancel, which asks first.
     function renderWaitingJob(r) {
@@ -10083,7 +9553,6 @@
       }
       return html;
     }
-
 
     function setMemoryFilter(filter) {
       _memoryFilter = filter;
