@@ -173,3 +173,37 @@ test("Outlook's tools take what Google's take, but for what is Google's own", ()
     ["gmail_send_draft", "outlook_send_draft"], ["gcal_create_event", "outlook_cal_create_event"], ["gcal_update_event", "outlook_cal_update_event"], ["gcal_delete_event", "outlook_cal_delete_event"]])
     assert.deepEqual(props(g).filter((p) => !props(o).includes(p) && !inherent.has(p)), [], `${o} lacks what ${g} takes`);
 });
+
+// Outlook read as Google is read. Four things it got wrong: a second
+// Microsoft account's mail was searched in the first account's mailbox; an
+// event's files were asked of the mail endpoint, because "outlook_cal" starts
+// with "outlook"; every live mail search said no words could be read; and an
+// event deleted in Outlook stayed cached, indexed and told as upcoming.
+test("Outlook: the account asked, the calendar's own files, no false warning, and deleted events go", () => {
+  const cut = (file, name) => { const s = read(file); const a = s.search(new RegExp(`(async )?function ${name}\\(`)); return s.slice(a, s.indexOf("\n}\n", a) + 2); };
+  const tagKey = new Function("EXTRA_PREFIX", cut("lib/services/microsoft.js", "msServiceKeyForSourceTag") + "\nreturn msServiceKeyForSourceTag;")("microsoft_extra_");
+  assert.equal(tagKey("outlook"), "microsoft");
+  assert.equal(tagKey("outlook_cal"), "microsoft", "the first account's calendar, not an account called cal");
+  assert.equal(tagKey("outlook_work"), "microsoft_extra_work");
+  assert.equal(tagKey("outlook_cal_work"), "microsoft_extra_work");
+  assert.equal(tagKey("mscal_work"), "microsoft_extra_work");
+
+  const access = read("lib/services/data-access.js");
+  const search = cut("lib/services/data-access.js", "searchOutlook");
+  assert.equal((search.match(/microsoftApiRequest\("GET", [^)]*?, null, null, serviceKey\)/g) || []).length, 3, "all three reads of a mailbox name the account");
+  assert.doesNotMatch(search, /microsoftApiRequest\("GET", (nextLink|fallbackUrl)\)/);
+  // Which kind of source a tag is, as the attachment reader decides it.
+  const kind = new Function("source", access.match(/const baseSource = [\s\S]*?: source;/)[0] + "\nreturn baseSource;");
+  assert.equal(kind("outlook_cal"), "outlook_cal");
+  assert.equal(kind("mscal_work"), "outlook_cal");
+  assert.equal(kind("outlook"), "outlook");
+  assert.equal(kind("outlook_work"), "outlook");
+  assert.equal(kind("gmail_work"), "gmail");
+  assert.equal(kind("gcal"), "gcal");
+  assert.equal(kind("imap"), "imap");
+  assert.match(access, /limited\.every\(r => !r\.body \|\| r\.body\.trim\(\)\.length === 0\)/, "the warning reads the field results have");
+  assert.doesNotMatch(access, /Cached event: "\$\{ev\.summary\}"/, "an event's title is not written to the log");
+
+  const sync = cut("lib/services/data-sync.js", "syncOutlookCalendar");
+  assert.match(sync, /if \(listMicrosoftAccounts\(userStore\)\.length === 1\) \{\s*await reconcileDeletedEvents\(userId, "outlook_cal", items, new Date\(w\.from\), new Date\(w\.to\), null\);/, "what a full read no longer returns is removed, with one account connected");
+});
