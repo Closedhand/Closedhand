@@ -2786,7 +2786,8 @@
         window.history.replaceState({}, "", "/dashboard");
       }
       if (params.get("mcp_connected")) {
-        showToast(decodeURIComponent(params.get("mcp_connected")) + " connected via MCP!");
+        // Said as every connection says it, whichever way it signed in.
+        showToast(decodeURIComponent(params.get("mcp_connected")) + " connected");
         // What it took over (its voice, its search) is said where it stays
         // put, under the connect box.
         var newId = params.get("mcp_new");

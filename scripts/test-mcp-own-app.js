@@ -188,6 +188,7 @@ test('Slack’s app is made by Closedhand from a token: its callback address, pe
   const slack=await catalogue.ownApp('https://mcp.slack.com/mcp',{scopes_supported:['chat:write']});
   assert.equal(slack.name,'Slack');
   assert.equal(slack.steps.length,3);
+  assert.match(slack.steps.join(' '),/“Generate Token”[\s\S]*“Copy” under “Access Token”[\s\S]*“Allow”/,'the buttons Slack shows, and the access token, not the refresh token beside it');
   assert.equal(slack.guide,'https://api.slack.com/apps','the app list, where its configuration tokens are made');
   assert.equal(slack.token,'Configuration token');
   assert.deepEqual([slack.redirectUri,slack.scopes],[null,[]],'nothing to copy across: Closedhand writes both into the app');
@@ -245,4 +246,5 @@ test('the dashboard has one own-app form, and the paste box opens it instead of 
   assert.equal(script.split('ownAppForm(').length,5,'the catalogue’s own-app tiles, Shopify and MCP servers share it');
   assert.equal(/client[-_ ]?secret/i.test(page.slice(page.indexOf('id="mcp-credentials"'),page.indexOf('id="mcp-own-app"'))),false,'no second place to type an app’s secret');
   assert.match(page,/openOwnApp\(ownApp\)/);
+  assert.match(page,/showToast\(decodeURIComponent\(params\.get\("mcp_connected"\)\) \+ " connected"\);/,'connected through a server reads as any connection does');
 });

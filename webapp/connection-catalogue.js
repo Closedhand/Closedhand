@@ -36,9 +36,9 @@ const ownApps = {
     instruction: 'Slack connects through an app in your own workspace, so your messages go straight from Slack to Closedhand.',
     link: 'https://api.slack.com/apps', linkText: 'Open Slack’s app page',
     steps: [
-      'On Slack’s app page, under “Your App Configuration Tokens” (below the list of apps), press “Generate Token”, pick your workspace and copy the token.',
-      'Paste it below. Closedhand uses it once to make the app and doesn’t keep it.',
-      'Approve Slack’s sign-in.',
+      'On Slack’s app page (sign in if it asks), press “Generate Token” below “Create an App” and pick your workspace.',
+      'Press “Copy” under “Access Token” and paste it below. Closedhand uses it once to make the app and doesn’t keep it.',
+      'Press “Allow” on Slack’s page.',
     ],
     token: 'Configuration token',
     // Slack's App Manifest API (apps.manifest.create, with a configuration
