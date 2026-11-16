@@ -68,3 +68,47 @@ test('the Bridge download is built by a script, not by hand', () => {
   assert.match(script, /"\$HERE\/Info\.plist"/);
   assert.match(script, /webapp\/public\/download\/ClosedHandBridge\.dmg/);
 });
+
+// Deleting an event in the Mac's Calendar app: the title is someone else's
+// words (an invitation's) and went into a shell command with only " escaped,
+// and with no day, so one "Lunch" deleted every Lunch there was.
+test('the day an event starts on is read from either form of date', () => {
+  const { dayOf } = require('../lib/services/mac-calendar');
+  assert.deepEqual(dayOf('2026-10-09T19:00:00+08:00'), { year: 2026, month: 10, day: 9 });
+  assert.deepEqual(dayOf('Thursday, 8 October 2026 at 10:00:00'), { year: 2026, month: 10, day: 8 });
+  assert.deepEqual(dayOf('October 8th, 2026'), { year: 2026, month: 10, day: 8 });
+  assert.equal(dayOf('31 February 2026'), null, 'not a day');
+  assert.equal(dayOf('tomorrow'), null);
+  assert.equal(dayOf(''), null);
+});
+
+test('a title is one string to AppleScript and each line one word to the shell, whatever it holds', () => {
+  const { execFileSync } = require('node:child_process');
+  const { deleteCommand, shellWord, appleScriptString } = require('../lib/services/mac-calendar');
+  const day = { year: 2026, month: 10, day: 8 };
+  const titles = ['Lunch', "Sam's day", "x'; touch /nonexistent/made; echo '", 'say "hi" & do shell script "id"', 'back\\slash \\" end', '$(id) `id`'];
+  for (const title of titles) {
+    const cmd = deleteCommand(title, day);
+    // What the shell hands osascript: 14 lines, each after its own -e.
+    const words = execFileSync('sh', ['-c', cmd.replace(/^osascript /, "printf '%s\\0' ")], { encoding: 'utf8' }).split('\0').slice(0, -1);
+    assert.equal(words.length, 28, title);
+    assert.ok(words.every((w, i) => i % 2 === 1 || w === '-e'), title);
+    assert.equal(words[7], `set evts to (every event of cal whose summary is ${appleScriptString(title)})`, title);
+    assert.equal(words[13], 'if (year of d) is 2026 and ((month of d) as integer) is 10 and (day of d) is 8 then', 'only that day');
+    // And AppleScript reads the string back as the title (where there is AppleScript).
+    if (process.platform === 'darwin') assert.equal(execFileSync('sh', ['-c', 'osascript -e ' + shellWord('return ' + appleScriptString(title))], { encoding: 'utf8' }).replace(/\n$/, ''), title);
+  }
+  assert.throws(() => deleteCommand('two\nlines', day), /characters/);
+  assert.throws(() => deleteCommand('Lunch', null), /day/);
+});
+
+test('deleting a calendar event needs its day and asks first', () => {
+  const handler = read('lib/tools/handlers.js').split('case "calendar_delete_event"')[1].split('case "caldav_list_events"')[0];
+  assert.match(handler, /if \(!day\) return \{ error:/, 'no day, nothing deleted');
+  assert.match(handler, /deleteCommand\(title, day\)/);
+  assert.doesNotMatch(handler, /osascript/, 'no command written by hand');
+  assert.match(handler, /startsWith\(iso\)/, 'Google: the event that day');
+  const { INTERNAL_TOOLS } = require('../lib/tools/definitions');
+  assert.deepEqual(INTERNAL_TOOLS.find((t) => t.name === 'calendar_delete_event').input_schema.required, ['event_title', 'event_date']);
+  assert.match(read('lib/confirmation.js'), /"calendar_delete_event",/);
+});
