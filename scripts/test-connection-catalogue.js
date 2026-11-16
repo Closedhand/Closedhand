@@ -14,7 +14,7 @@ function fixture(){
      const found=rows[table].filter(r=>filters.every(([k,v])=>r[k]===v));
      return Promise.resolve({data:single?found[0]||null:found,error:null}).then(ok,bad);
     }};return q;}};
- const services={google:{name:'Google',isSignup:true,clientId:'global',clientSecret:'global-secret'},microsoft:{name:'Microsoft',isSignup:true,scopes:['Mail.ReadWrite']},notion:{name:'Notion',clientId:'notion-app',clientSecret:'notion-secret'},shopify:{name:'Shopify',needsStoreDomain:true},meta_ads:{name:'Meta Ads'},github:{name:'GitHub'},spotify:{name:'Spotify'},hubspot:{name:'HubSpot',clientId:'hub-app',clientSecret:'hub-secret'},slack:{name:'Slack',isChatPlatform:true}};
+ const services={google:{name:'Google',isSignup:true,clientId:'global',clientSecret:'global-secret'},microsoft:{name:'Microsoft',isSignup:true,scopes:['Mail.ReadWrite']},notion:{name:'Notion',clientId:'notion-app',clientSecret:'notion-secret'},shopify:{name:'Shopify',needsStoreDomain:true},meta_ads:{name:'Meta Ads'},github:{name:'GitHub'},spotify:{name:'Spotify'},hubspot:{name:'HubSpot',clientId:'hub-app',clientSecret:'hub-secret'},slack:{name:'Slack'}};
  const catalogue=createCatalogue({db,services,userId:r=>r.user,baseUrl:'https://fixture.example'});
  const handlers={};catalogue.register({get:(p,f)=>handlers['GET '+p]=f,put:(p,f)=>handlers['PUT '+p]=f});
  async function call(method,user,body={},service='microsoft'){let code=200,data;const res={set(){},status(c){code=c;return this},json(v){data=v;return this}};await handlers[method]({user,body,params:{service}},res);return {code,data};}
@@ -31,7 +31,7 @@ test('catalogue exposes setup routes without credentials and keeps account state
  assert.equal(a.some(s=>s.key==='spotify'),false,'a tile that needs the person to make a developer app is not shown');
  assert.equal(a.find(s=>s.key==='notion').connected,false);
  assert.equal(a.find(s=>s.key==='shopify').mode,'shopify');
- assert.equal(a.some(s=>s.key==='slack'),false);
+ assert.equal(a.some(s=>s.key==='slack'),false,'like any service with no MCP that signs in by itself: no tile until there is an app to sign in with');
  const b=(await f.call('GET /api/connection-catalogue','b')).data.services;
  assert.equal(b.find(s=>s.key==='notion').connected,true);
  assert.equal(b.find(s=>s.key==='microsoft').connected,false);

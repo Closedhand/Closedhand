@@ -190,7 +190,8 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   Never imply another way, or that both keep running. A repeating schedule due while it slept is
   skipped, never run later. A one-off reminder due then is sent when Closedhand is back, under
   "[Late reminder]" and a line saying when it was due and why it is late (`lib/one-off-reminders.js`
-  `lateLine`); a one-off task is not started late. `scripts/test-agreed-names.js` checks the names above.
+  `lateLine`); a one-off task is not started late: under "[Missed task]", its name and that same line,
+  Closedhand asks "Shall I run it now?". `scripts/test-agreed-names.js` checks the names above.
 - The recall design is the "Preemptive Context Layer" (PCL), defined at closedhand.com/pcl, first
   published there on 2026-09-29. It is free for anyone to use: no trademark sign. Describe it as
   one live picture of the person's world searched once before the model reads a message, never

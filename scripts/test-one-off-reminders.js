@@ -123,6 +123,23 @@ test("a reminder on time reads as it always did", async () => {
   assert.equal(r.seen.kept[0].content, '[Scheduled reminder "call-the-dentist" fired] Call the dentist on 020 7946 0000.');
 });
 
+test("a task missed while Closedhand was off is not started: the person is told, under the same line, and asked", async () => {
+  const r = runner({ kind: "task" });
+  r.schedule.name = "Check the price of the Lisbon flights";
+  r.schedule.prompt = "Look up the price of the 14 March flights to Lisbon and say whether it has dropped below 180.";
+  await r.fire({ late: { due: new Date("2026-10-16T15:40:00Z"), why: "off" } });
+  assert.deepEqual(r.seen.sent, [["telegram", "c1", "[Missed task]\n\nCheck the price of the Lisbon flights\n\nDue Friday 16 October at 22:40, while Closedhand wasn't running. Shall I run it now?"]]);
+  assert.deepEqual(r.seen.started, [], "it acts for the person, and may only have been wanted then");
+  assert.deepEqual(r.seen.asked, [], "no LLM writes the question");
+  assert.match(r.seen.kept[0].content, /has not run\. Due Friday 16 October at 22:40, while Closedhand wasn't running\. It is called "Check the price of the Lisbon flights" and this is the job: Look up the price of the 14 March flights to Lisbon/, "kept with the job, so a plain yes is read against it");
+  assert.ok(r.seen.writes.some((w) => w.enabled === false && w.archived_at), "asked once: it is retired");
+  // On time, a task starts as it always did.
+  const onTime = runner({ kind: "task" });
+  await onTime.fire();
+  assert.equal(onTime.seen.started.length, 1);
+  assert.deepEqual(onTime.seen.sent, []);
+});
+
 test("a late reminder whose chat app cannot be reached is left for the next start or wake; a failed run on time is over", async () => {
   const offline = () => { throw Object.assign(new Error("WhatsApp (linked) is not connected"), { notSent: true }); };
   const late = runner({ send: offline });
@@ -157,7 +174,7 @@ const sample = () => [
 ];
 const settle = () => new Promise((r) => setImmediate(r));
 
-test("at start a missed reminder is sent late a minute on and never registered; a task and one that ran are retired", async () => {
+test("at start a missed reminder or task is taken up a minute on and never registered; one that had run is retired", async () => {
   const s = starter(sample());
   s.box.start();
   await settle();
@@ -167,8 +184,8 @@ test("at start a missed reminder is sent late a minute on and never registered; 
   assert.deepEqual(s.seen.fired, []);
   s.seen.timers[0].fn();
   await settle(); await settle();
-  assert.deepEqual(s.seen.fired, [["missed-reminder", "off", `${year}-01-02T09:00:00.000Z`]]);
-  assert.deepEqual(s.seen.retired.sort(), ["missed-task", "ran-but-not-retired"], "a task acts for the person, so it is not started at another time than the one they set");
+  assert.deepEqual(s.seen.fired, [["missed-reminder", "off", `${year}-01-02T09:00:00.000Z`], ["missed-task", "off", `${year}-01-02T09:00:00.000Z`]], "each run late: the reminder is sent, the task is asked about");
+  assert.deepEqual(s.seen.retired, ["ran-but-not-retired"]);
 });
 
 test("after the computer wakes, what came due while it slept is sent late, and what is running is left alone", async () => {

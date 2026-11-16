@@ -2752,7 +2752,7 @@
       });
 
       // Apple always renders in Available; loadBridgeStatus hides it when bridge is connected
-      const entries = Object.entries(allServices).filter(([k,s]) => !s.isChatPlatform);
+      const entries = Object.entries(allServices);
 
       // Saved connections Google or Microsoft stopped accepting: shown with
       // the others, but asking to sign in again.

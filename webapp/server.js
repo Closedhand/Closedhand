@@ -340,7 +340,6 @@ const SERVICES = {
     profileUrl: null,
     isSignup: false,
     tokenField: "access_token",
-    isChatPlatform: true,
   },
 
 
@@ -474,7 +473,6 @@ function getAvailableServices() {
       oauthReady: !!(svc.clientId && svc.clientSecret),
       isSignup: svc.isSignup || false,
       needsStoreDomain: svc.needsStoreDomain || false,
-      isChatPlatform: svc.isChatPlatform || false,
     };
   }
   return available;

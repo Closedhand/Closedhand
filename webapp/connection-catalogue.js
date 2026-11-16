@@ -59,7 +59,7 @@ function createCatalogue({db, services, userId, baseUrl}) {
         // A tile shows only when it connects without the person making a
         // developer app: the rest wait for apps Closedhand registers. One
         // already connected, or set up with the person's own app, stays.
-        const rows=Object.entries(services).filter(([key,s])=>!s.isChatPlatform).map(([key,s])=>{
+        const rows=Object.entries(services).map(([key,s])=>{
           const ready=own.has(key)||!!(s.clientId&&s.clientSecret);
           // Microsoft without an app of the person's own signs in by code
           // through Closedhand's app, on the setup page.
