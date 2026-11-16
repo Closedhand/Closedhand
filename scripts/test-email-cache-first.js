@@ -54,3 +54,32 @@ test("no match inside the copy's period is the answer, not a reason to go live",
   assert.match(sync, /return \{ results: ordered, cacheAgeMin, fresh: cacheAgeMin < 1440, covers: await cacheCovers\(userId, since\), source: "data_cache_hybrid" \};/);
   assert.match(access, /so this is the answer, not a gap/);
 });
+
+// Every search loaded the 500 newest emails whole, attachments' text
+// included, to learn one thing from them: when the copy was last synced.
+test("a search reads one timestamp for freshness, and whole emails only when it wants the newest", async () => {
+  const reads = [];
+  const mail = [{ external_id: "m1", source: "gmail", synced_at: new Date().toISOString(), data: { subject: "Invoice 4471" } }];
+  const db = { from: (table) => {
+    const read = { table, cols: null, limit: null };
+    const q = { select: (cols) => { read.cols = cols; reads.push(read); return q; }, eq: () => q, order: () => q, in: () => q,
+      limit: (n) => { read.limit = n; return q; }, then: (done) => done({ data: mail, error: null }) };
+    return q;
+  } };
+  const run = async (query) => {
+    reads.length = 0;
+    const box = { supabase: db, Date, Math, Map, Set, console: { log() {}, error() {} }, peek: (x) => x, cacheCovers: async () => true,
+      require: () => ({ search: async () => ({ results: [{ id: "m1" }] }) }) };
+    vm.runInNewContext(fn(read("lib/services/data-sync.js"), "queryCacheEmails") + "\nthis.f = queryCacheEmails;", box);
+    return box.f("u", query, 7);
+  };
+  const specific = await run("invoice 4471");
+  assert.equal(specific.source, "data_cache_hybrid");
+  assert.equal(specific.results[0].subject, "Invoice 4471");
+  assert.deepEqual(reads.map((r) => [r.cols, r.limit]), [["synced_at", 1], ["external_id, source, data", null]], "one timestamp, then only the matches");
+  const generic = await run("recent");
+  assert.equal(generic.source, "data_cache");
+  assert.equal(generic.results[0].subject, "Invoice 4471");
+  assert.deepEqual(reads.map((r) => [r.cols, r.limit]), [["synced_at", 1], ["source, data", 500]], "the newest mail, without the columns nothing reads");
+  assert.doesNotMatch(read("lib/services/data-sync.js"), /from\("data_cache"\)\s*\.select\("\*"\)/, "no read of the synced copy takes every column");
+});
