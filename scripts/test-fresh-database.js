@@ -118,3 +118,38 @@ test("the real schema: the tables that outlived a deleted account are found, and
   assert.equal(emptied.length, found.size);
   await wipe.wipeShared(pool);
 });
+
+// The index sweep read every synced email and event whole, bodies and all, to
+// learn their ids: about 1.9 GB held at once on the first sync after every
+// start. It reads the ids alone.
+test("which mail and events came from a connected account is read by id, never by reading them whole", async () => {
+  const { createPgClient } = require("../lib/db-driver-pg");
+  const { cloudMessageIds, cloudEventUids } = require("../lib/services/cloud-ids");
+  const user = "00000000-0000-4000-8000-0000000000c1";
+  await pool.query("INSERT INTO profiles (id) VALUES ($1) ON CONFLICT DO NOTHING", [user]);
+  const put = (source, type, ext, data) => pool.query("INSERT INTO data_cache (user_id, source, type, external_id, data) VALUES ($1, $2, $3, $4, $5)", [user, source, type, ext, JSON.stringify(data)]);
+  const body = "x".repeat(20000);
+  await put("gmail", "email", "g1", { messageId_header: "<one@example.com>", id: "g1", body });
+  await put("gmail", "email", "g2", { messageId: "<two@example.com>", id: "g2", body });
+  await put("outlook", "email", "o1", { id: "o1", body });
+  await put("gmail_work", "email", "g3", { messageId_header: "<three@example.com>", body });
+  await put("mac_mail", "email", "m1", { messageId_header: "<mac@example.com>", body });
+  await put("gcal", "event", "e1", { uid: "uid-1", description: body });
+  await put("outlook_cal", "event", "e2", { iCalUID: "uid-2", description: body });
+  await put("mac_calendar", "event", "e3", { uid: "uid-3" });
+
+  const db = createPgClient({ pool });
+  // What is asked of the database, so the bodies never leave it.
+  const asked = [];
+  const watching = { from: (t) => { const q = db.from(t); const select = q.select.bind(q); q.select = (cols, ...rest) => { asked.push(cols); return select(cols, ...rest); }; return q; } };
+  assert.deepEqual([...await cloudMessageIds(watching, user, ["gmail", "outlook"])].sort(), ["<one@example.com>", "<two@example.com>", "o1"], "the header id, else the message's, else its own; other sources left out");
+  assert.deepEqual([...await cloudMessageIds(watching, user, [])], [], "no connected mailbox, no query");
+  assert.deepEqual([...await cloudEventUids(watching, user)].sort(), ["uid-1", "uid-2"]);
+  assert.equal(asked.length, 2);
+  for (const cols of asked) assert.doesNotMatch(cols, /(^|[\s,])data(\s*,|\s*$)/, "never the whole item: " + cols);
+  const usi = fs.readFileSync(path.join(__dirname, "..", "lib/services/usi.js"), "utf8");
+  assert.match(usi, /require\("\.\/cloud-ids"\)\.cloudMessageIds\(supabase, userId, \[\.\.\.cloudEmailSources\]\)/);
+  assert.match(usi, /require\("\.\/cloud-ids"\)\.cloudEventUids\(supabase, userId\)/);
+  await pool.query("DELETE FROM data_cache WHERE user_id = $1", [user]);
+  await pool.query("DELETE FROM profiles WHERE id = $1", [user]);
+});
