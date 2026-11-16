@@ -94,3 +94,43 @@ test("facts follow at most once an hour, skip the person's chats with Closedhand
   assert.match(src, /require\("\.\/tools\/handlers"\)\.handleInternalTool\("pin_fact", \{ key: held\.key, value: held\.value, category: held\.category, subject: held\.subject, _userId: userId \}\);/, "one note per subject, as pin_fact keeps it");
   assert.match(src, /if \(isNew\) kept\.source = "own words"; kept\.from = held\.from;/, "and says where it came from");
 });
+
+// Thinning Pinned Facts at 150: the LLM was handed every key in the store,
+// tracked flights and sync markers too, and what it kept was rebuilt from four
+// fields, so one pass emptied the dashboard's groups and About you.
+test("thinning Pinned Facts never touches Closedhand's own records, and a fact that stays keeps all that is known about it", () => {
+  const compact = require("../lib/facts-compact");
+  const facts = {
+    "_sync_gmail": JSON.stringify({ cursor: "abc" }),
+    "flight-ZX101-2026-11-02": { value: JSON.stringify({ flightNumber: "ZX101" }), created: "2026-10-01T00:00:00Z" },
+    "pulse-last": "2026-11-01",
+    "old-style": "Likes window seats",
+  };
+  for (let i = 0; i < 30; i++) facts["fact-" + i] = { value: `Fact number ${i}, said at some length`, created: "2026-09-0" + (1 + (i % 9)) + "T00:00:00Z", lastAccessed: "2026-10-01T00:00:00Z", accessCount: i, category: i % 2 ? "person" : "preference", subject: "Mira", source: "chat", from: "whatsapp" };
+
+  assert.equal(compact.pinned(facts).length, 31, "its own records are not counted");
+  const shown = compact.listFor(facts);
+  assert.equal(shown.length, 31);
+  assert.ok(!shown.some((f) => /^(_sync|flight-|pulse)/.test(f.key)), "nor shown to the LLM");
+
+  // The LLM keeps 25, shortens one, makes one up, tries to rewrite a flight and returns one value that is not words.
+  const answer = { "flight-ZX101-2026-11-02": "cancelled", "made-up": "Something new", "old-style": "Likes window seats", "fact-1": { nested: true } };
+  for (let i = 5; i < 30; i++) answer["fact-" + i] = i === 5 ? "Fact 5, shorter" : facts["fact-" + i].value;
+  const out = compact.apply(facts, answer, "2026-11-16T00:00:00Z");
+  assert.deepEqual(out.facts["_sync_gmail"], facts["_sync_gmail"]);
+  assert.deepEqual(out.facts["flight-ZX101-2026-11-02"], facts["flight-ZX101-2026-11-02"], "a tracked flight is as it was");
+  assert.equal(out.facts["pulse-last"], "2026-11-01");
+  assert.ok(!("made-up" in out.facts), "a key it invented is nothing");
+  assert.deepEqual(out.facts["fact-5"], { ...facts["fact-5"], value: "Fact 5, shorter" }, "shortened, with its category, subject and source");
+  assert.deepEqual(out.facts["fact-6"], facts["fact-6"]);
+  assert.deepEqual(out.facts["old-style"], { value: "Likes window seats", created: "2026-11-16T00:00:00Z", lastAccessed: "2026-11-16T00:00:00Z", accessCount: 0 });
+  assert.deepEqual(out.dropped.sort(), ["fact-0", "fact-1", "fact-2", "fact-3", "fact-4"].sort(), "what goes is named, and a value that is not words is not kept");
+  assert.equal(out.compressed, 1);
+  assert.equal(out.kept, 25);
+
+  assert.equal(compact.apply(facts, { "fact-1": "only this" }), null, "an answer that keeps too few is not believed");
+  assert.equal(compact.apply(facts, null), null);
+  const handlers = read("lib/tools/handlers.js");
+  assert.match(handlers, /require\("\.\.\/facts-compact"\)\.pinned\(ctx\.store\.facts\)\.length/, "the 150 counts only Pinned Facts");
+  assert.match(handlers, /const result = compact\.apply\(ctx\.store\.facts, compacted\);/);
+});
