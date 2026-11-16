@@ -72,19 +72,17 @@ test('the Bridge download is built by a script, not by hand', () => {
 // Deleting an event in the Mac's Calendar app: the title is someone else's
 // words (an invitation's) and went into a shell command with only " escaped,
 // and with no day, so one "Lunch" deleted every Lunch there was.
-test('the day an event starts on is read from either form of date', () => {
-  const { dayOf } = require('../lib/services/mac-calendar');
+test('the day an event starts on is read from either form of date', () => withBridge(null, ({ dayOf }) => {
   assert.deepEqual(dayOf('2026-10-09T19:00:00+08:00'), { year: 2026, month: 10, day: 9 });
   assert.deepEqual(dayOf('Thursday, 8 October 2026 at 10:00:00'), { year: 2026, month: 10, day: 8 });
   assert.deepEqual(dayOf('October 8th, 2026'), { year: 2026, month: 10, day: 8 });
   assert.equal(dayOf('31 February 2026'), null, 'not a day');
   assert.equal(dayOf('tomorrow'), null);
   assert.equal(dayOf(''), null);
-});
+}));
 
-test('a title is one string to AppleScript and each line one word to the shell, whatever it holds', () => {
+test('a title is one string to AppleScript and each line one word to the shell, whatever it holds', () => withBridge(null, ({ deleteCommand, shellWord, appleScriptString }) => {
   const { execFileSync } = require('node:child_process');
-  const { deleteCommand, shellWord, appleScriptString } = require('../lib/services/mac-calendar');
   const day = { year: 2026, month: 10, day: 8 };
   const titles = ['Lunch', "Sam's day", "x'; touch /nonexistent/made; echo '", 'say "hi" & do shell script "id"', 'back\\slash \\" end', '$(id) `id`'];
   for (const title of titles) {
@@ -100,7 +98,7 @@ test('a title is one string to AppleScript and each line one word to the shell, 
   }
   assert.throws(() => deleteCommand('two\nlines', day), /characters/);
   assert.throws(() => deleteCommand('Lunch', null), /day/);
-});
+}));
 
 test('deleting a calendar event needs its day and asks first', () => {
   const handler = read('lib/tools/handlers.js').split('case "calendar_delete_event"')[1].split('case "caldav_list_events"')[0];
