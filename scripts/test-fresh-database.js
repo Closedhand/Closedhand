@@ -153,3 +153,47 @@ test("which mail and events came from a connected account is read by id, never b
   await pool.query("DELETE FROM data_cache WHERE user_id = $1", [user]);
   await pool.query("DELETE FROM profiles WHERE id = $1", [user]);
 });
+
+// supabase-js gives dates and times as text and the code was written for
+// that; node-postgres gives Date objects. On one the dashboard's reminders
+// stopped loading (localeCompare is not a function), and elsewhere "the most
+// recent" was chosen by the weekday's name.
+test("dates and times come back as text, as the code that reads them expects", async () => {
+  const { createPgClient } = require("../lib/db-driver-pg");
+  const db = createPgClient({ pool });
+  const user = "00000000-0000-4000-8000-0000000000d1";
+  await pool.query("INSERT INTO profiles (id) VALUES ($1) ON CONFLICT DO NOTHING", [user]);
+  // Three reminders done at different times, the latest on a day whose name sorts first.
+  for (const [name, at] of [["a", "2026-11-13T10:00:00Z"], ["b", "2026-11-16T09:30:00.123Z"], ["c", "2026-11-14T22:00:00Z"]]) {
+    await pool.query("INSERT INTO schedules (user_id, name, cron_expression, task, enabled, archived_at) VALUES ($1, $2, '0 9 * * *', 't', false, $3)", [user, name, at]);
+  }
+  const { data, error } = await db.from("schedules").select("name, archived_at, event_at").eq("user_id", user);
+  assert.equal(error, null);
+  for (const row of data) assert.equal(typeof row.archived_at, "string", "text, not a Date");
+  assert.equal(data.find((r) => r.name === "b").archived_at, "2026-11-16T09:30:00.123Z");
+  assert.equal(data[0].event_at, null, "nothing stays nothing");
+  // The line that threw, as the dashboard's reminders route has it.
+  const newest = [...data].sort((a, b) => (b.archived_at || "").localeCompare(a.archived_at || "")).map((r) => r.name);
+  assert.deepEqual(newest, ["b", "c", "a"], "sorted by when, not by the weekday's name");
+  // A write that hands its row back, and a function call, give text too.
+  const { data: back } = await db.from("schedules").update({ task: "t2" }).eq("user_id", user).eq("name", "a").select("archived_at").single();
+  assert.equal(back.archived_at, "2026-11-13T10:00:00.000Z");
+  // A date is its own day, whatever zone this computer is in.
+  const { rows: dateColumns } = await pool.query("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND data_type = 'date' ORDER BY 1, 2 LIMIT 1");
+  const { dateText } = require("../lib/db-driver-pg")._internals;
+  assert.equal(dateText(new Date(2026, 11, 25), 1082), "2026-12-25", "read in this computer's zone, written back as that day");
+  assert.equal(dateText(new Date("2026-11-16T13:26:06.989Z"), 1184), "2026-11-16T13:26:06.989Z");
+  assert.equal(dateText("already text", 1184), "already text");
+  assert.equal(dateText(null, 1184), null);
+  if (dateColumns[0]) {
+    const goal = (await pool.query("SELECT to_regclass('public.goals') IS NOT NULL AS there")).rows[0].there;
+    if (goal) {
+      await pool.query("INSERT INTO goals (user_id, title, target_date) VALUES ($1, 'Read more', '2026-12-25')", [user]);
+      const { data: g } = await db.from("goals").select("target_date").eq("user_id", user).single();
+      assert.equal(g.target_date, "2026-12-25");
+      await pool.query("DELETE FROM goals WHERE user_id = $1", [user]);
+    }
+  }
+  await pool.query("DELETE FROM schedules WHERE user_id = $1", [user]);
+  await pool.query("DELETE FROM profiles WHERE id = $1", [user]);
+});
