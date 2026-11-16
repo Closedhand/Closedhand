@@ -2538,44 +2538,6 @@ app.get("/logout", (req, res) => {
 });
 
 // ============================================================
-// BOT-INITIATED SERVICE CONNECTION
-// Validates a signed token from the bot, sets a session, and
-// redirects into the standard OAuth flow.
-// ============================================================
-
-app.get("/bot-connect", (req, res) => {
-  const { token } = req.query;
-  if (!token) return res.status(400).send("Missing token.");
-
-  try {
-    const dotIdx = token.lastIndexOf(".");
-    if (dotIdx === -1) return res.status(400).send("Invalid token.");
-    const payloadB64 = token.substring(0, dotIdx);
-    const sig = token.substring(dotIdx + 1);
-
-    const payloadStr = Buffer.from(payloadB64, "base64url").toString();
-    const expectedSig = crypto.createHmac("sha256", process.env.SUPABASE_SERVICE_KEY)
-      .update(payloadStr).digest("hex");
-
-    if (sig.length !== expectedSig.length || !crypto.timingSafeEqual(Buffer.from(expectedSig, "hex"), Buffer.from(sig, "hex"))) return res.status(403).send("Invalid token signature.");
-
-    const payload = JSON.parse(payloadStr);
-    if (!payload.userId || !payload.service || !payload.exp) return res.status(400).send("Malformed token.");
-    if (Date.now() > payload.exp) return res.status(410).send("This link has expired. Ask Closedhand for a new one.");
-
-    const svc = SERVICES[payload.service];
-    if (!svc) return res.status(400).send(`Unknown service: ${payload.service}`);
-
-    // Log the user in and redirect to OAuth
-    const params = payload.storeDomain ? `?store_domain=${encodeURIComponent(payload.storeDomain)}` : "";
-    res.redirect(`/auth/${payload.service}${params}`);
-  } catch (e) {
-    console.error("bot-connect error:", e.message);
-    res.status(500).send("Something went wrong. Ask Closedhand for a new link.");
-  }
-});
-
-// ============================================================
 // GENERIC OAUTH FRAMEWORK
 // ============================================================
 

@@ -50,14 +50,20 @@ test("links the bot sends stay on the web chat's address there, and use the pers
   delete require.cache[require.resolve("../lib/dashboard-links")];
   try {
     const { closedhandLink } = require("../lib/dashboard-links");
-    assert.equal(await closedhandLink("web", "/bot-connect?token=t"), "/bot-connect?token=t");
+    assert.equal(await closedhandLink("web", "/auth/notion"), "/auth/notion");
     assert.equal(await closedhandLink("whatsapp", "/auth/google"), "https://quiet-test.closedhand.com/auth/google");
   } finally {
     config.dashboardBase = saved;
     delete require.cache[require.resolve("../lib/dashboard-links")];
   }
   const handlers = read("lib/tools/handlers.js");
-  assert.doesNotMatch(handlers, /\/bot-connect\?token=\$\{token\}`;\n/, "no bot-connect link built on this computer's own address");
-  assert.match(handlers, /closedhandLink\(ctx\.activePlatform \|\| "web", `\/bot-connect\?token=\$\{token\}`\)/);
+  // Connecting a service from chat is that service's sign-in on this
+  // Closedhand. It went through /bot-connect, a link signed with a key from
+  // the hosted days that no setup has, so making it threw every time.
+  assert.match(handlers, /closedhandLink\(ctx\.activePlatform \|\| "web", `\/auth\/\$\{svcKey\}\$\{store\}`\)/);
+  for (const f of ["lib/tools/handlers.js", "lib/services-config.js", "webapp/server.js"]) {
+    assert.doesNotMatch(read(f), /bot-connect/, f);
+    assert.doesNotMatch(read(f), /createHmac\("sha256", process\.env\.SUPABASE_SERVICE_KEY\)/, f);
+  }
   assert.match(handlers, /closedhandLink\(ctx\.activePlatform \|\| "web", `\/auth\/\$\{service\}`\)/);
 });
