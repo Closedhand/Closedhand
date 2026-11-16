@@ -326,3 +326,42 @@ test('the maintainer hears once a day when many accounts are made with an accoun
   const quietDay = require('../lib/capacity').create({ db, env: { ...env, ANONYMOUS_DAILY_ACCOUNTS: String(made + 1) }, notices });
   assert.deepEqual((await quietDay.check()).filter(t => t.includes('account number')), [], 'under the setting, nothing');
 }));
+
+// A claim is marked making before its account is made. A process that stopped
+// in between (a deploy) left it making for good: paid for, and answered
+// "waiting" for ever.
+test('a paid claim that stopped half-made is taken up again, and what the stopped attempt made is removed first', quiet(async () => {
+  near.keys.clear();
+  const count = async (sql, args) => (await db.query(sql, args)).rows[0].n;
+  // Stopped straight after the claim was taken up: nothing made yet.
+  const copy = computer();
+  const invoice = invoiceOf((await ask(copy)).json.url);
+  status.set(invoice, 'Settled');
+  await db.query("UPDATE anonymous_pending SET state = 'making', checked_at = now() WHERE secret_hash = $1", [copy.hash]);
+  assert.equal(await webhook('InvoiceSettled', invoice), 200);
+  assert.deepEqual((await poll(copy)).json, { state: 'waiting' }, 'just taken up: it may still be under way, so nothing is made twice');
+  await db.query("UPDATE anonymous_pending SET checked_at = now() - interval '6 minutes' WHERE secret_hash = $1", [copy.hash]);
+  const got = await poll(copy);
+  assert.match(got.json.accountNumber || '', /^[A-Z2-9]{4} /, 'five minutes on, the computer\'s next question makes it');
+  assert.equal(await count('SELECT count(*)::int AS n FROM addresses WHERE secret_hash = $1', [copy.hash]), 1);
+
+  // Stopped at the last step: the account, its personal URL and its payment
+  // exist, and the claim was never marked paid.
+  const late = computer();
+  const paidFor = invoiceOf((await ask(late)).json.url);
+  status.set(paidFor, 'Settled');
+  assert.equal(await webhook('InvoiceSettled', paidFor), 200);
+  const first = (await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1', [late.hash])).rows[0].owner_id;
+  await db.query("UPDATE anonymous_pending SET state = 'making', owner_id = NULL, number = NULL, checked_at = now() - interval '6 minutes' WHERE secret_hash = $1", [late.hash]);
+  const owners = await count('SELECT count(*)::int AS n FROM owners');
+  assert.equal(await webhook('InvoiceSettled', paidFor), 200, 'BTCPay sends its webhook again');
+  const made = await poll(late);
+  assert.match(made.json.accountNumber || '', /^[A-Z2-9]{4} /);
+  const now = (await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1', [late.hash])).rows;
+  assert.equal(now.length, 1, 'one personal URL for this computer');
+  assert.notEqual(now[0].owner_id, first, 'the stopped attempt\'s account is gone');
+  assert.equal(await count('SELECT count(*)::int AS n FROM owners WHERE id = $1', [first]), 0);
+  assert.equal(await count('SELECT count(*)::int AS n FROM owners'), owners, 'one account in its place, not two');
+  assert.deepEqual((await db.query('SELECT owner_id FROM ahead_payments WHERE id = $1', ['btcpay:' + paidFor])).rows, [{ owner_id: now[0].owner_id }], 'the payment counts once, for the account that stands');
+  assert.ok(new Date((await db.query('SELECT ends_at FROM ahead_plans WHERE owner_id = $1', [now[0].owner_id])).rows[0].ends_at) > new Date(Date.now() + 80 * 86400000), 'with its three months');
+}));

@@ -508,6 +508,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // again with the secret only it holds. The number is kept here only sealed
   // and only until then; afterwards only its fingerprint. An invoice that
   // expires discards the claim, and a claim never paid goes after a day.
+  const MAKING_STOPPED_MS = 5 * 60 * 1000;
   const dropOld = () => db.query("DELETE FROM anonymous_pending WHERE (state = 'waiting' AND created_at < now() - interval '1 day') OR (state = 'paid' AND created_at < now() - interval '30 days')");
   app.post('/api/phone-enrollment/claim-anonymous', wrap(async (req, res) => {
     const copy = installation(req), { months } = req.body || {};
@@ -538,8 +539,11 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     await dropOld();
     const mine = () => db.query('SELECT * FROM anonymous_pending WHERE secret_hash = $1 ORDER BY created_at DESC LIMIT 1', [copy.secret_hash]).then(r => r.rows[0]);
     let row = await mine();
-    if (row?.state === 'waiting' && row.invoice_id && ahead && (!row.checked_at || Date.now() - new Date(row.checked_at).getTime() > 20000)) {
-      await db.query('UPDATE anonymous_pending SET checked_at = now() WHERE id = $1', [row.id]);
+    const since = row?.checked_at ? Date.now() - new Date(row.checked_at).getTime() : Infinity;
+    // Taken up for making and never finished (claimPaid): read back again too.
+    const stopped = row?.state === 'making' && since > MAKING_STOPPED_MS;
+    if (row?.invoice_id && ahead && (stopped || (row.state === 'waiting' && since > 20000))) {
+      if (!stopped) await db.query('UPDATE anonymous_pending SET checked_at = now() WHERE id = $1', [row.id]);
       await ahead.settled(row.invoice_id).catch(e => console.error('[addresses] anonymous claim read back:', e.message));
       row = await mine();
     }
@@ -554,8 +558,23 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // The invoice settled: the account, its personal URL and its plan, made
   // once. A claim no longer waiting (its invoice lapsed first) makes nothing;
   // a late payment is for support, as the Terms say.
+  //
+  // A claim is taken up (making) before its account is made, so two webhooks
+  // never make two. If the process stops in between (a deploy), the claim
+  // stayed making for good: paid for, and answered "waiting" for ever. A claim
+  // left making for five minutes is taken up again, by BTCPay's next webhook
+  // or the computer's next question, and what the stopped attempt made (found
+  // by this computer's address and by the payment) is removed first.
   async function claimPaid(claimId, months, paid) {
-    const taken = (await db.query("UPDATE anonymous_pending SET state = 'making' WHERE id = $1 AND state = 'waiting' RETURNING *", [claimId])).rows[0];
+    let taken = (await db.query("UPDATE anonymous_pending SET state = 'making', checked_at = now() WHERE id = $1 AND state = 'waiting' RETURNING *", [claimId])).rows[0];
+    if (!taken) {
+      taken = (await db.query("UPDATE anonymous_pending SET checked_at = now() WHERE id = $1 AND state = 'making' AND checked_at < now() - make_interval(secs => $2) RETURNING *", [claimId, MAKING_STOPPED_MS / 1000])).rows[0];
+      if (taken) {
+        console.error('[addresses] an anonymous claim stopped while being made is taken up again');
+        const left = await db.query('SELECT owner_id FROM addresses WHERE secret_hash = $1 UNION SELECT owner_id FROM ahead_payments WHERE id = $2', [taken.secret_hash, String(paid.id)]);
+        for (const { owner_id: ownerId } of left.rows) await deleteAccount(db, ownerId);
+      }
+    }
     if (!taken) {
       if (!(await db.query('SELECT 1 FROM anonymous_pending WHERE id = $1', [claimId])).rowCount) console.error('[addresses] a payment for an anonymous claim no longer waiting: ' + paid.id);
       return 'no claim waiting';
