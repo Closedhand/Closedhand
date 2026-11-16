@@ -115,7 +115,7 @@ test("closedhand.com explains when Closedhand is there in one place, as a choice
   }
   const readme = read("README.md");
   assert.doesNotMatch(readme, /full product|sets the tier|catches up/i);
-  assert.match(readme, /a schedule due while it slept is skipped/);
+  assert.match(readme, /sends any reminder that came due, marked late\. A repeating schedule due while it slept is skipped\./);
   assert.match(readme, /Closedhand's data moves from Always on in My Account, to a computer that stays on\. It can go to a computer of your own, like a Mac mini at home/);
   assert.match(readme, /Either way this computer then stops running Closedhand and, once the new one runs, clears everything Closedhand kept on it\./, "never both running, and a move leaves nothing behind");
   assert.doesNotMatch(visibleText("webapp/views/setup.html"), /while this computer is on/);

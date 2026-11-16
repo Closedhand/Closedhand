@@ -200,8 +200,9 @@ test("dates and times come back as text, as the code that reads them expects", a
 });
 
 // A one-off that did not run stayed enabled, and cron has no year: it would
-// have fired twelve months on. The real table, the real driver.
-test("a one-off reminder whose time has passed is retired, and one still to come is not", async () => {
+// have fired twelve months on. The real table, the real driver, and the rows
+// as the scheduler loads them.
+test("a one-off whose time has passed is told apart on the rows the scheduler loads, and retiring it archives it", async () => {
   const { createPgClient } = require("../lib/db-driver-pg");
   const oneOffs = require("../lib/one-off-reminders");
   const db = createPgClient({ pool });
@@ -212,10 +213,14 @@ test("a one-off reminder whose time has passed is retired, and one still to come
   await add("call-the-dentist", "40 22 16 10 *", "Asia/Ho_Chi_Minh", true, "2026-10-16T14:25:00Z");
   await add("water-the-ferns", "0 9 20 12 *", "Europe/Lisbon", true, "2026-11-01T00:00:00Z");
   await add("weekly-shop", "0 10 * * 6", "Europe/Lisbon", false, "2026-10-01T00:00:00Z");
+  // The columns user-store.js getActiveUsers reads, mapped as it maps them.
+  const { data, error } = await db.from("schedules").select("user_id, name, cron_expression, task, chat_id, platform, run_once, timezone, kind, created_at, last_run").eq("enabled", true);
+  assert.equal(error, null);
+  const schedules = data.filter((r) => r.user_id === user).map((r) => ({ name: r.name, cron: r.cron_expression, enabled: true, timezone: r.timezone, run_once: r.run_once, kind: r.kind || "reminder", created_at: r.created_at, last_run: r.last_run }));
+  const gone = oneOffs.passed(schedules, { before: new Date("2026-11-16T12:00:00Z") });
+  assert.deepEqual(gone.map((m) => [m.schedule.name, m.schedule.kind, m.schedule.last_run, m.due.toISOString()]), [["call-the-dentist", "reminder", null, "2026-10-16T15:40:00.000Z"]]);
   const quiet = console.log; console.log = () => {};
-  let gone;
-  try { gone = await oneOffs.retirePassed(db, { before: new Date("2026-11-16T12:00:00Z") }); } finally { console.log = quiet; }
-  assert.deepEqual(gone, ["call-the-dentist"]);
+  try { assert.equal(await oneOffs.retire(db, user, "call-the-dentist"), true); } finally { console.log = quiet; }
   const { rows } = await pool.query("SELECT name, enabled, archived_at IS NOT NULL AS archived FROM schedules WHERE user_id = $1 ORDER BY name", [user]);
   assert.deepEqual(rows, [
     { name: "call-the-dentist", enabled: false, archived: true },

@@ -644,7 +644,7 @@ class UserStore {
     // Get users with active schedules
     const { data: schedUsers } = await supabase
       .from("schedules")
-      .select("user_id, name, cron_expression, task, chat_id, run_once, timezone, kind")
+      .select("user_id, name, cron_expression, task, chat_id, platform, run_once, timezone, kind, created_at, last_run")
       .eq("enabled", true);
 
     // Get users with pulse enabled
@@ -707,6 +707,10 @@ class UserStore {
               _platform: s.platform || platformOfChat[`${userId}:${target}`] || (target === userId ? "web" : null),
               run_once: s.run_once,
               kind: s.kind || "reminder",
+              // When it was made and whether it has run, which is how a
+              // one-off that came due while Closedhand was off is told.
+              created_at: s.created_at,
+              last_run: s.last_run,
             };
           })
           .filter((s) => s._chatId),

@@ -322,7 +322,7 @@ test("chat says whether a schedule is a reminder or a task, and a task runs as o
   const defs = read("lib/tools/definitions.js");
   assert.match(defs, /kind: \{\n\s+type: "string",\n\s+enum: \["reminder", "task"\],/);
   assert.match(read("lib/tools/handlers.js"), /eventAt, toolInput\.kind === "task" \? "task" : "reminder"\);/);
-  assert.match(read("user-store.js"), /select\("user_id, name, cron_expression, task, chat_id, run_once, timezone, kind"\)/);
+  assert.match(read("user-store.js"), /select\("user_id, name, cron_expression, task, chat_id, platform, run_once, timezone, kind, created_at, last_run"\)/);
   const sched = read("lib/scheduling.js");
   assert.match(sched, /if \(still && \(still\.enabled === false \|\| still\.archived_at\)\) \{/, "cancelled from the dashboard, not run");
   assert.match(sched, /if \(schedule\.kind === "task"\) \{\n\s+await require\("\.\/agents"\)\.startAgent\(targetUserId, deliverPlatform, targetChatId, schedule\.prompt, null\);/);
