@@ -204,15 +204,13 @@ test("an AI provider's key is pointed at Closedhand's AI", async () => {
   assert.match(await keyCatch.reply("u-ai", caught, "web", { dashboardUrl }), /To use it for Closedhand's AI, paste it under/);
 });
 
-test("every way in is covered: the queue, the web chat's store, and the old send route", () => {
+test("every way in is covered: the queue and the web chat's store", () => {
   const root = path.join(__dirname, "..");
   const engine = fs.readFileSync(path.join(root, "lib/engine.js"), "utf8");
   const queued = engine.slice(engine.indexOf("function queuedAsk("));
   assert.ok(queued.indexOf('require("./key-catch").check') > 0 && queued.indexOf('require("./key-catch").check') < queued.indexOf("markInflight(userId"), "caught before anything is recorded");
   const ws = fs.readFileSync(path.join(root, "lib/web-chat-ws.js"), "utf8");
   assert.ok(ws.indexOf('require("./key-catch").check') < ws.indexOf('from("web_messages").insert'), "the web chat stores the placeholder");
-  const server = fs.readFileSync(path.join(root, "webapp/server.js"), "utf8");
-  assert.match(server, /content: apiKeys\.withhold\(message\.trim\(\)\)\.text/);
   const mcps = fs.readFileSync(path.join(root, "lib/user-mcp.js"), "utf8");
   assert.match(mcps, /r\.transport !== "api"/, "a key connection is never opened as an MCP server");
 });

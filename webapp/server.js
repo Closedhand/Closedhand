@@ -608,9 +608,6 @@ app.get("/setup", async (req, res) => {
   }
 });
 
-// The Google steps live inside the setup page's Google card now.
-app.get("/setup/google", (req, res) => res.redirect("/setup#step-accounts=google"));
-
 // --- Dashboard access: a password chosen in the wizard, a session cookie, ---
 // --- and a login page with no username (there is only one person here). ----
 // The wizard and its APIs stay reachable without a password because the wizard
@@ -3081,7 +3078,6 @@ require("./microsoft-device").register(app, {
   claimPersonalUrl: (idToken) => claimPersonalUrlWith("microsoft", idToken),
 });
 
-app.post("/api/mcps/probe", connectMcpHandler);
 app.post("/api/mcps", connectMcpHandler);
 
 // The AI provider a service name means, if any: its key belongs in Models,
@@ -3938,112 +3934,6 @@ async function fetchAccountMetadata(serviceKey, svc, tokens) {
 // ============================================================
 
 // Create anonymous profile on first message (not page load)
-
-// Send a chat message
-app.post("/api/chat/send", async (req, res) => {
-  try {
-    const { message } = req.body;
-    if (!message || typeof message !== "string" || message.trim().length === 0) {
-      return res.status(400).json({ error: "Message required" });
-    }
-    if (message.length > 10000) {
-      return res.status(400).json({ error: "Message too long" });
-    }
-
-    // Get or create user
-    let userId = getUserIdFromRequest(req);
-
-    // Insert inbound message. A pasted key is stored as a placeholder, which
-    // the bot answers with where keys go (lib/key-catch.js).
-    const { data, error } = await supabase.from("web_messages").insert({
-      user_id: userId,
-      direction: "inbound",
-      content: apiKeys.withhold(message.trim()).text,
-      status: "pending",
-    }).select().single();
-
-    if (error) {
-      console.error("[Chat] Insert error:", error.message);
-      return res.status(500).json({ error: "Failed to send message" });
-    }
-
-    res.json({ ok: true, messageId: data.id, userId });
-  } catch (err) {
-    console.error("[Chat] Send error:", err.message);
-    res.status(500).json({ error: "Internal error" });
-  }
-});
-
-// SSE stream for receiving responses
-app.get("/api/chat/stream", (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-
-  // Send keepalive immediately
-  res.write(":\n\n");
-
-  // Subscribe to outbound messages for this user
-  const channel = supabase
-    .channel(`web-chat-${userId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "web_messages",
-        filter: `user_id=eq.${userId}`,
-      },
-      (payload) => {
-        const msg = payload.new;
-        if (msg.direction === "outbound") {
-          res.write(`data: ${JSON.stringify({ type: "message", content: msg.content, id: msg.id, created_at: msg.created_at })}\n\n`);
-        } else if (msg.direction === "inbound" && msg.status === "processing") {
-          res.write(`data: ${JSON.stringify({ type: "typing" })}\n\n`);
-        }
-      }
-    )
-    .subscribe();
-
-  // Also listen for status updates (processing -> complete)
-  const statusChannel = supabase
-    .channel(`web-status-${userId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "UPDATE",
-        schema: "public",
-        table: "web_messages",
-        filter: `user_id=eq.${userId}`,
-      },
-      (payload) => {
-        const msg = payload.new;
-        if (msg.direction === "inbound" && msg.status === "processing") {
-          res.write(`data: ${JSON.stringify({ type: "typing" })}\n\n`);
-        }
-      }
-    )
-    .subscribe();
-
-  // Keepalive every 30s
-  const keepalive = setInterval(() => {
-    res.write(":\n\n");
-  }, 30000);
-
-  req.on("close", () => {
-    clearInterval(keepalive);
-    supabase.removeChannel(channel);
-    supabase.removeChannel(statusChannel);
-  });
-});
 
 // --- Here: where the person is, and their weather ---------------------------
 // The home page's "Orientate" asks the browser where it is, on request only.
@@ -5259,27 +5149,6 @@ app.get("/api/agents/places", async (req, res) => {
   catch (e) { console.error("Answer places error:", e.message); res.status(500).json({ error: "Could not load your chats" }); }
 });
 
-app.get("/api/agents/:id", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  try {
-    const { data: task, error } = await supabase
-      .from("agent_tasks")
-      .select("id, user_id, goal, status, model, result, progress, tools_used, error, created_at, completed_at")
-      .eq("id", req.params.id).eq("user_id", userId)
-      .single();
-
-    if (error || !task) return res.status(404).json({ error: "Agent not found" });
-    if (task.user_id !== userId) return res.status(403).json({ error: "Not authorized" });
-
-    res.json(task);
-  } catch (err) {
-    console.error("Agent fetch error:", err.message);
-    res.status(500).json({ error: "Failed to load agent" });
-  }
-});
-
 // A page (lib/tools: save_report; the table is still called reports), looked
 // up for its owner. Pages are their own records, made only when one helps
 // beyond the chat answer, and live under Pages on the dashboard whoever made
@@ -5465,39 +5334,6 @@ app.get("/api/pages", async (req, res) => {
   }
 });
 
-
-// GET /api/agents/:id/pdf — a finished run's output, typeset for download.
-// The web view renders the same markdown dialect; this is the take-away copy.
-app.get("/api/agents/:id/pdf", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  try {
-    const { data: run, error } = await supabase
-      .from("agent_tasks")
-      .select("id, user_id, goal, title, status, result, created_at, completed_at, result_edited_at")
-      .eq("id", req.params.id).eq("user_id", userId)
-      .single();
-
-    if (error || !run) return res.status(404).json({ error: "Agent not found" });
-    if (run.user_id !== userId) return res.status(403).json({ error: "Not authorized" });
-    if (!run.result) return res.status(409).json({ error: "This run has no output to download yet" });
-
-    const { runPdf, runTitle } = require("./run-pdf");
-    const date = String(run.completed_at || run.created_at || "").substring(0, 10);
-    const safe = runTitle(run).replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().substring(0, 60) || "run";
-    // ?view=1 shows the same document in the browser's own PDF viewer instead
-    // of downloading it; the filename still applies if they save from there.
-    const disposition = req.query.view === "1" ? "inline" : "attachment";
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `${disposition}; filename="Closedhand - ${safe}${date ? ` - ${date}` : ""}.pdf"`);
-    // A follow-on break (lib/follow-on.js) is a paragraph in a document.
-    runPdf({ ...run, result: String(run.result).replace(/^[ \t]*\[\[next\]\][ \t]*$/gm, "") }).pipe(res);
-  } catch (err) {
-    console.error("Agent PDF error:", err.message);
-    res.status(500).json({ error: "Could not build the PDF" });
-  }
-});
 
 // POST /api/agents — create a new agent task from the dashboard
 // A task started from the Agents tab: what to do, its scope, an optional
@@ -6338,25 +6174,6 @@ app.get("/api/mcps", async (req, res) => {
   }
 });
 
-// An MCP server announces itself in its initialize reply, which is where its
-// real name lives: "Notion MCP" rather than whatever its hostname happens to
-// spell. The reply may come back as plain JSON or as an SSE frame, so both
-// shapes have to be read.
-async function readServerInfo(response) {
-  try {
-    const raw = await response.text();
-    for (const line of raw.split(/\r?\n/)) {
-      const t = line.replace(/^data:\s*/, "").trim();
-      if (!t.startsWith("{")) continue;
-      try {
-        const d = JSON.parse(t);
-        if (d.result && d.result.serverInfo) return d.result.serverInfo;
-      } catch { /* next frame */ }
-    }
-  } catch { /* fall back to the URL */ }
-  return null;
-}
-
 // Half of what servers declare is a product name and half is a package id:
 // "Notion MCP" and "DeepWiki" alongside "docs-ai-search" and
 // "@huggingface/mcp-service". Rules that tell those apart end up as a list of
@@ -6620,56 +6437,6 @@ app.post("/api/mcps/:id/fix", async (req, res) => {
 // ============================================================
 // SCHEDULES & ACCOUNT MANAGEMENT
 // ============================================================
-
-// GET /api/schedules — list active cron jobs
-app.get("/api/schedules", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  try {
-    const { data, error } = await supabase
-      .from("schedules")
-      .select("name, cron_expression, task, created_at")
-      .eq("user_id", userId)
-      .eq("enabled", true);
-
-    if (error) throw error;
-
-    res.json((data || []).map(s => ({
-      name: s.name,
-      cron: s.cron_expression,
-      task: s.task,
-      createdAt: s.created_at,
-    })));
-  } catch (err) {
-    console.error("Schedules fetch error:", err.message);
-    res.status(500).json({ error: "Failed to load schedules" });
-  }
-});
-
-// DELETE /api/schedules/:name — remove a schedule
-app.delete("/api/schedules/:name", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  const name = decodeURIComponent(req.params.name);
-  try {
-    const { data, error } = await supabase
-      .from("schedules")
-      .delete()
-      .eq("user_id", userId)
-      .eq("name", name)
-      .select();
-
-    if (error) throw error;
-    if (!data || data.length === 0) return res.status(404).json({ error: "Schedule not found" });
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Schedule delete error:", err.message);
-    res.status(500).json({ error: "Failed to delete schedule" });
-  }
-});
 
 // GET /api/reminders — the user's scheduled reminders
 // How often a repeating reminder comes round, in words: "every Sun",
@@ -7123,45 +6890,6 @@ app.get("/api/flights", async (req, res) => {
   }
 });
 
-// GET /api/location — saved location from profile settings
-app.get("/api/location", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("settings")
-      .eq("id", userId)
-      .single();
-
-    if (error) throw error;
-    res.json({ location: data?.settings?.location || null });
-  } catch (err) {
-    console.error("Location fetch error:", err.message);
-    res.status(500).json({ error: "Failed to load location" });
-  }
-});
-
-// PUT /api/location — save location to profile settings
-app.put("/api/location", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-
-  const { name, latitude, longitude } = req.body || {};
-  if (!name || latitude == null || longitude == null) {
-    return res.status(400).json({ error: "name, latitude, longitude required" });
-  }
-
-  try {
-    await patchSettings(supabase, userId, { set: { location: { name, latitude, longitude, updatedAt: new Date().toISOString() } } });
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Location save error:", err.message);
-    res.status(500).json({ error: "Failed to save location" });
-  }
-});
-
 // Who may change the models: the dashboard's setup access on a self-host.
 async function authorizeModels(req, res) {
   if (mcpClient.isSelfHost()) {
@@ -7239,11 +6967,6 @@ app.get("/api/weather", async (req, res) => {
 
 // === Knowledge Graph (Context Brain) ===
 
-function extractWikiLinks(content) {
-  const matches = content.match(/\[\[([^\]]+)\]\]/g) || [];
-  return [...new Set(matches.map(m => m.slice(2, -2)))];
-}
-
 // GET /api/context-status — how full the live conversation is, so the memory
 // tab can say truthfully whether anything has needed condensing yet. The
 // char/4 estimate matches the bot's own pressure gauge, and the window is a
@@ -7305,56 +7028,6 @@ app.get("/api/knowledge", async (req, res) => {
 // endpoint above already delivers: the corpus is short summaries that fit in
 // one fetch, so a server round trip per keystroke (let alone an embedding or
 // a rerank) would only add latency to a list already sitting in memory.
-
-// Read full memory vector
-app.get("/api/knowledge/:title", async (req, res) => {
-  try {
-    const userId = getUserIdFromRequest(req);
-    if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const extId = decodeURIComponent(req.params.title);
-    const { data, error } = await supabase
-      .from("data_vectors")
-      .select("id, external_id, content, item_type, source_metadata, updated_at, created_at")
-      .eq("user_id", userId)
-      .eq("service", "memory")
-      .eq("external_id", extId)
-      .single();
-    if (error || !data) return res.status(404).json({ error: "Memory entry not found" });
-    res.json({
-      title: data.source_metadata?.title || data.external_id,
-      content: data.content,
-      tags: [data.item_type],
-      links: [],
-      created_at: data.created_at,
-      updated_at: data.updated_at,
-    });
-  } catch (e) {
-    console.error("Knowledge read error:", e);
-    res.status(500).json({ error: "Failed to read entry" });
-  }
-});
-
-// Create or update memory vector (for dashboard edits)
-app.put("/api/knowledge/:title", async (req, res) => {
-  try {
-    const userId = getUserIdFromRequest(req);
-    if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const extId = decodeURIComponent(req.params.title);
-    const { content } = req.body;
-    if (typeof content !== "string") return res.status(400).json({ error: "Content required" });
-    const { error } = await supabase
-      .from("data_vectors")
-      .update({ content, updated_at: new Date().toISOString() })
-      .eq("user_id", userId)
-      .eq("service", "memory")
-      .eq("external_id", extId);
-    if (error) throw error;
-    res.json({ success: true, title: extId });
-  } catch (e) {
-    console.error("Knowledge write error:", e);
-    res.status(500).json({ error: "Failed to save" });
-  }
-});
 
 // Delete memory vector
 app.delete("/api/knowledge/:title", async (req, res) => {
@@ -7677,7 +7350,6 @@ app.post("/api/goals/:id/habit", async (req, res) => {
 app.delete("/api/goals/:id", async (req, res) => {
   const userId = await goalOwner(req, res); if (!userId) return;
   try {
-    const goal = await ownGoal(userId, req.params.id).catch(() => null);
     await mustWrite("could not remove that goal", supabase.from("goals").delete().eq("id", req.params.id).eq("user_id", userId));
     res.json({ success: true });
   } catch (e) { goalReply(res, e); }
@@ -9814,86 +9486,6 @@ app.get("/api/sandbox/vnc-token", async (req, res) => {
   global._vncTokens[token] = { userId, hostname: sandbox.hostname, sandboxToken: sandbox.token,
     port: process.env.WORKSPACE_VM ? sandbox.port : 6080, vm: !!process.env.WORKSPACE_VM, expires: Date.now() + 300000 };
   res.json({ token });
-});
-
-// Diagnostic: test VNC connectivity to sandbox
-app.get("/api/sandbox/vnc-diag", async (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Not logged in" });
-  const sandbox = await getSandboxInfo(userId);
-  if (!sandbox?.hostname) return res.json({ error: "No active sandbox in DB" });
-
-  const diag = { hostname: sandbox.hostname, tests: {} };
-
-  // Test 1: DNS resolution
-  try {
-    const dns = require("dns");
-    const addrs = await new Promise((resolve, reject) => {
-      dns.resolve(sandbox.hostname, (err, a) => err ? reject(err) : resolve(a));
-    }).catch(() => null);
-    const addrs6 = await new Promise((resolve, reject) => {
-      dns.resolve6(sandbox.hostname, (err, a) => err ? reject(err) : resolve(a));
-    }).catch(() => null);
-    diag.tests.dns = { ipv4: addrs, ipv6: addrs6 };
-  } catch (e) { diag.tests.dns = { error: e.message }; }
-
-  // Test 2: HTTP to agent on port 8080
-  try {
-    const http = require("http");
-    const agentOk = await new Promise((resolve) => {
-      const r = http.get(`http://${sandbox.hostname}:8080/health`, { timeout: 5000 }, (resp) => {
-        let d = ""; resp.on("data", c => d += c); resp.on("end", () => resolve(d));
-      });
-      r.on("error", (e) => resolve("error: " + e.message));
-      r.on("timeout", () => { r.destroy(); resolve("timeout"); });
-    });
-    diag.tests.agent_8080 = agentOk;
-  } catch (e) { diag.tests.agent_8080 = e.message; }
-
-  // Test 3: WebSocket to websockify on port 6080
-  try {
-    const WebSocket = require("ws");
-    const wsOk = await new Promise((resolve) => {
-      const ws = new WebSocket(`ws://${sandbox.hostname}:6080`, { handshakeTimeout: 5000 });
-      ws.on("open", () => { ws.close(); resolve("connected"); });
-      ws.on("error", (e) => resolve("error: " + e.message));
-      setTimeout(() => { ws.terminate(); resolve("timeout after 5s"); }, 5500);
-    });
-    diag.tests.websockify_6080 = wsOk;
-  } catch (e) { diag.tests.websockify_6080 = e.message; }
-
-  // Test 4: Desktop status endpoint
-  try {
-    const http = require("http");
-    const desktopStatus = await new Promise((resolve) => {
-      const r = http.get(`http://${sandbox.hostname}:8080/desktop/status`, {
-        timeout: 5000,
-        headers: { "X-Sandbox-Token": sandbox.token },
-      }, (resp) => {
-        let d = ""; resp.on("data", c => d += c); resp.on("end", () => resolve(d));
-      });
-      r.on("error", (e) => resolve("error: " + e.message));
-      r.on("timeout", () => { r.destroy(); resolve("timeout"); });
-    });
-    diag.tests.desktop_status = desktopStatus;
-  } catch (e) { diag.tests.desktop_status = e.message; }
-
-  // Test 5: Run process check inside sandbox via exec endpoint
-  try {
-    const http = require("http");
-    const execResult = await new Promise((resolve) => {
-      const payload = JSON.stringify({ language: "bash", code: "ps aux | grep -E 'Xvnc|websockify|openbox' | grep -v grep; echo '---WHICH---'; which Xvnc websockify 2>&1; echo '---ENTRY---'; head -5 /entrypoint.sh 2>&1; echo '---DISPLAY---'; echo $DISPLAY" });
-      const opts = { hostname: sandbox.hostname, port: 8080, path: "/exec", method: "POST", timeout: 10000,
-        headers: { "Content-Type": "application/json", "X-Sandbox-Token": sandbox.token, "Content-Length": Buffer.byteLength(payload) } };
-      const r = http.request(opts, (resp) => { let d = ""; resp.on("data", c => d += c); resp.on("end", () => resolve(d)); });
-      r.on("error", (e) => resolve("error: " + e.message));
-      r.on("timeout", () => { r.destroy(); resolve("timeout"); });
-      r.write(payload); r.end();
-    });
-    diag.tests.exec_check = execResult;
-  } catch (e) { diag.tests.exec_check = e.message; }
-
-  res.json(diag);
 });
 
 // ============================================================

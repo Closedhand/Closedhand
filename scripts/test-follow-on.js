@@ -56,7 +56,6 @@ test("every chat app sender and every non-chat output handles breaks", () => {
   assert.match(read("lib/assistant-email.js"), /text = require\('\.\/follow-on'\)\.joined\(text\);/, "an email is one message");
   assert.match(read("lib/services/tts.js"), /speechText\(require\("\.\.\/follow-on"\)\.joined\(text\)\)/, "read aloud as paragraphs");
   assert.match(read("webapp/views/dashboard.html"), /md = String\(md\)\.replace\(\/\^\[ \\t\]\*\\\[\\\[next\\\]\\\]\[ \\t\]\*\$\/gm, ''\);/);
-  assert.match(read("webapp/server.js"), /runPdf\(\{ \.\.\.run, result: String\(run\.result\)\.replace\(/);
 });
 
 test("the web chat shows the parts as separate messages", () => {

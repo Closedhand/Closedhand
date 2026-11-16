@@ -186,7 +186,7 @@ function agentRoutes(records, rpc = async () => ({ data: [{ id: 'x' }], error: n
   const app = { get(p, fn) { handlers['GET ' + p] = fn; }, post(p, fn) { handlers['POST ' + p] = fn; } };
   const block = (from, to) => server.slice(server.indexOf(from), server.indexOf(to, server.indexOf(from)));
   const code = block('// The project a routine is saved into', 'app.post("/api/automations"')
-    + block('// Where a task started on the Agents tab can answer:', 'app.get("/api/agents/:id", async')
+    + block('// Where a task started on the Agents tab can answer:', '// A page (lib/tools: save_report')
     + block('// A task started from the Agents tab: what to do, its scope', '\n// ============================================================\n// AUTOMATIONS')
     + block('// Something to tell a task while it works', 'app.post("/api/agents/:id/stop"');
   vm.runInNewContext(code, { app, supabase: db, getUserIdFromRequest: () => 'owner', crypto: require('node:crypto'), console: { error() {} } });
