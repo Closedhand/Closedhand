@@ -225,25 +225,6 @@ const SERVICES = {
     logoUrl: "/logos/atlassian.svg",
   },
 
-  spotify: {
-    name: "Spotify",
-    description: "Now playing, playlists, playback control",
-    logoUrl: "/logos/spotify.svg",
-    clientId: process.env.SPOTIFY_CLIENT_ID,
-    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-    authUrl: "https://accounts.spotify.com/authorize",
-    tokenUrl: "https://accounts.spotify.com/api/token",
-    scopes: [
-      "user-read-playback-state",
-      "user-modify-playback-state",
-      "user-read-currently-playing",
-      "user-read-recently-played",
-      "playlist-read-private",
-      "playlist-modify-public",
-      "playlist-modify-private",
-    ],
-    provides: ["Spotify"],
-  },
 
   stripe: {
     name: "Stripe",
@@ -251,37 +232,13 @@ const SERVICES = {
     logoUrl: "/logos/stripe.svg",
   },
 
+  // Shopify signs in with an app the person makes for their store, or a token
+  // they hold (/api/connect-shopify-token); the dashboard asks for the
+  // store's address first.
   shopify: {
     name: "Shopify",
     description: "Orders, products, customers, analytics",
     logoUrl: "/logos/shopify.svg",
-    clientId: process.env.SHOPIFY_CLIENT_ID,
-    clientSecret: process.env.SHOPIFY_CLIENT_SECRET,
-    authUrl: null, // Built dynamically from store domain
-    tokenUrl: null,
-    scopes: [
-      "read_products",
-      "write_products",
-      "read_orders",
-      "write_orders",
-      "read_customers",
-      "write_customers",
-      "read_inventory",
-      "write_inventory",
-      "read_analytics",
-      "read_fulfillments",
-      "write_fulfillments",
-      "read_shipping",
-      "write_shipping",
-      "read_reports",
-      "read_draft_orders",
-      "write_draft_orders",
-      "read_price_rules",
-      "write_price_rules",
-      "read_all_orders",
-      "read_shopify_payments_payouts",
-    ],
-    scopeJoin: ",",
     needsStoreDomain: true,
     provides: ["Shopify"],
   },
@@ -309,40 +266,7 @@ const SERVICES = {
 
 
 
-  hubspot: {
-    name: "HubSpot",
-    description: "CRM, contacts, deals, marketing",
-    logoUrl: "/logos/hubspot.svg",
-    clientId: process.env.HUBSPOT_CLIENT_ID,
-    clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
-    authUrl: "https://app.hubspot.com/oauth/authorize",
-    tokenUrl: "https://api.hubapi.com/oauth/v1/token",
-    profileUrl: null,
-    scopes: [
-      "crm.objects.contacts.read",
-      "crm.objects.contacts.write",
-      "crm.objects.deals.read",
-      "crm.objects.deals.write",
-      "crm.objects.companies.read",
-      "crm.objects.companies.write",
-      "tickets",
-    ],
-    provides: ["HubSpot"],
-  },
 
-  salesforce: {
-    name: "Salesforce",
-    description: "CRM, leads, opportunities",
-    logoUrl: "/logos/salesforce.svg",
-    clientId: process.env.SALESFORCE_CLIENT_ID,
-    clientSecret: process.env.SALESFORCE_CLIENT_SECRET,
-    authUrl: "https://login.salesforce.com/services/oauth2/authorize",
-    tokenUrl: "https://login.salesforce.com/services/oauth2/token",
-    profileUrl: null,
-    scopes: ["full", "refresh_token", "offline_access"],
-    usePKCE: true,
-    provides: ["Salesforce"],
-  },
 
   github: {
     name: "GitHub",
@@ -2239,8 +2163,6 @@ app.get("/auth/:service", async (req, res) => {
     return res.status(400).send("Service not available");
   }
 
-  const { store_domain } = req.query;
-
   // The sign-in comes back to this computer's own address. On Docker and the
   // Mac that is localhost, which a phone (or Telegram's browser on it) can't
   // open, so a sign-in started there ended on a dead page after the person
@@ -2262,7 +2184,6 @@ app.get("/auth/:service", async (req, res) => {
     redirectUri,
     personalClient: svc.personalClient ? { clientId: svc.clientId, clientSecret: svc.clientSecret } : null,
     userId: getUserIdFromRequest(req),
-    storeDomain: store_domain || null,
     // Explicit "connect an additional Google account" flow (mail/calendar for
     // a second Gmail). Only meaningful for google + a logged-in user.
     extraAccount: (serviceKey === "google" || serviceKey === "microsoft") && req.query.extra === "1" && !!getUserIdFromRequest(req),
@@ -2271,7 +2192,7 @@ app.get("/auth/:service", async (req, res) => {
     returnTo: req.query.return === "setup" ? "/setup" : null,
   };
 
-  // PKCE support (e.g. Salesforce)
+  // PKCE, for an app that holds no secret (Closedhand's own Google app)
   let pkce = null;
   if (svc.usePKCE) {
     pkce = generatePKCE();
@@ -2280,44 +2201,19 @@ app.get("/auth/:service", async (req, res) => {
 
   const state = generateOAuthState(stateData);
 
-  // Build auth URL
-  let authUrl;
-
-  if (svc.needsStoreDomain) {
-    const domain = store_domain;
-    if (!domain) return res.status(400).send("Store domain required. Use ?store_domain=yourstore.myshopify.com");
-    if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.myshopify\.com$/.test(domain)) {
-      return res.status(400).send("Invalid store domain. Must be yourstore.myshopify.com");
-    }
-    authUrl = `https://${domain}/admin/oauth/authorize?` +
-      `client_id=${encodeURIComponent(svc.clientId)}` +
-      `&scope=${encodeURIComponent(svc.scopes.join(svc.scopeJoin || " "))}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&state=${state}`;
-  } else {
-    const params = new URLSearchParams({
-      client_id: svc.clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: svc.scopes.join(svc.scopeJoin || " "),
-      state,
-    });
-
-    if (svc.extraAuthParams) {
-      for (const [k, v] of Object.entries(svc.extraAuthParams)) {
-        params.set(k, v);
-      }
-    }
-
-    if (pkce) {
-      params.set("code_challenge", pkce.codeChallenge);
-      params.set("code_challenge_method", "S256");
-    }
-
-    authUrl = `${svc.authUrl}?${params.toString()}`;
+  const params = new URLSearchParams({
+    client_id: svc.clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: svc.scopes.join(" "),
+    state,
+  });
+  for (const [k, v] of Object.entries(svc.extraAuthParams || {})) params.set(k, v);
+  if (pkce) {
+    params.set("code_challenge", pkce.codeChallenge);
+    params.set("code_challenge_method", "S256");
   }
-
-  res.redirect(authUrl);
+  res.redirect(`${svc.authUrl}?${params.toString()}`);
 });
 
 // ============================================================
@@ -2880,7 +2776,7 @@ app.get("/auth/:service/callback", async (req, res) => {
 
   try {
     const redirectUri = stateData.redirectUri || `${BASE_URL}/auth/${serviceKey}/callback`;
-    const tokens = await exchangeOAuthCode(svc, code, redirectUri, stateData.storeDomain, stateData.codeVerifier);
+    const tokens = await exchangeOAuthCode(svc, code, redirectUri, stateData.codeVerifier);
     if (svc.personalClient) { tokens.client_id = svc.clientId; tokens.client_secret = svc.clientSecret; }
     // It came back to the personal URL, so this app allows it from now on.
     if (redirectUri !== `${BASE_URL}/auth/${serviceKey}/callback`) await setRuntimeConf({ [returnsAnywhereKey(serviceKey)]: "1" }).catch(() => {});
@@ -2905,16 +2801,7 @@ app.get("/auth/:service/callback", async (req, res) => {
 });
 
 // Exchange auth code for tokens — generic for all services
-async function exchangeOAuthCode(svc, code, redirectUri, storeDomain, codeVerifier) {
-  let tokenUrl = svc.tokenUrl;
-
-  if (svc.needsStoreDomain && storeDomain) {
-    if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.myshopify\.com$/.test(storeDomain)) {
-      throw new Error("Invalid store domain");
-    }
-    tokenUrl = `https://${storeDomain}/admin/oauth/access_token`;
-  }
-
+async function exchangeOAuthCode(svc, code, redirectUri, codeVerifier) {
   const params = new URLSearchParams({
     code,
     client_id: svc.clientId,
@@ -2929,7 +2816,7 @@ async function exchangeOAuthCode(svc, code, redirectUri, storeDomain, codeVerifi
 
   const postData = params.toString();
 
-  const url = new URL(tokenUrl);
+  const url = new URL(svc.tokenUrl);
 
   const headers = {
     "Content-Type": "application/x-www-form-urlencoded",
@@ -3183,12 +3070,6 @@ async function handleServiceOAuthComplete(req, res, stateData, serviceKey, token
     }
   }
 
-  // For Shopify, store the shop domain in metadata
-  if (serviceKey === "shopify" && stateData.storeDomain) {
-    if (!metadata) metadata = {};
-    metadata.shopDomain = stateData.storeDomain;
-  }
-
   await saveConnection(userId, serviceKey, tokens, svc, metadata);
 
   // The bot discovers this saved connection on its next sync cycle. The
@@ -3241,9 +3122,6 @@ async function fetchAccountMetadata(serviceKey, svc, tokens) {
 
       case "microsoft":
         return { name: profile.displayName, email: profile.mail || profile.userPrincipalName };
-
-      case "spotify":
-        return { name: profile.display_name, email: profile.email };
 
       default:
         // Generic: try common fields

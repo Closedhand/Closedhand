@@ -10,10 +10,8 @@ test("each sign-in goes to its own service's API addresses", () => {
   for (const [service, url] of [
     ["google", "https://gmail.googleapis.com/gmail/v1/users/me/messages"],
     ["google", "https://www.googleapis.com/drive/v3/files"],
-    ["hubspot", "https://api.hubapi.com/crm/v3/objects/contacts"],
-    ["spotify", "https://api.spotify.com/v1/me/playlists"],
-    ["salesforce", "https://kestrel-co.my.salesforce.com/services/data/v59.0/query"],
     ["microsoft", "https://graph.microsoft.com/v1.0/me"],
+    ["shopify", "https://kestrel-goods.myshopify.com/admin/api/2026-01/orders.json"],
   ]) assert.equal(signInMayGo(service, url), true, `${service} ${url}`);
 });
 
@@ -23,17 +21,16 @@ test("and to nowhere else", () => {
     ["google", "https://googleapis.com.kestrel.example/x"],
     ["google", "https://evilgoogleapis.com/x"],
     ["google", "http://www.googleapis.com/drive/v3/files"],
-    ["hubspot", "https://api.hubapi.com.kestrel.example/crm"],
-    ["hubspot", "https://user:pw@api.hubapi.com/crm"],
-    ["spotify", "https://hooks.kestrel.example/spotify"],
-    // A service that connects through its own MCP server has no sign-in here.
+    ["microsoft", "https://graph.microsoft.com.kestrel.example/v1.0/me"],
+    ["microsoft", "https://user:pw@graph.microsoft.com/v1.0/me"],
+    ["shopify", "https://hooks.kestrel.example/shopify"],
+    // A service connected through an MCP server or a key has no sign-in here.
     ["slack", "https://slack.com/api/conversations.list"],
     ["github", "https://api.github.com/user/repos"],
     ["whatsapp", "https://graph.facebook.com.kestrel.example/"],
-    ["salesforce", "https://salesforce.kestrel.example/"],
     ["lunchflow", "https://anything.example/"],
     ["kestrel", "https://api.kestrel.example/"],
-    ["hubspot", "not an address"],
+    ["microsoft", "not an address"],
   ]) assert.equal(signInMayGo(service, url), false, `${service} ${url}`);
 });
 

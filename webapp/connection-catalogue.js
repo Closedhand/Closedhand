@@ -6,16 +6,13 @@ const microsoftApp = require('./microsoft-app');
 // through one, and what to make there.
 const guides = {
   microsoft: ['https://entra.microsoft.com/', 'Register a web application in Microsoft Entra.'],
-  spotify: ['https://developer.spotify.com/dashboard', 'Create an application in Spotify for Developers.'],
-  hubspot: ['https://developers.hubspot.com/', 'Create an OAuth application in HubSpot.'],
-  salesforce: ['https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm&type=5', 'Create an external client application in Salesforce.'],
 };
 // Each company's own MCP server. A tile with one connects through it and
 // nothing else (no app of Closedhand's or the person's), and Closedhand's
 // recall reads it like any connection. GitHub's asks for a token pasted in,
 // Slack's for an app made in the person's own workspace (ownApps, below); the
-// rest sign in by themselves. Checked 2026-10-16: Salesforce's needs an
-// admin's setup, Spotify has none.
+// rest sign in by themselves. A service with no tile connects the way
+// anything does: its MCP server or an API key pasted into the box.
 const remote = {
   notion: 'https://mcp.notion.com/mcp',
   atlassian: 'https://mcp.atlassian.com/v2/mcp?tools=all',
@@ -103,9 +100,9 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl}) {
         const linked=new Set((connections.data||[]).map(x=>x.service.replace(/^(google|microsoft)_extra_.+$/, '$1')));
         // A tile shows when everyone has a way in: the company's own MCP
         // server (with the steps for the app it asks for, where it asks for
-        // one), or a sign-in that needs no developer app. The rest wait for
-        // apps Closedhand registers; one already connected, or set up with
-        // the person's own app, stays.
+        // one), a form of its own, or a sign-in that needs no developer app.
+        // A sign-in this build has no app for (Microsoft, in a build without
+        // Closedhand's) shows once connected or set up with the person's own.
         const rows=Object.entries(services).map(([key,s])=>{
           const ready=own.has(key)||!!(s.clientId&&s.clientSecret);
           // Microsoft without an app of the person's own signs in by code

@@ -71,7 +71,10 @@ test("links the bot sends stay on the web chat's address there, and use the pers
         : id === "../user-mcp" ? { connectedServers: () => servers }
         : id === "../api-connections" ? { list: () => [{ name: "Kestrel Voice" }] } : require(id)) });
   const connect = tool("connect_service", "wait_for_result"), list = tool("list_connections", "connect_service");
-  for (const [service, says] of [["slack", /presses Slack there and follows what it asks/], ["shopify", /presses Shopify there/], ["hubspot", /no tile of its own there/], ["simplefin", /signs up to the bank service/]]) {
+  // A service with a tile is pressed there; a bank has its form; anything
+  // else, by whatever name the person gave, goes into the box.
+  for (const [service, says] of [["slack", /presses Slack there and follows what it asks/], ["shopify", /presses Shopify there/], ["microsoft", /presses Microsoft 365 there/],
+    ["simplefin", /signs up to the bank service/], ["hubspot", /hubspot has no tile of its own there, so the person pastes its MCP server address or an API key/], ["Harbour_CRM", /Harbour CRM has no tile of its own there/]]) {
     const result = await connect({ service }, { activePlatform: "whatsapp" });
     assert.equal(result.url, "https://quiet-test.closedhand.com/dashboard#connections", service);
     assert.match(result.message, says, service);

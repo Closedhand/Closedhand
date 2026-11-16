@@ -14,7 +14,7 @@ function fixture(){
      const found=rows[table].filter(r=>filters.every(([k,v])=>r[k]===v));
      return Promise.resolve({data:single?found[0]||null:found,error:null}).then(ok,bad);
     }};return q;}};
- const services={google:{name:'Google',isSignup:true,clientId:'global',clientSecret:'global-secret'},microsoft:{name:'Microsoft',isSignup:true,scopes:['Mail.ReadWrite']},notion:{name:'Notion',clientId:'notion-app',clientSecret:'notion-secret'},shopify:{name:'Shopify',needsStoreDomain:true},meta_ads:{name:'Meta Ads'},github:{name:'GitHub'},spotify:{name:'Spotify'},hubspot:{name:'HubSpot',clientId:'hub-app',clientSecret:'hub-secret'},slack:{name:'Slack'}};
+ const services={google:{name:'Google',isSignup:true,clientId:'global',clientSecret:'global-secret'},microsoft:{name:'Microsoft',isSignup:true,scopes:['Mail.ReadWrite']},notion:{name:'Notion',clientId:'notion-app',clientSecret:'notion-secret'},shopify:{name:'Shopify',needsStoreDomain:true},meta_ads:{name:'Meta Ads'},github:{name:'GitHub'},heron:{name:'Heron Notes'},kestrel:{name:'Kestrel CRM',clientId:'kestrel-app',clientSecret:'kestrel-secret'},slack:{name:'Slack'}};
  const catalogue=createCatalogue({db,services,userId:r=>r.user,baseUrl:'https://fixture.example'});
  const handlers={};catalogue.register({get:(p,f)=>handlers['GET '+p]=f,put:(p,f)=>handlers['PUT '+p]=f});
  async function call(method,user,body={},service='microsoft'){let code=200,data;const res={set(){},status(c){code=c;return this},json(v){data=v;return this}};await handlers[method]({user,body,params:{service}},res);return {code,data};}
@@ -27,15 +27,15 @@ test('catalogue exposes setup routes without credentials and keeps account state
  assert.equal(a.find(s=>s.key==='meta_ads').mode,'mcp','Meta publishes its own MCP server');
  assert.equal(a.find(s=>s.key==='notion').mode,'mcp','an official MCP server wins over any app, even one Closedhand holds');
  assert.equal(a.find(s=>s.key==='notion').manualMode,null,'and no own-app route is offered beside it');
- assert.equal(a.find(s=>s.key==='hubspot').mode,'oauth','with no MCP server that works without an app, an app Closedhand holds is the way');
- assert.equal(a.some(s=>s.key==='spotify'),false,'a tile that needs the person to make a developer app is not shown');
+ assert.equal(a.find(s=>s.key==='kestrel').mode,'oauth','a service this build holds an app for signs in through it');
+ assert.equal(a.some(s=>s.key==='heron'),false,'one it holds no app for, with no MCP server or form, has no tile');
  assert.equal(a.find(s=>s.key==='notion').connected,false);
  assert.equal(a.find(s=>s.key==='shopify').mode,'shopify');
  assert.equal(a.find(s=>s.key==='slack').mode,'mcp','Slack connects through its own MCP server, which asks for an app the person makes: the tile shows, and the steps come when it is pressed');
  const b=(await f.call('GET /api/connection-catalogue','b')).data.services;
  assert.equal(b.find(s=>s.key==='notion').connected,true);
  assert.equal(b.find(s=>s.key==='microsoft').connected,false);
- assert.equal(/global-secret|notion-secret|hub-secret/.test(JSON.stringify(a)),false);
+ assert.equal(/global-secret|notion-secret|kestrel-secret/.test(JSON.stringify(a)),false);
 });
 
 test('a service whose tile is its company’s MCP server carries no sign-in settings of its own',()=>{
@@ -48,13 +48,13 @@ test('a service whose tile is its company’s MCP server carries no sign-in sett
  }
  assert.ok(scope.SERVICES.microsoft.authUrl&&scope.SERVICES.shopify.needsStoreDomain,'a service that signs in through an app still says how');
 });
-test('a hidden tile comes back for someone already connected to it or using their own app',async()=>{
+test('a hidden tile comes back for someone already connected to it, and only an app with steps here can be saved',async()=>{
  const f=fixture();
- f.rows.connections.push({user_id:'a',service:'spotify'});
- assert.equal((await f.call('GET /api/connection-catalogue','a')).data.services.find(s=>s.key==='spotify').connected,true);
- await f.call('PUT /api/connection-catalogue/:service/client','b',{clientId:'own-app',clientSecret:'own-secret'},'spotify');
- assert.equal((await f.call('GET /api/connection-catalogue','b')).data.services.find(s=>s.key==='spotify').mode,'oauth');
- assert.equal((await f.call('GET /api/connection-catalogue','c')).data.services.some(s=>s.key==='spotify'),false);
+ f.rows.connections.push({user_id:'a',service:'heron'});
+ assert.equal((await f.call('GET /api/connection-catalogue','a')).data.services.find(s=>s.key==='heron').connected,true);
+ assert.equal((await f.call('GET /api/connection-catalogue','c')).data.services.some(s=>s.key==='heron'),false);
+ assert.equal((await f.call('PUT /api/connection-catalogue/:service/client','b',{clientId:'own-app',clientSecret:'own-secret'},'heron')).code,400);
+ assert.equal(f.rows.connection_clients.length,0);
 });
 test('saving client credentials encrypts them and does not expose them to another owner',async()=>{
  const f=fixture();
