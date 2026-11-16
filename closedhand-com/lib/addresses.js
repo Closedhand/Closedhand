@@ -868,6 +868,10 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
         if (row && validHostname(row.hostname)) address = row.hostname;
         if (row?.state === 'active' && validHostname(row.hostname)) url = 'https://' + row.hostname;
       }
+      // The header of every page asks three things: whether anyone is signed
+      // in, their email and the personal URL to open. The plan, its prices and
+      // this month's use are read only for the pages that show them.
+      if (req.query.brief) return res.json({ signedIn: !!person, email, url });
       // A sign-in whose account was deleted is no sign-in at all.
       const offered = enabled() && await includedAi.offered({ ip: req.ip });
       const details = person ? await detailsOf(owner, req.headers['cf-ipcountry']) : { signIns: [] };

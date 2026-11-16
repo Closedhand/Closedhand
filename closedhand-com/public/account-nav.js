@@ -62,7 +62,7 @@
     link.hidden = false;
   }
   try { known(localStorage.getItem(KNOWN)); } catch (e) { /* not kept in this browser */ }
-  fetch('/api/account', { cache: 'no-store' })
+  fetch('/api/account?brief=1', { cache: 'no-store' })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (a) {
       if (a && a.signedIn) {

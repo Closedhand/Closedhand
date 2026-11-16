@@ -1845,7 +1845,7 @@ body.chat-active .mon-area { display:none; }
     document.getElementById('firstSteps').style.setProperty('display', 'none', 'important');
   }
   try { opens(localStorage.getItem('closedhand-personal-url')); } catch (e) { /* not kept in this browser */ }
-  fetch('/api/account', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (a) { opens(a && a.url); }).catch(function () {});
+  fetch('/api/account?brief=1', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (a) { opens(a && a.url); }).catch(function () {});
 })();
 </script>
 </body>

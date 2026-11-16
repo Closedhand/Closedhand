@@ -285,6 +285,13 @@ test('personal URL: request, confirm, type the code, take a pass to the relay, c
   assert.equal(renewed.state, 'active'); assert.equal(passOf(renewed.pass).h, 'alex.closedhand.ai');
   assert.equal((await account(owner.cookie)).url, 'https://alex.closedhand.ai');
   assert.equal((await account(rival.cookie)).url, null);
+  // What every page's header asks: who is signed in and the URL to open,
+  // without the plan, prices and use the account page reads.
+  const brief = async cookie => (await fetch(base + '/api/account?brief=1', { headers: cookie ? { cookie } : {} })).json();
+  const whole = await account(owner.cookie);
+  assert.deepEqual(await brief(owner.cookie), { signedIn: true, email: whole.email, url: 'https://alex.closedhand.ai' });
+  assert.deepEqual(await brief(rival.cookie), { signedIn: true, email: (await account(rival.cookie)).email, url: null });
+  assert.deepEqual(await brief(null), { signedIn: false, email: null, url: null });
   assert.equal((await (await json('POST', '/api/phone-enrollment/details', { ticket }, { cookie: rival.cookie })).json()).state, 'unconfirmed', 'progress only for its owner');
 
   // Reinstalling: the owner moves alex to a new copy.
