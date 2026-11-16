@@ -365,3 +365,15 @@ test('a paid claim that stopped half-made is taken up again, and what the stoppe
   assert.deepEqual((await db.query('SELECT owner_id FROM ahead_payments WHERE id = $1', ['btcpay:' + paidFor])).rows, [{ owner_id: now[0].owner_id }], 'the payment counts once, for the account that stands');
   assert.ok(new Date((await db.query('SELECT ends_at FROM ahead_plans WHERE owner_id = $1', [now[0].owner_id])).rows[0].ends_at) > new Date(Date.now() + 80 * 86400000), 'with its three months');
 }));
+
+// Asking makes an invoice at BTCPay and needs nothing but a value the caller
+// makes up, with only the site's general limit of 120 requests a minute.
+test('asking to use Closedhand anonymously is counted by the hour: a seventh ask from one address makes no invoice', quiet(async () => {
+  const where = place();
+  const before = invoices.length;
+  for (let i = 0; i < 6; i++) assert.equal((await ask(computer(where))).status, 200, 'ask ' + (i + 1));
+  const seventh = await ask(computer(where));
+  assert.deepEqual([seventh.status, seventh.json.error], [429, 'Please try again later.']);
+  assert.equal(invoices.length, before + 6, 'no invoice for the one turned away');
+  assert.equal((await ask(computer())).status, 200, 'someone elsewhere is not held up');
+}));

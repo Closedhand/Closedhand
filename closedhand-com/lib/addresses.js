@@ -509,6 +509,19 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
   // and only until then; afterwards only its fingerprint. An invoice that
   // expires discards the claim, and a claim never paid goes after a day.
   const MAKING_STOPPED_MS = 5 * 60 * 1000;
+  // Each ask makes an invoice at BTCPay, and asking needs nothing but a value
+  // the caller makes up. So asks are counted by the hour too: a few from one
+  // internet address, and a ceiling over all.
+  const asksAnHour = Number.parseInt(env.ANONYMOUS_ASKS_PER_HOUR || '6', 10);
+  let askHour = { at: Date.now(), from: new Map(), all: 0 };
+  const mayAsk = (req) => {
+    const now = Date.now();
+    if (now - askHour.at >= 3600000) askHour = { at: now, from: new Map(), all: 0 };
+    const key = req.ip || '?', count = (askHour.from.get(key) || 0) + 1;
+    if (count > asksAnHour || askHour.all >= 20 * asksAnHour) return false;
+    askHour.from.set(key, count); askHour.all++;
+    return true;
+  };
   const dropOld = () => db.query("DELETE FROM anonymous_pending WHERE (state = 'waiting' AND created_at < now() - interval '1 day') OR (state = 'paid' AND created_at < now() - interval '30 days')");
   app.post('/api/phone-enrollment/claim-anonymous', wrap(async (req, res) => {
     const copy = installation(req), { months } = req.body || {};
@@ -519,6 +532,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
     if ((await db.query('SELECT 1 FROM addresses WHERE secret_hash = $1', [copy.secret_hash])).rowCount) throw new Refusal('This computer already has a personal URL.');
     const live = (await db.query("SELECT count(*)::int AS n FROM addresses WHERE activated_at IS NOT NULL OR created_at > now() - interval '24 hours'")).rows[0].n;
     if (live >= limit) throw new Refusal('Personal URLs are full for now. Try again later.');
+    if (!mayAsk(req)) return res.status(429).json({ error: 'Please try again later.' });
     await dropOld();
     // Asking again starts over: one waiting claim a computer.
     await db.query("DELETE FROM anonymous_pending WHERE secret_hash = $1 AND state = 'waiting'", [copy.secret_hash]);
