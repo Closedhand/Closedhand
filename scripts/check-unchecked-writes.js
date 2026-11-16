@@ -153,7 +153,8 @@ function violationsIn(file) {
 
 function walk(dir, acc = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (["node_modules", ".git", "data", ".cache", ".build", "dist"].includes(entry.name)) continue;
+    // vendor: other projects' code, kept as they ship it (public/vendor).
+    if (["node_modules", ".git", "data", ".cache", ".build", "dist", "vendor"].includes(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, acc);
     else if (entry.name.endsWith(".js")) acc.push(full);
