@@ -176,7 +176,8 @@ test("dates and times come back as text, as the code that reads them expects", a
   const newest = [...data].sort((a, b) => (b.archived_at || "").localeCompare(a.archived_at || "")).map((r) => r.name);
   assert.deepEqual(newest, ["b", "c", "a"], "sorted by when, not by the weekday's name");
   // A write that hands its row back, and a function call, give text too.
-  const { data: back } = await db.from("schedules").update({ task: "t2" }).eq("user_id", user).eq("name", "a").select("archived_at").single();
+  const { data: back, error: wrote } = await db.from("schedules").update({ task: "t2" }).eq("user_id", user).eq("name", "a").select("archived_at").single();
+  assert.equal(wrote, null);
   assert.equal(back.archived_at, "2026-11-13T10:00:00.000Z");
   // A date is its own day, whatever zone this computer is in.
   const { rows: dateColumns } = await pool.query("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND data_type = 'date' ORDER BY 1, 2 LIMIT 1");
