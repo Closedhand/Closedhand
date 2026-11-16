@@ -57,10 +57,22 @@ test("links the bot sends stay on the web chat's address there, and use the pers
     delete require.cache[require.resolve("../lib/dashboard-links")];
   }
   const handlers = read("lib/tools/handlers.js");
-  // Connecting a service from chat is that service's sign-in on this
-  // Closedhand. It went through /bot-connect, a link signed with a key from
-  // the hosted days that no setup has, so making it threw every time.
-  assert.match(handlers, /closedhandLink\(ctx\.activePlatform \|\| "web", `\/auth\/\$\{svcKey\}\$\{store\}`\)/);
+  // Connecting a service from chat goes to the one place connections are
+  // added, the dashboard's Connections tab. It went through /bot-connect, a
+  // link signed with a key from the hosted days that no setup has, so making
+  // it threw every time; then to the service's own sign-in address, which
+  // opened on an error wherever no app was set up for the service: everywhere.
+  const connect = require("node:vm").runInNewContext(
+    `(async (toolInput, ctx) => { switch ("connect_service") { ${handlers.slice(handlers.indexOf('case "connect_service": {'), handlers.indexOf('case "wait_for_result": {'))} } })`,
+    { CONNECTABLE_SERVICES: require("../lib/services-config").CONNECTABLE_SERVICES,
+      require: (name) => (name === "../dashboard-links" ? { dashboardUrl: async (platform, tab) => `https://quiet-test.closedhand.com/dashboard#${tab}` } : require(name)) });
+  for (const [service, says] of [["slack", /presses Slack there and follows what it asks/], ["shopify", /presses Shopify there/], ["hubspot", /no tile of its own there/], ["simplefin", /signs up to the bank service/]]) {
+    const result = await connect({ service }, { activePlatform: "whatsapp" });
+    assert.equal(result.url, "https://quiet-test.closedhand.com/dashboard#connections", service);
+    assert.match(result.message, says, service);
+    assert.doesNotMatch(JSON.stringify(result), /\/auth\//, service);
+  }
+  assert.match((await connect({ service: "imap" }, {})).error, /can't be added yet/);
   for (const f of ["lib/tools/handlers.js", "lib/services-config.js", "webapp/server.js"]) {
     assert.doesNotMatch(read(f), /bot-connect/, f);
     assert.doesNotMatch(read(f), /createHmac\("sha256", process\.env\.SUPABASE_SERVICE_KEY\)/, f);

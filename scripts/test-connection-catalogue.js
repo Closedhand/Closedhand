@@ -31,7 +31,7 @@ test('catalogue exposes setup routes without credentials and keeps account state
  assert.equal(a.some(s=>s.key==='spotify'),false,'a tile that needs the person to make a developer app is not shown');
  assert.equal(a.find(s=>s.key==='notion').connected,false);
  assert.equal(a.find(s=>s.key==='shopify').mode,'shopify');
- assert.equal(a.some(s=>s.key==='slack'),false,'like any service with no MCP that signs in by itself: no tile until there is an app to sign in with');
+ assert.equal(a.find(s=>s.key==='slack').mode,'mcp','Slack connects through its own MCP server, which asks for an app the person makes: the tile shows, and the steps come when it is pressed');
  const b=(await f.call('GET /api/connection-catalogue','b')).data.services;
  assert.equal(b.find(s=>s.key==='notion').connected,true);
  assert.equal(b.find(s=>s.key==='microsoft').connected,false);

@@ -1772,15 +1772,11 @@
                 <input type="text" id="mcp-header-custom" placeholder="Header name" style="display:none;width:8.125rem;padding:0.5rem 0.75rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.875rem;outline:none;font-family:inherit;">
                 <input type="password" id="mcp-key-input" placeholder="Key" autocomplete="off" style="flex:1;padding:0.5rem 0.75rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.875rem;outline:none;font-family:inherit;">
               </div>
-              <div id="mcp-oauth-fields" style="display:none;margin-top:0.5rem;">
-                <div style="font-size: 0.8125rem;color:rgba(var(--fg-rgb),0.5);margin-bottom:0.375rem;text-align:center;">Or sign in through the service with an app you registered there:</div>
-                <div style="display:flex;gap:0.375rem;">
-                  <input type="text" id="mcp-client-id-input" placeholder="Client ID" style="flex:1;padding:0.5rem 0.75rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.875rem;outline:none;font-family:inherit;">
-                  <input type="password" id="mcp-client-secret-input" placeholder="Client secret (optional)" autocomplete="off" style="flex:1;padding:0.5rem 0.75rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.875rem;outline:none;font-family:inherit;">
-                </div>
-              </div>
               <div style="text-align:center;margin-top:0.5rem;">
                 <button onclick="submitMcpCredentials()" style="padding:0.5rem 1rem;background:rgba(var(--fg-rgb),0.1);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.8125rem;cursor:pointer;font-family:inherit;">Connect</button>
+              </div>
+              <div style="text-align:center;margin-top:0.75rem;">
+                <button type="button" class="catalogue-quiet" id="mcp-own-app" hidden>Use your own app instead</button>
               </div>
             </div>
           </div>
@@ -3648,10 +3644,17 @@
         }
 
         if (data.needs_credentials) {
+          // A server whose steps Closedhand knows goes straight to its
+          // own-app form (connection-catalogue.js); any other shows the key
+          // box, with an app of the person's own as the other way in.
+          var ownApp = data.own_app;
+          if (ownApp && ownApp.steps.length) { mcpStatus(''); _mcpPending = null; openOwnApp(ownApp); return; }
           mcpStatus(data.message || 'This server wants a key.');
           var panel = document.getElementById('mcp-credentials');
           panel.style.display = 'block';
-          document.getElementById('mcp-oauth-fields').style.display = data.oauth_possible ? 'block' : 'none';
+          var own = document.getElementById('mcp-own-app');
+          own.hidden = !ownApp;
+          own.onclick = function () { panel.style.display = 'none'; mcpStatus(''); _mcpPending = null; openOwnApp(ownApp); };
           document.getElementById('mcp-key-input').focus();
           return;
         }
@@ -3874,15 +3877,10 @@
       var key = document.getElementById('mcp-key-input').value.trim();
       var header = document.getElementById('mcp-header-select').value;
       if (header === 'custom') header = document.getElementById('mcp-header-custom').value.trim();
-      var clientId = document.getElementById('mcp-client-id-input').value.trim();
-      var clientSecret = document.getElementById('mcp-client-secret-input').value.trim();
-      if (!key && !clientId) { var keyBox = document.getElementById('mcp-key-input'); return needsField(keyBox.parentElement, 'Paste a key or a client ID first.', keyBox); }
-      var extra = {};
-      if (key) { extra.auth_token = key; extra.header_name = header || 'Authorization'; }
-      if (clientId) { extra.client_id = clientId; if (clientSecret) extra.client_secret = clientSecret; }
+      if (!key) { var keyBox = document.getElementById('mcp-key-input'); return needsField(keyBox.parentElement, 'Paste a key first.', keyBox); }
       document.getElementById('mcp-credentials').style.display = 'none';
       mcpStatus('Connecting…');
-      await connectMcp(extra);
+      await connectMcp({ auth_token: key, header_name: header || 'Authorization' });
     }
 
     function mcpHeaderChanged(sel) {

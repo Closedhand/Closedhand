@@ -33,6 +33,9 @@
 .catalogue-callback>span {font-size:0.9375rem;}
 .catalogue-copybox {display:flex;align-items:center;gap:0.5rem;min-height:2.75rem;padding-right:0.25rem;border:1px solid rgba(var(--fg-rgb),.25);border-radius:0.5rem;background:var(--bg);}
 .catalogue-copybox code {flex:1;min-width:0;padding:0.6875rem 0 0.6875rem 0.75rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:0.875rem;color:var(--fg);overflow-wrap:anywhere;user-select:all;}
+/* Several lines to copy (an app manifest): kept as written, in a box that scrolls. */
+.catalogue-copybox.block {align-items:flex-start;}
+.catalogue-copybox.block code {white-space:pre;max-height:11rem;overflow:auto;}
 .catalogue-copy-btn {flex:none;display:grid;place-items:center;width:2.375rem;height:2.375rem;border:0;border-radius:0.4375rem;background:none;color:var(--muted);cursor:pointer;}
 .catalogue-copy-btn:hover {background:rgba(var(--fg-rgb),.08);color:var(--fg);}
 .catalogue-copy-btn.done {color:var(--ok);}

@@ -101,7 +101,7 @@ test("the dashboard's forms say it at the field, never only in a toast or at the
   const d = read("webapp/views/dashboard.html");
   for (const [what, re] of [
     ["Connect anything", /if \(!input\) return needsField\(box\.closest\('\.mcp-pill'\), 'Paste an MCP server, skill or API key\.'\);/],
-    ["a server's key", /return needsField\(keyBox\.parentElement, 'Paste a key or a client ID first\.', keyBox\);/],
+    ["a server's key", /return needsField\(keyBox\.parentElement, 'Paste a key first\.', keyBox\);/],
     ["a connection's values", /if\(empty\)return needsField\(empty\.input,'Fill this in to connect\.'\);/],
     ["which service a key is for", /else needsField\(input, 'Say which service the key is for\.'\);/],
     ["a skill that is not there", /if \(res\.status < 500 && data\.error\) needsField\(document\.getElementById\('mcp-url-input'\)\.closest\('\.mcp-pill'\), data\.error\);/],

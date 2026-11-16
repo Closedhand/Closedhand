@@ -17,9 +17,10 @@ const guides = {
 };
 // Each company's own MCP server. A tile with one connects through it and
 // nothing else (no app of Closedhand's or the person's), and Closedhand's
-// recall reads it like any connection. GitHub's asks for a token pasted in;
-// the rest sign in by themselves. Checked 2026-10-16: HubSpot's needs an app
-// made in each account, Salesforce's an admin's setup, Spotify has none.
+// recall reads it like any connection. GitHub's asks for a token pasted in,
+// Slack's for an app made in the person's own workspace (ownApps, below); the
+// rest sign in by themselves. Checked 2026-10-16: Salesforce's needs an
+// admin's setup, Spotify has none.
 const remote = {
   notion: 'https://mcp.notion.com/mcp',
   atlassian: 'https://mcp.atlassian.com/v2/mcp?tools=all',
@@ -28,11 +29,59 @@ const remote = {
   gitlab: 'https://gitlab.com/api/v4/mcp',
   dropbox: 'https://mcp.dropbox.com/mcp',
   meta_ads: 'https://mcp.facebook.com/ads',
+  slack: 'https://mcp.slack.com/mcp',
 };
+// A company's MCP server that signs people in only through an app they make
+// with that company: it turns away an app that registers itself. Each entry
+// says where the app is made and what to do there, in the company's own names
+// for its pages, and, where the company takes a manifest, writes one with the
+// callback address and the permissions already in it. Any other server that
+// turns Closedhand away gets the same form without the steps (ownApp).
+const ownApps = {
+  slack: {
+    instruction: 'Slack connects through an app you make in your own workspace, so your messages go straight from Slack to Closedhand.',
+    link: 'https://api.slack.com/apps?new_app=1', linkText: 'Open Slack’s app page',
+    steps: [
+      'Open Slack’s app page, choose “From a manifest” and pick your workspace.',
+      'Replace the example with the app manifest below, then create the app.',
+      'In the app’s menu, open “Agents” and turn on “Slack Model Context Protocol (MCP) Server”.',
+      'Open “Basic Information” and copy the Client ID and Client Secret into the boxes below.',
+    ],
+    manifest: (callback, scopes) => JSON.stringify({ display_information: { name: 'Closedhand' }, oauth_config: { redirect_urls: [callback], scopes: { user: scopes } } }, null, 2),
+  },
+};
+const MCP_CALLBACK = '/auth/mcp-oauth/callback';
+const originOf = url => { try { return new URL(url).origin; } catch (_) { return null; } };
+const hostName = url => { try { return new URL(url).hostname.replace(/^(www|mcp|api)\./, ''); } catch (_) { return 'this server'; } };
 function validClient(value) {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= 4096 && !/[\r\n\0]/.test(value);
 }
-function createCatalogue({db, services, userId, baseUrl}) {
+function createCatalogue({db, services, userId, baseUrl, personalUrl}) {
+  // Where a sign-in to an MCP server comes back to: this computer's own
+  // address. Through an app the person made (installed_via own_app) it is the
+  // personal URL instead: that one address is written into their app, most
+  // companies take only an https one, and it opens on whichever device they
+  // sign in from.
+  async function mcpCallback(row) {
+    const personal=row&&row.installed_via==='own_app'?String(await personalUrl()||'').replace(/\/+$/,''):'';
+    return (personal||baseUrl)+MCP_CALLBACK;
+  }
+  // What the own-app form shows for an MCP server that would not let
+  // Closedhand register itself: the company's steps where they are known,
+  // otherwise the callback address and the permissions the server names
+  // (`published`, what it says about signing in).
+  async function ownApp(serverUrl, published) {
+    const key=Object.keys(ownApps).find(k=>originOf(remote[k])===originOf(serverUrl));
+    const guide=ownApps[key]||{};
+    const callback=await mcpCallback({installed_via:'own_app'});
+    const scopes=(Array.isArray(published&&published.scopes_supported)?published.scopes_supported:[])
+      .filter(scope=>typeof scope==='string'&&/^[\w:.\/-]{1,100}$/.test(scope)).slice(0,100);
+    return {name:(key&&services[key]&&services[key].name)||hostName(serverUrl),serverUrl,redirectUri:callback,
+      instruction:guide.instruction||'This server signs you in through an app you make with the service.',
+      steps:guide.steps||[],guide:guide.link||null,linkText:guide.linkText||null,
+      copy:guide.manifest?{label:'App manifest',text:guide.manifest(callback,scopes)}:null,
+      scopes:guide.manifest?[]:scopes,secretOptional:!key};
+  }
   async function resolve(key, owner) {
     const service=services[key];
     if (!service || !owner || key==='google') return service;
@@ -56,9 +105,11 @@ function createCatalogue({db, services, userId, baseUrl}) {
         if(clients.error||connections.error||mcps.error)throw new Error('Could not load connections. Try again.');
         const own=new Set((clients.data||[]).map(x=>x.service));
         const linked=new Set((connections.data||[]).map(x=>x.service.replace(/^(google|microsoft)_extra_.+$/, '$1')));
-        // A tile shows only when it connects without the person making a
-        // developer app: the rest wait for apps Closedhand registers. One
-        // already connected, or set up with the person's own app, stays.
+        // A tile shows when everyone has a way in: the company's own MCP
+        // server (with the steps for the app it asks for, where it asks for
+        // one), or a sign-in that needs no developer app. The rest wait for
+        // apps Closedhand registers; one already connected, or set up with
+        // the person's own app, stays.
         const rows=Object.entries(services).map(([key,s])=>{
           const ready=own.has(key)||!!(s.clientId&&s.clientSecret);
           // Microsoft without an app of the person's own signs in by code
@@ -89,7 +140,7 @@ function createCatalogue({db, services, userId, baseUrl}) {
       }catch(e){res.status(503).json({error:e.message});}
     });
   }
-  return {resolve,register};
+  return {resolve,register,mcpCallback,ownApp};
 }
 module.exports={createCatalogue,validClient};
 

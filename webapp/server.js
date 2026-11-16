@@ -316,6 +316,8 @@ const SERVICES = {
 
   slack: {
     name: "Slack",
+    description: "Channels, messages",
+    logoUrl: "/logos/slack.svg",
     clientId: process.env.SLACK_CLIENT_ID,
     clientSecret: process.env.SLACK_CLIENT_SECRET,
     authUrl: "https://slack.com/oauth/v2/authorize",
@@ -2246,7 +2248,7 @@ function generatePKCE() {
   return { codeVerifier, codeChallenge };
 }
 
-const connectionCatalogue = require("./connection-catalogue").createCatalogue({ db: supabase, services: SERVICES, userId: getUserIdFromRequest, baseUrl: BASE_URL });
+const connectionCatalogue = require("./connection-catalogue").createCatalogue({ db: supabase, services: SERVICES, userId: getUserIdFromRequest, baseUrl: BASE_URL, personalUrl: () => getRuntimeConf("PHONE_PERMANENT_URL") });
 connectionCatalogue.register(app);
 require("./bank-connections").register(app, { db: supabase, userId: getUserIdFromRequest });
 require("./assistant-email-settings").register(app, supabase, getUserIdFromRequest);
@@ -2425,8 +2427,6 @@ app.get("/auth/:service", async (req, res) => {
 // callback in.
 // ---------------------------------------------------------------------------
 
-const MCP_REDIRECT_URL = `${BASE_URL}/auth/mcp-oauth/callback`;
-
 function mcpAuthTypeFor(headerName) {
   const h = String(headerName || "").trim();
   if (!h || h.toLowerCase() === "authorization") return "bearer";
@@ -2441,7 +2441,7 @@ function mcpAuthTypeFor(headerName) {
 async function mcpOpenForDiscovery(row, { allowOAuth, state } = {}) {
   let redirectUrl = null;
   const io = {
-    redirectUrl: MCP_REDIRECT_URL,
+    redirectUrl: await connectionCatalogue.mcpCallback(row),
     state,
     oauth: !!allowOAuth,
     onRedirect: (u) => { redirectUrl = u; },
@@ -2566,7 +2566,7 @@ async function mcpSaveRow(userId, row, found, transportKind, explicitName) {
     oauth_token_expiry: row.oauth_token_expiry || null,
     oauth_scope: row.oauth_scope || null,
     status: "connected",
-    installed_via: row.auth_type === "oauth" ? "oauth" : "manual",
+    installed_via: row.installed_via === "own_app" ? "own_app" : row.auth_type === "oauth" ? "oauth" : "manual",
     updated_at: new Date().toISOString(),
     ...mcpRowPatchFrom(found, previousCaps),
   };
@@ -2654,9 +2654,11 @@ async function connectMcpHandler(req, res) {
         row.auth_token = String(body.auth_token).trim();
         row.auth_type = mcpAuthTypeFor(body.header_name);
       }
+      // An app the person made with the service, from the own-app form.
       if (body.client_id) {
         row.oauth_client_id = String(body.client_id).trim();
         row.oauth_client_secret = body.client_secret ? String(body.client_secret).trim() : null;
+        row.installed_via = "own_app";
       }
 
       const state = crypto.randomBytes(16).toString("hex");
@@ -2670,13 +2672,16 @@ async function connectMcpHandler(req, res) {
           return res.json({ auth_required: true, redirect_url: e.redirectUrl, server_url: row.server_url });
         }
         if (e.needsAuth) {
-          const oauthPossible = row.transport !== "stdio" && !e.wantsKey && await mcpClient.oauthMetadataExists(row.server_url);
+          // The server signs people in but would not let Closedhand register
+          // itself: the way in is an app the person makes with the service,
+          // and the dashboard's own-app form walks them through it.
+          const published = row.transport !== "stdio" && !e.wantsKey ? await mcpClient.oauthMetadata(row.server_url) : null;
           return res.json({
             needs_credentials: true,
             server_url: row.server_url,
-            oauth_possible: oauthPossible,
-            message: oauthPossible
-              ? "This server wants you to sign in, but did not let Closedhand register itself. Register an app with the service and paste its client ID, or paste a key if you have one."
+            own_app: published ? await connectionCatalogue.ownApp(row.server_url, published) : null,
+            message: published
+              ? "This server wants you to sign in, but did not let Closedhand register itself. Paste a key if you have one, or use your own app."
               : "This server wants a key.",
           });
         }
@@ -2889,7 +2894,7 @@ app.get("/auth/mcp-oauth/callback", async (req, res) => {
     // registration saved before the redirect, then connect for real.
     const { StreamableHTTPClientTransport } = require("@modelcontextprotocol/sdk/client/streamableHttp.js");
     const { SSEClientTransport } = require("@modelcontextprotocol/sdk/client/sse.js");
-    const io = { redirectUrl: MCP_REDIRECT_URL, state, save: async (patch) => { Object.assign(row, patch); }, saveVerifier: async () => {} };
+    const io = { redirectUrl: await connectionCatalogue.mcpCallback(row), state, save: async (patch) => { Object.assign(row, patch); }, saveVerifier: async () => {} };
     const provider = mcpClient.makeOAuthProvider(row, io);
     const url = new URL(row.server_url);
     const finisher = row.transport === "sse" ? new SSEClientTransport(url, { authProvider: provider }) : new StreamableHTTPClientTransport(url, { authProvider: provider });

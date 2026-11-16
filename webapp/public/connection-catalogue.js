@@ -170,39 +170,73 @@
       try{await window.addMcpConnection();}finally{button.disabled=false;}
       return;
     }
-    const {box,title}=openSetup(s);
-    const help=el('p','',s.instruction+' Add the callback address below, then paste its client ID and secret here.');
-    const link=el('a','catalogue-deep','Open '+s.name+' settings');link.href=s.guide;link.target='_blank';link.rel='noopener noreferrer';
-    const form=el('form','catalogue-form');
-    const callback=el('div','catalogue-callback');
-    const callbackLabel=el('span','','Callback address');
-    const field=el('div','catalogue-copybox'),address=el('code','',s.redirectUri);
-    const copy=el('button','catalogue-copy-btn');copy.type='button';copy.title='Copy';copy.setAttribute('aria-label','Copy callback address');copy.innerHTML=COPY_ICON;
+    ownAppForm(s,async(clientId,clientSecret)=>{
+      const response=await fetch('/api/connection-catalogue/'+s.key+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId,clientSecret})});
+      const data=await response.json();if(!response.ok)throw plain(data.error||'Could not save. Try again.');
+      return data.redirectUrl;
+    });
+  }
+  // Something to copy across to the service: what it is, the text and Copy.
+  function copyBox(label,text,status){
+    const what=label.toLowerCase();
+    const wrap=el('div','catalogue-callback'),field=el('div','catalogue-copybox'+(text.includes('\n')?' block':''));
+    const copy=el('button','catalogue-copy-btn');copy.type='button';copy.title='Copy';
+    const idle=()=>{copy.classList.remove('done');copy.innerHTML=COPY_ICON;copy.setAttribute('aria-label','Copy '+what);};
+    idle();
     copy.onclick=async()=>{
       try{
-        await navigator.clipboard.writeText(s.redirectUri);
+        await navigator.clipboard.writeText(text);
         copy.classList.add('done');copy.innerHTML=DONE_ICON;copy.setAttribute('aria-label','Copied');
-        setTimeout(()=>{copy.classList.remove('done');copy.innerHTML=COPY_ICON;copy.setAttribute('aria-label','Copy callback address');},1500);
-      }catch(_){status.textContent='Select and copy the callback address above.';}
+        setTimeout(idle,1500);
+      }catch(_){status.textContent='Select and copy the '+what+' above.';}
     };
-    field.append(address,copy);callback.append(callbackLabel,field);
+    field.append(el('code','',text),copy);wrap.append(el('span','',label),field);
+    return wrap;
+  }
+  // An app the person makes with the service: what to do there, what to copy
+  // across, and its client ID and secret back. One form for every such
+  // connection, however it then signs in: `save` keeps the two and hands back
+  // where the sign-in starts.
+  function ownAppForm(s,save){
+    const {box,title}=openSetup(s);
+    // A manifest carries the callback address inside it.
+    const help=el('p','',s.copy?s.instruction:s.instruction+' Add the callback address below, then paste its client ID and secret here.');
+    const steps=el('ol','catalogue-steps');(s.steps||[]).forEach(t=>steps.append(el('li','',t)));
+    const link=el('a','catalogue-deep',s.linkText||'Open '+s.name+' settings');link.href=s.guide;link.target='_blank';link.rel='noopener noreferrer';
+    const form=el('form','catalogue-form');
     const idLabel=el('label','','Client ID'),id=el('input');id.name='clientId';id.required=true;id.maxLength=4096;id.autocomplete='off';idLabel.append(id);
-    const secretLabel=el('label','','Client secret'),secret=el('input');secret.type='password';secret.name='clientSecret';secret.required=true;secret.maxLength=4096;secret.autocomplete='new-password';secretLabel.append(secret);
+    const secretLabel=el('label','',s.secretOptional?'Client secret, if the app has one':'Client secret'),secret=el('input');secret.type='password';secret.name='clientSecret';secret.required=!s.secretOptional;secret.maxLength=4096;secret.autocomplete='new-password';secretLabel.append(secret);
     const status=el('p','catalogue-status');status.setAttribute('role','status');
     const submit=el('button','catalogue-action','Save and sign in');submit.type='submit';
-    form.append(callback);
+    form.append(s.copy?copyBox(s.copy.label,s.copy.text,status):copyBox('Callback address',s.redirectUri,status));
     if(s.scopes.length){const permissions=el('p','','Enable these permissions in the application: '+s.scopes.join(', ')+'.');form.append(permissions);}
     form.append(idLabel,secretLabel,submit,status);
     form.onsubmit=async event=>{
       event.preventDefault();submit.disabled=true;status.textContent='Saving…';
       try{
-        const response=await fetch('/api/connection-catalogue/'+s.key+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:id.value,clientSecret:secret.value})});
-        const data=await response.json();if(!response.ok)throw plain(data.error||'Could not save. Try again.');
-        secret.value='';(window.top||window).location.href=data.redirectUrl;
+        const next=await save(id.value,secret.value);
+        secret.value='';(window.top||window).location.href=next;
       }catch(e){status.textContent=said(e,'Could not save. Try again.');submit.disabled=false;}
     };
-    box.append(help,link,form);title.focus();
+    box.append(help);
+    if(steps.children.length)box.append(steps);
+    if(s.guide)box.append(link);
+    box.append(form);title.focus();
   }
+  // An MCP server that would not let Closedhand register itself, reached from
+  // a tile or the paste box (the dashboard's connectMcp): the same form, and
+  // the sign-in starts at the server with the app's client ID.
+  window.openOwnApp=function(app){
+    const input=byId('mcp-url-input');input.value='';window.mcpGrowInput(input);
+    ownAppForm(app,async(clientId,clientSecret)=>{
+      const response=await fetch('/api/mcps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:app.serverUrl,client_id:clientId,client_secret:clientSecret})});
+      const data=await response.json().catch(()=>({}));
+      if(data.auth_required&&data.redirect_url)return data.redirect_url;
+      if(data.connected&&data.connected.length)return '/dashboard?mcp_connected='+encodeURIComponent(data.connected[0].name);
+      throw plain((data.problems&&data.problems[0]&&data.problems[0].error)||data.error||'Could not start the sign-in. Check the client ID and try again.');
+    });
+    byId('mcp-section').scrollIntoView({block:'start',behavior:'smooth'});
+  };
   // Connections changed (the dashboard reloads its MCP list after any): an
   // app just connected leaves the tiles, one removed comes back.
   window.refreshConnectionCatalogue=function(){if(loaded){loaded=false;loadCatalogue();}};
