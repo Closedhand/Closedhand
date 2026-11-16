@@ -167,7 +167,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   "Important:" only where missing it means redoing a step. Yellow is only for something wrong
   with the person's account, like a sign-in to do again.
 - Where people use Closedhand has three names, used exactly: the chat in a browser is the
-  "web chat" (its own tab can say "Chat"); WhatsApp, Telegram and the like are "chat apps";
+  "web chat" (its own tab can say "Chat"); WhatsApp and Telegram are "chat apps", the only two (Slack and the like are connections Closedhand works in, never places it is talked to; `scripts/test-one-chat.js` checks);
   the control panel (connections, upcoming, agents, projects, pages, settings, Context Brain, usage) is the "dashboard".
   The personal URL opens the web chat and the dashboard. Never bare "chat" where it could
   mean either kind. The sandbox is "Closedhand's sandbox computer", as on the Computers tab,
