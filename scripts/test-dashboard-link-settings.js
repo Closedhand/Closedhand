@@ -406,9 +406,9 @@ test("Delete account stops when closedhand.com can't be reached, and deletes any
   assert.equal(page.state.window.location.href, "/");
   // The route deletes the Closedhand account before anything on this computer.
   const route = region(source, 'app.delete("/api/account"', "// SUPABASE HELPERS");
-  assert.ok(route.indexOf("deleteAccount()") > 0 && route.indexOf("deleteAccount()") < route.indexOf("WIPE_TABLES"));
+  assert.ok(route.indexOf("deleteAccount()") > 0 && route.indexOf("deleteAccount()") < route.indexOf("wipe.wipeUser("));
   assert.match(route, /req\.query\.anyway !== "1"/);
-  assert.ok(route.indexOf("phoneAccess.disable()") < route.indexOf("WIPE_TABLES"), "the personal URL connection stops too");
+  assert.ok(route.indexOf("phoneAccess.disable()") > 0 && route.indexOf("phoneAccess.disable()") < route.indexOf("wipe.wipeUser("), "the personal URL connection stops too");
 });
 
 test("Closedhand's two addresses are two matching cards side by side: its personal URL and its email address", () => {

@@ -65,3 +65,56 @@ test("the word search finds the words inside an email or web address, not the ma
   assert.deepEqual(await found(["www"]), []);
   assert.deepEqual(await found(["fixture"]), ["e-1"], "the sender by name, as before");
 });
+
+// "Delete account" and "Wipe all data" kept their lists of tables by hand, and
+// both fell behind the schema: goals, pages made in chat, how far back mail
+// was read and what the person pays for outlived a deleted account.
+test("an account's rows go from every table that has them, whatever order they point to each other in", async () => {
+  const wipe = require("../webapp/account-wipe");
+  await pool.query(`DROP SCHEMA IF EXISTS wipetest CASCADE; CREATE SCHEMA wipetest;
+    CREATE TABLE wipetest.people (id text PRIMARY KEY);
+    CREATE TABLE wipetest.jobs (id serial PRIMARY KEY, user_id text NOT NULL);
+    CREATE TABLE wipetest.papers (id serial PRIMARY KEY, user_id text NOT NULL, job_id int REFERENCES wipetest.jobs(id));
+    CREATE TABLE wipetest.aims (id serial PRIMARY KEY, user_id uuid NOT NULL);
+    CREATE TABLE wipetest.links (id serial PRIMARY KEY, user_id text NOT NULL);
+    CREATE TABLE wipetest.settings (key text PRIMARY KEY, value text);
+    CREATE VIEW wipetest.mine AS SELECT user_id FROM wipetest.jobs;
+    INSERT INTO wipetest.jobs (user_id) VALUES ('u1'), ('u2');
+    INSERT INTO wipetest.papers (user_id, job_id) VALUES ('u1', 1), ('u2', 2);
+    INSERT INTO wipetest.aims (user_id) VALUES ('00000000-0000-4000-8000-000000000001');
+    INSERT INTO wipetest.links (user_id) VALUES ('u1');
+    INSERT INTO wipetest.settings VALUES ('theme', 'dark');`);
+  const count = async (t, where = "") => (await pool.query(`SELECT count(*)::int AS n FROM wipetest.${t} ${where}`)).rows[0].n;
+  assert.deepEqual(await wipe.userTables(pool, "wipetest"), ["aims", "jobs", "links", "papers"], "tables with a user_id, no views");
+
+  // jobs cannot go while a paper points to it; papers comes later in the
+  // alphabet, so the first pass fails on jobs and the second finishes it.
+  const emptied = await wipe.wipeUser(pool, "u1", { schema: "wipetest", keep: new Set(["links", "aims"]) });
+  assert.deepEqual(emptied.sort(), ["jobs", "papers"]);
+  assert.equal(await count("jobs", "WHERE user_id = 'u1'"), 0);
+  assert.equal(await count("papers", "WHERE user_id = 'u1'"), 0);
+  assert.equal(await count("jobs", "WHERE user_id = 'u2'"), 1, "someone else's rows stay");
+  assert.equal(await count("links"), 1, "what is kept stays");
+  assert.equal(await count("settings"), 1);
+
+  await wipe.wipeUser(pool, "00000000-0000-4000-8000-000000000001", { schema: "wipetest", keep: new Set(["jobs", "papers", "links"]) });
+  assert.equal(await count("aims"), 0, "a uuid user_id too");
+
+  // What cannot be emptied stops the run and is named.
+  await pool.query(`CREATE TABLE wipetest.held (id serial PRIMARY KEY, job_id int REFERENCES wipetest.jobs(id)); INSERT INTO wipetest.held (job_id) VALUES (2)`);
+  await assert.rejects(wipe.wipeUser(pool, "u2", { schema: "wipetest", keep: new Set(["papers", "links", "aims"]) }), /could not empty jobs/);
+  await pool.query("DROP SCHEMA wipetest CASCADE");
+});
+
+test("the real schema: the tables that outlived a deleted account are found, and every table kept on a wipe exists", async () => {
+  const wipe = require("../webapp/account-wipe");
+  const found = new Set(await wipe.userTables(pool));
+  for (const t of ["goals", "reports", "paying_for", "mail_coverage", "projects", "facts", "conversation_threads", "data_cache"]) assert.ok(found.has(t), `${t} is found`);
+  for (const t of wipe.KEPT_ON_WIPE) assert.ok(found.has(t), `${t}, kept on a wipe, is a table with a user_id`);
+  assert.ok(!found.has("profiles") && !found.has("schema_migrations"));
+  // Deleting everything for a person the database has never seen changes
+  // nothing and fails nowhere: every table takes the delete.
+  const emptied = await wipe.wipeUser(pool, "00000000-0000-4000-8000-0000000000aa");
+  assert.equal(emptied.length, found.size);
+  await wipe.wipeShared(pool);
+});

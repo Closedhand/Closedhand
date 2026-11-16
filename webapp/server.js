@@ -9415,49 +9415,23 @@ app.post("/api/account/clear-data", async (req, res) => {
 
     const storagePaths = (attachments || []).map(a => a.storage_path).filter(Boolean);
 
-    // Parallel delete all user data (keep profiles, connections, chat_links)
-    // Also clear onboarding state from profile settings so it re-triggers
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("settings")
-      .eq("id", userId)
-      .single();
-
-    const currentSettings = profile?.settings || {};
-    const { onboarding_step, onboarding_asked, preferred_name, bot_name, personality, ...cleanSettings } = currentSettings;
-
-    // Everything Closedhand has built up for this user goes. What stays is the
-    // profile, the connected services, and the synced mail and calendar cache
-    // that follows those connections (it re-syncs anyway while they exist, so
-    // deleting it here would only buy a re-embedding bill). The list used to
-    // stop at seven tables and quietly kept every conversation thread, rule,
-    // dataset and indexed file while the copy said "all your data".
-    // rag_documents carries rag_chunks away by cascade; automations carries
-    // its runs; datasets does NOT cascade its rows, so both are named.
-    for (const table of ["task_followups", "task_model_calls", "task_deliveries", "task_worker_results"]) {
-      const { error } = await supabase.from(table).delete().eq("user_id", userId);
-      if (error) throw new Error(error.message);
-    }
+    // Everything Closedhand has built up for this user goes: every table that
+    // has their rows, read from the database itself, but the ones named as
+    // kept in account-wipe.js (the profile, the connections, and what is
+    // synced from them or worked out from that; it re-syncs anyway while they
+    // exist). The list was kept here by hand, and stopped short twice.
+    const { data: pages } = await supabase.from("reports").select("id, content").eq("user_id", userId);
+    const media = require("./page-media");
+    storagePaths.push(...(pages || []).flatMap((p) => media.namedParts(p.content).map((name) => media.partKey(userId, p.id, name))));
+    const wipe = require("./account-wipe");
+    await wipe.wipeUser(supabase._pool, userId, { keep: wipe.KEPT_ON_WIPE });
     const wiped = await Promise.all([
-      supabase.from("conversation_threads").delete().eq("user_id", userId),
       supabase.from("conversations").update({ messages: [], summary: null }).eq("user_id", userId),
-      supabase.from("web_messages").delete().eq("user_id", userId),
       // The synced cache stays (it re-syncs from the connections that stay),
       // but conversation raw is not resyncable from anywhere and belongs to
       // the conversations this action promises to delete.
       supabase.from("data_cache").delete().eq("user_id", userId).in("source", ["conversation", "assistant_email"]),
       supabase.from("data_vectors").delete().eq("user_id", userId).eq("source_metadata->>source", "assistant_email"),
-      supabase.from("facts").delete().eq("user_id", userId),
-      supabase.from("user_rules").delete().eq("user_id", userId),
-      supabase.from("schedules").delete().eq("user_id", userId),
-      supabase.from("attachments").delete().eq("user_id", userId),
-      supabase.from("pulse_config").delete().eq("user_id", userId),
-      supabase.from("agent_tasks").delete().eq("user_id", userId),
-      supabase.from("automations").delete().eq("user_id", userId),
-      supabase.from("dataset_rows").delete().eq("user_id", userId),
-      supabase.from("datasets").delete().eq("user_id", userId),
-      supabase.from("rag_documents").delete().eq("user_id", userId),
-      supabase.from("rag_sources").delete().eq("user_id", userId),
       supabase.from("data_vectors").delete().eq("user_id", userId).eq("service", "memory"),
       patchSettings(supabase, userId, { unset: ["onboarding_step", "onboarding_asked", "preferred_name", "bot_name", "personality"] }).then(() => ({ error: null }), (e) => ({ error: e })),
     ]);
@@ -9507,41 +9481,24 @@ app.delete("/api/account", async (req, res) => {
     const storagePaths = (attachments || []).map(a => a.storage_path).filter(Boolean)
       .concat((pages || []).flatMap((p) => media.namedParts(p.content).map((name) => media.partKey(userId, p.id, name))));
 
-    // Delete all user data from EVERY table that carries a user_id, not a
-    // hand-picked subset. The old list missed conversation_threads, the whole
-    // synced mail cache, the File Search index, datasets, rules and more, so
-    // "delete my account" retained the most sensitive data in the system. It
-    // also deleted only the memory rows of data_vectors, whose FK to profiles
-    // is NO ACTION, so the profile delete below then failed on the email
-    // vectors and the account was never deleted at all.
-    //
-    // Sequential and per-table checked rather than one Promise.all: a table
-    // that does not exist on this install is logged and skipped, but the run
-    // carries on, and the profile goes last so a partial failure can be
-    // retried.
-    const WIPE_TABLES = [
-      "dataset_rows", "datasets", "rag_documents", "rag_sources",
-      "conversation_threads", "conversations", "web_messages",
-      "facts", "user_rules", "schedules", "attachments", "pulse_config",
-      "task_followups", "task_model_calls", "task_deliveries", "task_worker_results",
-      "agent_tasks", "automations",
-      "data_vectors", "data_cache", "index_progress", "person_links", "person_names", "made_items",
-      "user_skills", "user_mcps", "user_bridges", "sandboxes",
-      "chat_links", "connections",
-      "bridge_requests", "bug_reports", "token_usage",
-    ];
-    for (const table of WIPE_TABLES) {
-      const { error } = await supabase.from(table).delete().eq("user_id", userId);
-      if (error) console.error(`[Account delete] ${table}: ${error.message}`);
-    }
+    // Every table that holds the person's rows, read from the database itself
+    // (account-wipe.js), then the files kept in the database and every
+    // sign-in, and the profile last, since the rest points to it. A table
+    // that will not empty stops the run, so it can be tried again: the list
+    // was kept here by hand, fell behind the schema, and a failure was logged
+    // and passed over, leaving goals, pages and more behind an account that
+    // said it was deleted.
+    const wipe = require("./account-wipe");
+    await wipe.wipeUser(supabase._pool, userId);
 
     // Clean up storage bucket
     if (storagePaths.length > 0) {
       await supabase.storage.from("attachments").remove(storagePaths);
     }
+    await wipe.wipeShared(supabase._pool);
 
-    // Delete profile last (other tables FK to it)
-    await supabase.from("profiles").delete().eq("id", userId);
+    const { error: profileError } = await supabase.from("profiles").delete().eq("id", userId);
+    if (profileError) throw new Error(profileError.message);
 
     // Clear auth cookie and redirect
     res.setHeader("Set-Cookie", "ch_user=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
