@@ -1020,7 +1020,6 @@
     body.chat-active #mobileActivityBtn { display: inline-flex !important; }
     .send-via a { width: 1.625rem; height: 1.625rem; }
     .send-via img { width: 0.8125rem; height: 0.8125rem; }
-    .send-via-label { font-size: 0.625rem; }
   }
   @media (max-width: 767px) {
     .toolbar-btn, .send-btn, .page-tab { min-height: 2.75rem; min-width: 2.75rem; }
@@ -1517,7 +1516,6 @@
   /* Drag hint below monitors - only visible on computers tab */
   .mon-drag-hint { display:none; }
   .computers-view.active .mon-drag-hint { display:flex; align-items:center; justify-content:center; gap:0.75rem; padding:0.875rem 0 0.5rem; }
-  .mon-divider-label { display:none; }
   body.mon-dragging iframe, body.mon-dragging webview, body.mon-dragging .mon-screen { pointer-events:none !important; }
   .mon-wrap.mon-drag-glow { box-shadow:inset 0 0 1.25rem rgba(var(--accent-rgb),0.15); }
   .mon-wrap.mon-drag-glow .mon { border-color:rgba(var(--accent-rgb),0.4) !important; }
@@ -2041,8 +2039,6 @@
             <div class="send-via" id="sendVia">
               <a class="via-icon" data-label="Continue on WhatsApp" id="viaWhatsApp" hidden><img src="/logos/whatsapp.svg" alt="WhatsApp"></a>
               <a class="via-icon" data-label="Continue on Telegram" id="viaTelegram" hidden><img src="/logos/telegram.svg" alt="Telegram"></a>
-              <a href="/auth/slack" class="via-icon" data-label="Continue on Slack" id="viaSlack" hidden><img src="/logos/slack.svg" alt="Slack"></a>
-              <a href="/auth/line" class="via-icon" data-label="Continue on LINE" id="viaLine" hidden><img src="/logos/line.svg" alt="LINE"></a>
             </div>
             <!-- RAG toggle removed: document search is always-on via unified recall -->
             <button class="toolbar-btn" id="micBtn" type="button" title="Speak instead of typing" aria-label="Speak instead of typing">
@@ -4257,7 +4253,7 @@
   // formatting, so nothing missed was ever caught up.
   // One chat in every app (lib/one-chat.js). The names of the apps a
   // message can come from; the web chat is this one, so it needs none.
-  var VIA_NAMES = { whatsapp_linked: 'WhatsApp', whatsapp: 'WhatsApp', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', line: 'LINE' };
+  var VIA_NAMES = { whatsapp_linked: 'WhatsApp', telegram: 'Telegram' };
   // Shown already: the same words, just above.
   function shownJustNow(content, role) {
     var shown = messagesEl.querySelectorAll('.message.' + role);
@@ -7836,19 +7832,15 @@ function jsq(s) {
 
 <script>
 // Self-host: the chat icons open YOUR chats. WhatsApp is your own number as a
-// linked device, Telegram is the bot you made; Slack and LINE only appear when
-// their credentials are in .env. One not set up yet does not appear.
+// linked device, Telegram is the bot you made. One not set up yet does not appear.
 (function () {
   fetch("/api/setup/status", { headers: { Accept: "application/json" } })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (st) {
       if (!st) return;
       var wa = document.getElementById("viaWhatsApp"), tg = document.getElementById("viaTelegram");
-      var sl = document.getElementById("viaSlack"), ln = document.getElementById("viaLine");
       if (wa && st.waLinked && st.waLinked.linked && st.waLinked.number) { wa.href = "https://wa.me/" + st.waLinked.number; wa.target = "_blank"; wa.rel = "noopener"; wa.hidden = false; }
       if (tg && st.botUsername) { tg.href = "https://t.me/" + st.botUsername; tg.target = "_blank"; tg.rel = "noopener"; tg.hidden = false; }
-      if (sl && st.extraChat && st.extraChat.slack) sl.hidden = false;
-      if (ln && st.extraChat && st.extraChat.line) ln.hidden = false;
     })
     .catch(function () {});
 })();

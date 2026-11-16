@@ -53,7 +53,6 @@
     }
 
     /* Global dashboard readability boost */
-    .dashboard-container .section-label,
     .dashboard-container label {
       font-size: 0.875rem;
     }
@@ -180,8 +179,6 @@
       line-height: 1.3;
     }
     .plat-card .plat-connect-btn:hover { background: rgba(var(--accent-strong-rgb),0.16); }
-    .plat-card .plat-keys-link { font-size: 0.6875rem; color: var(--muted); text-decoration: none; }
-    .plat-card .plat-keys-link:hover { color: var(--muted); }
     .agent-tpl-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
     @media (max-width: 760px) { .agent-tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -1157,11 +1154,6 @@
     .mc-metric.blue::before { background: var(--accent-strong); }
     .mc-metric.purple::before { background: var(--slate); }
     .mc-metric.gray::before { background: rgba(var(--fg-rgb),0.52); }
-    .mc-metric-label {
-      font-size: 0.8125rem;
-      color: var(--muted);
-      letter-spacing: 0.5px;
-    }
 
     /* Mission Control — Section Labels */
     .mc-section-label {
@@ -2570,9 +2562,6 @@
     const PLATFORM_LOGOS = {
       telegram: "/logos/telegram.svg",
       whatsapp: "/logos/whatsapp.svg",
-      discord: "/logos/discord.svg",
-      slack: "/logos/slack.svg",
-      line: "/logos/line.svg",
     };
 
     function platformLogo(key) {
@@ -2751,22 +2740,6 @@
               <div class="plat-top">${logo}<span class="plat-name">${platform.name}</span></div>
               <a class="plat-connect-btn" target="_top" href="/setup#step-chat=${key}" onclick="event.stopPropagation()">Set up</a>
             </div>`;
-        } else if (!platform.available && COMING_SOON_CHAT.includes(key)) {
-          // Not there yet: nothing to do with it, so no card for it.
-        } else if (!platform.available) {
-          // The app exists once its keys are pasted in; the card opens that.
-          platformsGrid.innerHTML += `
-            <div class="plat-card">
-              <div class="plat-top">${logo}<span class="plat-name">${platform.name}</span></div>
-              <button class="plat-connect-btn" onclick="event.stopPropagation();openChatAppSetup('${key}')">Set up</button>
-            </div>`;
-        } else {
-          const keysLink = platform.keysConfigured ? `<a href="#" class="plat-keys-link" onclick="event.preventDefault();event.stopPropagation();openChatAppSetup('${key}')">Change keys</a>` : '';
-          platformsGrid.innerHTML += `
-            <div class="plat-card">
-              <div class="plat-top">${logo}<span class="plat-name">${platform.name}</span></div>
-              ${keysLink}
-            </div>`;
         }
       }
 
@@ -2928,20 +2901,6 @@
       } catch (e) {
         showToast("Network error", true);
       }
-    }
-
-    async function copyAddress(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch (e) {
-        const input = document.createElement('input');
-        input.value = text;
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand('copy');
-        document.body.removeChild(input);
-      }
-      showToast("Copied.");
     }
 
     function openShopifyModal() {
@@ -4374,7 +4333,7 @@
       // After the linked apps sits one dashed "Link another app" pill, in the
       // Connect more card's manner. A click unfolds the apps not yet linked
       // as quiet pills; each takes the same route the Connections tab would.
-      const addable = Object.entries(platforms).filter(([key, info]) => !info.connected && (info.available || !COMING_SOON_CHAT.includes(key)));
+      const addable = Object.entries(platforms).filter(([key, info]) => !info.connected);
       const adds = !addable.length ? "" : container.dataset.showAdds
         ? addable.map(([key, info]) =>
             `<button class="pill pill-add" data-add-platform="${escAttribute(key)}" title="Link ${escAttribute(info.name || key)}">${pillLogo(key)}${escHtml(info.name || key)}<span class="pill-add-plus" aria-hidden="true">+</span></button>`
@@ -4417,9 +4376,7 @@
         window.open('https://t.me/' + platform.botUsername + '?start=hello', '_blank', 'noopener');
         return;
       }
-      if (key === 'telegram' || key === 'whatsapp') { window.top.location.href = '/setup#step-chat=' + key; return; }
-      if (!platform.available) { openChatAppSetup(key); return; }
-      switchTab('connections');
+      window.top.location.href = '/setup#step-chat=' + key;
     }
 
     function renderQuietHours() {
@@ -7095,7 +7052,7 @@
     }
     var LEARNED_HINT = "Closedhand writes these itself when it has to work out how to do something, so it goes quicker next time. Any it hasn't used for two months are removed.";
     var LEARNED_IN = { web: 'In the web chat', task: 'During a task in the background', telegram: 'In Telegram', whatsapp: 'In WhatsApp',
-      whatsapp_linked: 'In WhatsApp', slack: 'In Slack', discord: 'In Discord', line: 'In LINE', email: 'By email' };
+      whatsapp_linked: 'In WhatsApp', email: 'By email' };
     function learnedSkillRows(skill) {
       var day = function (d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
       var where = (LEARNED_IN[skill.learned_from] || 'In a chat') + ', ' + day(skill.installed_at);
@@ -7629,7 +7586,7 @@
       // the answer is given there; this card never takes one.
       var asked = a.status === 'awaiting_confirmation' ? (a.waiting || {}) : null;
       if (asked) {
-        var where = { whatsapp: 'WhatsApp', whatsapp_linked: 'WhatsApp', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', line: 'LINE', web: 'the web chat' }[asked.platform] || 'chat';
+        var where = { whatsapp_linked: 'WhatsApp', telegram: 'Telegram', web: 'the web chat' }[asked.platform] || 'chat';
         detail = 'Asked you in ' + where + (asked.since ? ' ' + timeAgo(asked.since) : '') + (asked.kind === 'sign_in' ? '. Reply done there once you have signed in.' : '. Reply yes or no there.') + ' It lapses a day after asking.';
       }
 
@@ -7729,7 +7686,7 @@
     // Where a task's answer went, by the chat's name; Main chat is a link
     // that opens it. Null when it was only ever here. Plain words with
     // plain: true.
-    var PLACE_NAME = { whatsapp: 'WhatsApp', whatsapp_linked: 'WhatsApp', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', line: 'LINE' };
+    var PLACE_NAME = { whatsapp_linked: 'WhatsApp', telegram: 'Telegram' };
     function answerPlace(a, plain) {
       if (!a.platform || a.platform === 'dashboard') return null;
       if (a.platform === 'web') return plain ? 'Main chat' : '<button type="button" class="quiet-link" onclick="event.stopPropagation();openMainChat()">Main chat</button>';
@@ -9832,99 +9789,6 @@
     </div>
   </div>
 
-  <!-- Note Modal -->
-  <div class="modal-overlay" id="chat-app-modal" onclick="if(event.target===this)closeChatAppSetup()">
-    <div class="modal" role="dialog" aria-labelledby="chat-app-title" id="chat-app-modal-body" style="max-width:30rem;"></div>
-  </div>
-  <script>
-    // Every chat app on an install you run yourself is set up the same way:
-    // make the app with the provider, paste its keys here, Closedhand checks
-    // them and switches the app on. One panel, driven by a short spec per app.
-    var CHAT_APP_SPECS = {
-      discord: {
-        steps: [
-          'Open the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Discord Developer Portal</a>, press New Application and name it.',
-          'Under Bot, press Reset Token and copy the token. Further down, turn on Message Content Intent.',
-          'Under OAuth2, tick the "bot" scope, open the link it makes and add the bot to any server you are in. Direct messages work after that.'
-        ],
-        fields: [{ key: 'DISCORD_BOT_TOKEN', label: 'Bot token', placeholder: 'Paste the token from the Bot page' }]
-      },
-      slack: {
-        steps: [
-          'Open <a href="https://api.slack.com/apps" target="_blank" rel="noopener">api.slack.com/apps</a>, press Create New App, from scratch, and pick your workspace.',
-          'Under OAuth &amp; Permissions add the bot scopes chat:write, im:history, im:read and im:write, then Install to Workspace and copy the Bot User OAuth Token (it starts with xoxb-).',
-          'Under Event Subscriptions turn events on, paste the address below as the Request URL, and subscribe the bot to message.im. Under App Home, allow the Messages tab.'
-        ],
-        fields: [{ key: 'SLACK_BOT_TOKEN', label: 'Bot User OAuth Token', placeholder: 'xoxb-...' }]
-      },
-      line: {
-        steps: [
-          'Open the <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers console</a> and create a Messaging API channel.',
-          'On the Messaging API tab issue a channel access token (long-lived). The channel secret is on the Basic settings tab.',
-          'Paste the address below as the Webhook URL, turn Use webhook on, and turn the channel\'s auto-reply messages off.'
-        ],
-        fields: [
-          { key: 'LINE_CHANNEL_ACCESS_TOKEN', label: 'Channel access token', placeholder: 'Long-lived token from the Messaging API tab' },
-          { key: 'LINE_CHANNEL_SECRET', label: 'Channel secret', placeholder: 'From Basic settings' }
-        ]
-      }
-    };
-    // Not ready on an install you run yourself yet: shown, but not offered.
-    var COMING_SOON_CHAT = ['discord', 'slack', 'line'];
-    var _chatAppOpen = null;
-    async function openChatAppSetup(app) {
-      var spec = CHAT_APP_SPECS[app]; if (!spec) return;
-      _chatAppOpen = app;
-      var info = null;
-      try { var r = await fetch('/api/chat-apps'); var j = r.ok ? await r.json() : {}; info = (j.apps || {})[app] || null; } catch (e) {}
-      var name = (info && info.name) || app;
-      var body = document.getElementById('chat-app-modal-body');
-      var html = '<h3 id="chat-app-title" style="margin-bottom:0.375rem;">Set up ' + name + '</h3>';
-      html += '<p style="font-size:0.8125rem;color:var(--muted);line-height:1.55;margin:0 0 0.75rem;">' + name + ' has no way to make the app for you, so this part is yours. About two minutes.</p>';
-      html += '<ol style="font-size:0.8125rem;color:var(--fg);line-height:1.55;margin:0 0 0.875rem 1.125rem;padding:0;">' + spec.steps.map(function(t) { return '<li style="margin-bottom:0.375rem;">' + t + '</li>'; }).join('') + '</ol>';
-      if (info && info.webhook) {
-        html += '<div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem;">Address to paste</div>';
-        html += '<div onclick="copyAddress(\'' + info.webhook + '\')" title="Click to copy" style="font-family:ui-monospace,monospace;font-size:0.75rem;color:var(--fg);background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.375rem;padding:0.5rem 0.625rem;margin-bottom:0.875rem;cursor:pointer;word-break:break-all;">' + info.webhook + '</div>';
-      } else if (info && info.needsPublic) {
-        html += '<p style="font-size:0.8125rem;color:var(--warn);line-height:1.5;margin:0 0 0.875rem;">' + name + ' sends messages to Closedhand over the internet, so Closedhand needs a link that works from other devices first. Claim your personal URL in Settings, then come back here.</p>';
-      }
-      if (info && info.fromEnv) html += '<p style="font-size:0.75rem;color:var(--muted);margin:0 0 0.625rem;">Some of these keys are set in the .env file, which wins over anything saved here.</p>';
-      spec.fields.forEach(function(f) {
-        html += '<label style="display:block;font-size:0.75rem;color:var(--muted);margin:0 0 0.25rem;">' + f.label + '</label>';
-        html += '<input type="password" autocomplete="off" spellcheck="false" id="chat-app-' + f.key + '" placeholder="' + f.placeholder + '" style="width:100%;box-sizing:border-box;font:inherit;font-size:0.8125rem;color:var(--fg);background:var(--raised);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.375rem;padding:0.5rem 0.625rem;margin-bottom:0.625rem;">';
-      });
-      html += '<p id="chat-app-msg" style="font-size:0.75rem;color:var(--accent);min-height:1rem;margin:0 0 0.625rem;"></p>';
-      html += '<div style="display:flex;gap:0.5rem;justify-content:space-between;align-items:center;">';
-      html += (info && info.configured && !info.fromEnv) ? '<button class="conn-btn conn-btn-disconnect" onclick="removeChatApp()">Remove keys</button>' : '<span></span>';
-      html += '<span style="display:flex;gap:0.5rem;"><button class="conn-btn conn-btn-manage" onclick="closeChatAppSetup()">Cancel</button><button class="conn-btn" id="chat-app-save" onclick="saveChatApp()" style="border-color:rgba(var(--accent-strong-rgb),0.4);color:var(--accent-strong);">Check and save</button></span></div>';
-      body.innerHTML = html;
-      document.getElementById('chat-app-modal').classList.add('visible');
-    }
-    function closeChatAppSetup() { document.getElementById('chat-app-modal').classList.remove('visible'); _chatAppOpen = null; }
-    async function saveChatApp() {
-      var app = _chatAppOpen; var spec = CHAT_APP_SPECS[app]; if (!spec) return;
-      var keys = {}; spec.fields.forEach(function(f) { keys[f.key] = (document.getElementById('chat-app-' + f.key) || {}).value || ''; });
-      var msg = document.getElementById('chat-app-msg'); var btn = document.getElementById('chat-app-save');
-      var empty = spec.fields.find(function(f) { return !keys[f.key].trim(); });
-      if (empty) { msg.textContent = ''; return needsField(document.getElementById('chat-app-' + empty.key), 'Paste the ' + (/^[A-Z][a-z]+ [a-z]/.test(empty.label) ? empty.label.charAt(0).toLowerCase() + empty.label.slice(1) : empty.label) + '.'); }
-      msg.style.color = 'rgba(var(--fg-rgb),0.64)'; msg.textContent = 'Checking with ' + ((CHAT_APP_SPECS[app] && app) || 'the app') + '...'; btn.disabled = true;
-      try {
-        var r = await fetch('/api/chat-apps/' + app, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: keys }) });
-        var j = await r.json().catch(function() { return {}; });
-        if (!r.ok && j.field && document.getElementById('chat-app-' + j.field)) { msg.textContent = ''; btn.disabled = false; return needsField(document.getElementById('chat-app-' + j.field), j.error); }
-        if (!r.ok) { msg.style.color = 'var(--danger)'; msg.textContent = j.error || 'That did not work.'; btn.disabled = false; return; }
-        closeChatAppSetup();
-        if (typeof showToast === 'function') showToast((j.botName || 'The app') + ' is on. Press Connect to pair your account.');
-        if (typeof loadStatus === 'function') loadStatus();
-      } catch (e) { msg.style.color = 'var(--danger)'; msg.textContent = 'Could not reach Closedhand.'; btn.disabled = false; }
-    }
-    async function removeChatApp() {
-      var app = _chatAppOpen; if (!app) return;
-      try { await fetch('/api/chat-apps/' + app, { method: 'DELETE' }); } catch (e) {}
-      closeChatAppSetup();
-      if (typeof loadStatus === 'function') loadStatus();
-    }
-  </script>
   <!-- Apple Connect Modal -->
   <div class="modal-overlay" id="apple-modal" onclick="if(event.target===this)closeAppleModal()">
     <div class="modal" style="max-width:26.25rem;">

@@ -12,36 +12,6 @@ function loadFunction(file, name, context) {
   return vm.runInNewContext(source + `\n${name}`, { Buffer, console, ...context });
 }
 
-test("generated WhatsApp previews use uploaded images, while original and unsupported files remain documents", async () => {
-  const requests = [];
-  const send = loadFunction("lib/messaging.js", "sendWhatsAppDocument", {
-    WHATSAPP_ACCESS_TOKEN: "test", WHATSAPP_PHONE_NUMBER_ID: "test",
-    https: { request(options, callback) {
-      const req = new EventEmitter(); let body;
-      req.write = value => { body = value; };
-      req.end = () => {
-        requests.push({ options, body });
-        const response = new EventEmitter(); callback(response);
-        response.emit("data", Buffer.from(JSON.stringify(options.path.endsWith("/media") ? { id: "uploaded" } : { messages: [{ id: "sent" }] })));
-        response.emit("end");
-      };
-      return req;
-    } },
-  });
-  for (const [mime, size, inline, expected] of [
-    ["image/png", 12, true, "image"], ["image/jpeg", 12, true, "image"],
-    ["image/png", 12, false, "document"], ["image/svg+xml", 12, true, "document"],
-    ["text/html", 12, true, "document"], ["image/png", 5 * 1024 * 1024 + 1, true, "document"],
-  ]) {
-    await send("recipient", Buffer.alloc(size), "result", mime, inline);
-    const payload = JSON.parse(requests.at(-1).body);
-    assert.equal(payload.to, "recipient");
-    assert.equal(payload.type, expected);
-    assert.equal(payload[expected].id, "uploaded");
-    assert.equal(requests.at(-2).options.path.endsWith("/media"), true);
-  }
-});
-
 const linkedFile = "lib/platforms/whatsapp-linked.js";
 if (fs.existsSync(path.join(root, linkedFile))) test("linked WhatsApp previews retain the self-chat gate and original-file delivery", async () => {
   const sent = [];
@@ -69,7 +39,6 @@ test("a picture shows as a picture in every chat app, and anything else arrives 
     PICTURE: /^image\/(png|jpeg|gif|webp)$/,
     ctx: { bot: { sendPhoto: async (...args) => sent.push(["photo", ...args]) } },
     sendTelegramDocument: async (...args) => sent.push(["document", ...args]),
-    sendWhatsAppDocument: async (...args) => sent.push(["whatsapp", ...args]),
     require: (name) => {
       assert.equal(name, "./platforms/whatsapp-linked");
       return { sendLinkedDocument: async (...args) => sent.push(["linked", ...args]) };
@@ -78,7 +47,7 @@ test("a picture shows as a picture in every chat app, and anything else arrives 
   // How each app is sent a file (sendDocumentToPlatform also keeps it for the
   // turn, lib/one-chat.js).
   const send = loadFunction("lib/messaging.js", "sendDocumentOnly", context);
-  for (const platform of ["whatsapp", "whatsapp_linked"]) {
+  for (const platform of ["whatsapp_linked"]) {
     await send(platform, "self", Buffer.from("image"), "chart.png", "image/png");
     assert.equal(sent.at(-1)[5], true, "inline on WhatsApp");
     await send(platform, "self", Buffer.from("pdf"), "plan.pdf", "application/pdf");

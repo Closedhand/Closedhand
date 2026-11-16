@@ -54,8 +54,4 @@ test("every chat app says when its message was sent", () => {
   assert.match(read("telegram.js"), /\.\.\.\(sentAt \? \{ sentAt \} : \{\}\),/);
   assert.match(read("whatsapp-linked.js"), /const sentAt = Number\(msg\.messageTimestamp \|\| 0\) \* 1000 \|\| undefined;/);
   assert.equal((read("whatsapp-linked.js").match(/_selfJid, \{ sentAt \}\)/g) || []).length, 2);
-  assert.equal((read("whatsapp.js").match(/Number\(msg\.timestamp\) \* 1000 \|\| undefined/g) || []).length, 3);
-  assert.match(read("discord.js"), /opts\.sentAt = msg\.createdTimestamp;/);
-  assert.match(read("slack-handler.js"), /opts\.sentAt = Number\(slackTs\) \* 1000 \|\| undefined;/);
-  assert.match(read("line.js"), /const lineOpts = \{ sentAt: event\.timestamp \};\n\s*const response = await queuedAsk\(userId, text, null, lineUserId, lineOpts\);/);
 });

@@ -113,7 +113,6 @@ test("the dashboard's forms say it at the field, never only in a toast or at the
     ["the spending currency", /return needsField\(document\.getElementById\('sl-currency'\), 'Choose the currency\.'\);/],
     ["an address", /if \(data\.field\) return needsField\(document\.getElementById\('wa-' \+ data\.field\), data\.error\);/],
     ["a card", /if \(data\.field\) return needsField\(document\.getElementById\('wc-' \+ data\.field\), data\.error\);/],
-    ["a chat app's key", /return needsField\(document\.getElementById\('chat-app-' \+ empty\.key\), 'Paste the '/],
     ["a note to an agent", /if \(!note\) return needsField\(area, 'Write what to tell it\.'\);/],
     ["a name already used", /if \(res\.status === 409\) \{ if \(_openTok !== 'name'\) openToken\('name'\); return needsField\(document\.getElementById\('auto-name-input'\), data\.error\); \}/],
     ["where results go", /return needsField\(document\.getElementById\('plan-where'\), 'Turn on '/],
@@ -134,7 +133,6 @@ test("the server names the field a refusal is about, in words people use", () =>
   assert.match(server, /if \(!a\.name\) return \{ error: "Enter the name\.", field: "name" \};/);
   assert.match(server, /if \(bad\) return res\.status\(400\)\.json\(\{ error: bad, field \}\);/);
   assert.match(server, /error: "That card number does not look right\.", field: "number"/);
-  assert.match(server, /if \(!v\) return res\.status\(400\)\.json\(\{ error: "Paste every key the app needs\.", field: k \}\);/, "never the setting's own name");
   assert.doesNotMatch(server, /is missing\.` \}/);
   assert.doesNotMatch(server, /error: "URL required"|error: "Empty file"|error: "An automation with that name already exists"/);
   const projects = read("webapp/projects.js");

@@ -128,7 +128,6 @@ const { ensureAdmin, getAdminUserId } = require("./admin");
 ensureAdmin().catch((e) => console.error("[admin] bootstrap failed:", e.message));
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const LINE_LOGIN_CHANNEL_ID = process.env.LINE_LOGIN_CHANNEL_ID;
 
 // ============================================================
 // SERVICE REGISTRY — all OAuth services defined here
@@ -344,14 +343,6 @@ const SERVICES = {
     isChatPlatform: true,
   },
 
-  line: {
-    name: "LINE",
-    description: "Popular in Japan, Thailand, Taiwan",
-    logoUrl: "/logos/line.svg",
-    isChatPlatform: true,
-    provides: ["LINE"],
-  },
-
 
 
   dropbox: {
@@ -495,9 +486,6 @@ const SUPPORTED_PLATFORMS = {
   // WhatsApp is their own number as a linked device.
   telegram: { name: "Telegram", available: true },
   whatsapp: { name: "WhatsApp", available: true },
-  discord: { name: "Discord", botName: "Closedhand", available: true },
-  slack: { name: "Slack", botName: "Closedhand", available: true },
-  line: { name: "LINE", botName: "Closedhand", available: true },
 };
 
 // Middleware
@@ -1527,103 +1515,6 @@ app.post("/api/setup/telegram", async (req, res) => {
   }
 });
 
-// ------------------------------------------------------------
-// Chat apps on an install you run yourself. Every one works the same way:
-// make the app with the provider, paste its keys here, Closedhand checks
-// them with the provider and switches the app on (the bot reads runtime
-// config, no restart). Slack and LINE also need a public address to send
-// messages to, which "Your phone" in Settings provides.
-// ------------------------------------------------------------
-const CHAT_APPS = {
-  discord: {
-    name: "Discord", keys: ["DISCORD_BOT_TOKEN"], webhook: false,
-    check: async (k) => {
-      const r = await fetch("https://discord.com/api/v10/users/@me", { headers: { Authorization: `Bot ${k.DISCORD_BOT_TOKEN}` }, signal: AbortSignal.timeout(10000) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error("Discord rejected that token. In the Developer Portal, under Bot, use Reset Token and copy the new one.");
-      return j.username ? `@${j.username}` : "your bot";
-    },
-  },
-  slack: {
-    name: "Slack", keys: ["SLACK_BOT_TOKEN"], webhook: true,
-    check: async (k) => {
-      const r = await fetch("https://slack.com/api/auth.test", { method: "POST", headers: { Authorization: `Bearer ${k.SLACK_BOT_TOKEN}` }, signal: AbortSignal.timeout(10000) });
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) throw new Error("Slack rejected that token. It should start with xoxb- and come from OAuth & Permissions after installing the app.");
-      return j.user ? `@${j.user}` : "your app";
-    },
-  },
-  line: {
-    name: "LINE", keys: ["LINE_CHANNEL_ACCESS_TOKEN", "LINE_CHANNEL_SECRET"], webhook: true,
-    check: async (k) => {
-      const r = await fetch("https://api.line.me/v2/bot/info", { headers: { Authorization: `Bearer ${k.LINE_CHANNEL_ACCESS_TOKEN}` }, signal: AbortSignal.timeout(10000) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error("LINE rejected that access token. Issue a long-lived one under Messaging API in the LINE Developers console.");
-      return j.displayName || j.basicId || "your channel";
-    },
-  },
-};
-
-async function publicBase() {
-  const phone = await getRuntimeConf("PHONE_ACCESS_URL").catch(() => null);
-  const base = (phone && /^https:\/\//.test(phone)) ? phone : (process.env.WEBAPP_URL || process.env.BASE_URL || "");
-  const ok = /^https:\/\//.test(base) && !/localhost|127\.0\.0\.1/.test(base);
-  return { base: base.replace(/\/$/, ""), ok };
-}
-
-app.get("/api/chat-apps", async (req, res) => {
-  if (!(await requireSetupAccess(req, res))) return;
-  if (!mcpClient.isSelfHost()) return res.json({ apps: {} });
-  const pub = await publicBase();
-  const conf = (k) => process.env[k] || require("./config").getConfCached(k);
-  const apps = {};
-  for (const [key, spec] of Object.entries(CHAT_APPS)) {
-    apps[key] = {
-      name: spec.name,
-      keys: spec.keys,
-      configured: spec.keys.every((k) => !!conf(k)),
-      fromEnv: spec.keys.some((k) => !!process.env[k]),
-      botName: conf(`${key.toUpperCase()}_BOT_NAME`) || null,
-      webhook: spec.webhook ? (pub.ok ? `${pub.base}/webhook/${key}` : null) : null,
-      needsPublic: spec.webhook && !pub.ok,
-    };
-  }
-  res.json({ apps });
-});
-
-app.post("/api/chat-apps/:app", async (req, res) => {
-  if (["discord", "slack", "line"].includes(req.params.app)) return res.status(400).json({ error: "Coming soon." });
-  if (!(await requireSetupAccess(req, res))) return;
-  if (!mcpClient.isSelfHost()) return res.status(400).json({ error: "Chat app keys are for a Closedhand you run yourself." });
-  const spec = CHAT_APPS[req.params.app];
-  if (!spec) return res.status(404).json({ error: "Unknown app" });
-  const keys = {};
-  for (const k of spec.keys) {
-    const v = String(((req.body || {}).keys || {})[k] || "").trim();
-    if (!v) return res.status(400).json({ error: "Paste every key the app needs.", field: k });
-    keys[k] = v;
-  }
-  try {
-    const botName = await spec.check(keys);
-    await setRuntimeConf({ ...keys, [`${req.params.app.toUpperCase()}_BOT_NAME`]: botName });
-    res.json({ success: true, botName });
-  } catch (e) {
-    res.status(400).json({ error: e.message || `${spec.name} did not accept those keys.` });
-  }
-});
-
-app.delete("/api/chat-apps/:app", async (req, res) => {
-  if (!(await requireSetupAccess(req, res))) return;
-  if (!mcpClient.isSelfHost()) return res.status(400).json({ error: "Chat app keys are for a Closedhand you run yourself." });
-  const spec = CHAT_APPS[req.params.app];
-  if (!spec) return res.status(404).json({ error: "Unknown app" });
-  const patch = {};
-  for (const k of spec.keys) patch[k] = null;
-  patch[`${req.params.app.toUpperCase()}_BOT_NAME`] = null;
-  await setRuntimeConf(patch);
-  res.json({ success: true });
-});
-
 // Google credentials: paste the downloaded JSON (or the two values) and the
 // OAuth routes pick them up live.
 app.post("/api/setup/google", async (req, res) => {
@@ -1700,28 +1591,8 @@ app.get("/api/setup/wa-qr", async (req, res) => {
   }
 });
 
-// Slack and LINE deliver messages to a public address, which on an install
-// you run yourself is this webapp behind the "Your phone" tunnel. The bot
-// holds the handlers, so the two webhook paths are relayed to it byte for
-// byte (LINE signs the raw body). Providers carry no session, so this sits
-// in front of the gate.
+// How the dashboard reaches the bot (webapp/bot-call.js).
 const { BOT_INTERNAL_URL, botToken } = require("./bot-call");
-// Slack is not relayed: its handler accepts only signed requests, and the
-// self-host setup has no place for a Slack signing secret.
-for (const hook of ["line"]) {
-  app.post(`/webhook/${hook}`, async (req, res) => {
-    try {
-      const headers = {};
-      for (const [k, v] of Object.entries(req.headers)) if (!/^(host|content-length|connection|accept-encoding)$/i.test(k)) headers[k] = v;
-      const r = await fetch(`${BOT_INTERNAL_URL}/webhook/${hook}`, { method: "POST", headers, body: req.rawBody || JSON.stringify(req.body || {}), signal: AbortSignal.timeout(15000) });
-      res.status(r.status);
-      const ct = r.headers.get("content-type"); if (ct) res.set("content-type", ct);
-      res.send(Buffer.from(await r.arrayBuffer()));
-    } catch (e) {
-      res.status(503).send("Closedhand is not reachable");
-    }
-  });
-}
 
 // --- Pages opened inside Telegram -------------------------------------------
 // A page Closedhand sends on Telegram (a page it made, a dashboard view)
@@ -2283,76 +2154,6 @@ function validateTelegramInitData(initData, token, maxAgeSec = 86400) {
   }
 }
 
-// LINE LIFF token validation
-async function validateLineAccessToken(accessToken) {
-  if (!accessToken) return null;
-  try {
-    const resp = await fetch(`https://api.line.me/oauth2/v2.1/verify?access_token=${encodeURIComponent(accessToken)}`);
-    if (!resp.ok) {
-      console.error("[LINE] Token verify failed:", resp.status, await resp.text());
-      return null;
-    }
-    const data = await resp.json();
-    console.log("[LINE] Token verify result:", JSON.stringify({ client_id: data.client_id, expires_in: data.expires_in, expected: LINE_LOGIN_CHANNEL_ID }));
-    if (data.expires_in <= 0) return null;
-    if (LINE_LOGIN_CHANNEL_ID && String(data.client_id) !== String(LINE_LOGIN_CHANNEL_ID)) return null;
-    return data;
-  } catch (e) {
-    console.error("LINE token validation error:", e.message);
-    return null;
-  }
-}
-
-async function getLineProfile(accessToken) {
-  if (!accessToken) return null;
-  try {
-    const resp = await fetch("https://api.line.me/v2/profile", {
-      headers: { "Authorization": `Bearer ${accessToken}` },
-    });
-    if (!resp.ok) return null;
-    return await resp.json();
-  } catch (e) {
-    console.error("LINE profile fetch error:", e.message);
-    return null;
-  }
-}
-
-// Auto-enable a chat platform for Pulse notifications
-async function autoEnableNotificationPlatform(userId, platform) {
-  try {
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("settings")
-      .eq("id", userId)
-      .single();
-
-    if (error || !profile) return;
-
-    const settings = profile.settings || {};
-    const pulseSettings = settings.pulse_settings || {
-      enabled: false,
-      intervalMinutes: 20,
-      proactiveLevel: "medium",
-      quietStart: 22,
-      quietEnd: 7,
-      deliveryPlatforms: [],
-      lastRun: null,
-      lastNotified: null,
-    };
-
-    const platforms = pulseSettings.deliveryPlatforms || [];
-    if (platforms.includes(platform)) return;
-
-    platforms.push(platform);
-    pulseSettings.deliveryPlatforms = platforms;
-    settings.pulse_settings = pulseSettings;
-
-    await patchSettings(supabase, userId, { set: { pulse_settings: pulseSettings } });
-  } catch (e) {
-    console.error(`[autoEnableNotificationPlatform] Error for user ${userId}, platform ${platform}:`, e.message);
-  }
-}
-
 // ============================================================
 // PAGE ROUTES
 // ============================================================
@@ -2399,34 +2200,6 @@ function sendLegalPage(res, file) {
 app.get("/privacy", (req, res) => sendLegalPage(res, "privacy.html"));
 app.get("/terms", (req, res) => sendLegalPage(res, "terms.html"));
 app.get("/dashboard", async (req, res) => {
-  let userId = getUserIdFromRequest(req);
-
-  // After OAuth login: serve homepage instead of dashboard so user lands
-  // on the main page with cookie established (same server-side request)
-  if (userId && req.query.from_login === "1") {
-    return assets.sendPage(res, "index.html");
-  }
-
-  // LINE LIFF auto-login: validate token and set auth cookie
-  if (!userId && req.query.lineAccessToken) {
-    const tokenValid = await validateLineAccessToken(req.query.lineAccessToken);
-    if (tokenValid) {
-      const profile = await getLineProfile(req.query.lineAccessToken);
-      if (profile) {
-        const { data: link } = await supabase
-          .from("chat_links")
-          .select("user_id")
-          .eq("platform", "line")
-          .eq("platform_user_id", profile.userId)
-          .single();
-        if (link) {
-          userId = link.user_id;
-        }
-      }
-    }
-  }
-
-  if (!userId) return res.redirect("/");
   try {
     const state = await require("./setup-state").getSetupState();
     if (!(await setupComplete(state))) return res.redirect(state.ready ? "/setup?claim=1" : "/setup");
@@ -2438,59 +2211,6 @@ app.get("/dashboard", async (req, res) => {
   // with it whatever that release got wrong.
   res.set("Cache-Control", "no-cache, must-revalidate");
   assets.sendPage(res, "dashboard.html");
-});
-
-app.get("/telegram-app", (req, res) => {
-  assets.sendPage(res, "telegram-app.html");
-});
-
-app.get("/line-app", (req, res) => {
-  const liffId = process.env.LINE_LIFF_ID || "";
-  const fs = require("fs");
-  let html = fs.readFileSync(path.join(__dirname, "views", "line-app.html"), "utf8");
-  html = html.replace("__LIFF_ID__", liffId);
-  res.type("html").send(assets.forHost(html));
-});
-
-app.get("/line-setup-complete", (req, res) => {
-  // The name comes from the address bar, so it goes into the page as text only.
-  const name = String(req.query.name || "").slice(0, 80)
-    .replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  res.type("html").send(`<!DOCTYPE html>
-<html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Closedhand Setup Complete</title>
-<style>
-  html{font-size:100%}@media screen and (hover:hover) and (pointer:fine){html{font-size:90%}}
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; color: #1a1a1a; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; text-align: center; }
-  .card { max-width: 22.5rem; }
-  .icon { font-size: 4rem; margin-bottom: 1rem; }
-  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-  p { font-size: 0.9375rem; color: #666; line-height: 1.5; margin-bottom: 1rem; }
-  .highlight { color: #06C755; font-weight: 600; }
-  .countdown { font-size: 0.8125rem; color: #999; }
-</style>
-</head><body>
-<div class="card">
-  <div class="icon">&#x2705;</div>
-  <h1>You're all set${name ? ", " + name : ""}</h1>
-  <p>Your account is connected. Opening <span class="highlight">LINE</span> in <span id="timer">3</span>s…</p>
-</div>
-<script>
-  var t = 3;
-  var el = document.getElementById("timer");
-  var iv = setInterval(function() {
-    t--;
-    el.textContent = t;
-    if (t <= 0) {
-      clearInterval(iv);
-      window.location.href = "https://line.me/R/oaMessage/%40990jhhra/";
-    }
-  }, 1000);
-</script>
-</body></html>`);
 });
 
 // Logging out ends this browser's session on the server, not just its cookie,
@@ -2610,25 +2330,7 @@ app.get("/auth/:service", async (req, res) => {
     return res.status(400).send("Service not available");
   }
 
-  // Determine flow: website, chat_popup, Telegram, or LINE
-  const { initData, store_domain, lineAccessToken, flow: queryFlow } = req.query;
-  let flow = "website";
-  let tgUser = null;
-  let lineUser = null;
-
-  if (queryFlow === "chat_popup") {
-    flow = "chat_popup";
-  } else if (initData) {
-    tgUser = validateTelegramInitData(initData, await telegramBotToken());
-    if (!tgUser) return res.status(400).send("Invalid Telegram session");
-    flow = "telegram";
-  } else if (lineAccessToken) {
-    const tokenValid = await validateLineAccessToken(lineAccessToken);
-    if (!tokenValid) return res.status(400).send("Invalid LINE session");
-    lineUser = await getLineProfile(lineAccessToken);
-    if (!lineUser) return res.status(400).send("Could not get LINE profile");
-    flow = "line";
-  }
+  const { store_domain } = req.query;
 
   // The sign-in comes back to this computer's own address. On Docker and the
   // Mac that is localhost, which a phone (or Telegram's browser on it) can't
@@ -2650,12 +2352,7 @@ app.get("/auth/:service", async (req, res) => {
     service: serviceKey,
     redirectUri,
     personalClient: svc.personalClient ? { clientId: svc.clientId, clientSecret: svc.clientSecret } : null,
-    flow,
-    userId: flow === "website" ? getUserIdFromRequest(req) : null,
-    tgId: tgUser?.id?.toString() || null,
-    tgName: tgUser ? (tgUser.first_name + (tgUser.last_name ? " " + tgUser.last_name : "")) : null,
-    lineId: lineUser?.userId || null,
-    lineName: lineUser?.displayName || null,
+    userId: getUserIdFromRequest(req),
     storeDomain: store_domain || null,
     // Explicit "connect an additional Google account" flow (mail/calendar for
     // a second Gmail). Only meaningful for google + a logged-in user.
@@ -3239,18 +2936,6 @@ app.get("/auth/:service/callback", async (req, res) => {
   if (svc && stateData?.personalClient) svc = { ...svc, ...stateData.personalClient, personalClient: true };
 
   if (error || !code) {
-    if (stateData?.flow === "telegram") {
-      return res.redirect(`/telegram-app?error=auth_denied&service=${serviceKey}`);
-    }
-    if (stateData?.flow === "line") {
-      return res.redirect(`/line-app?error=auth_denied&service=${serviceKey}`);
-    }
-    if (stateData?.flow === "chat_popup") {
-      return res.send(`<!DOCTYPE html><html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head><body><script>
-        window.opener && window.opener.postMessage({type:'oauth_error',service:'${serviceKey}'},'*');
-        window.close();
-      </script><p>Authentication cancelled. You can close this window.</p></body></html>`);
-    }
     return res.redirect(svc?.isSignup ? (stateData?.returnTo || "/") + "?error=google_denied" : "/dashboard?error=auth_denied");
   }
 
@@ -3272,25 +2957,7 @@ app.get("/auth/:service/callback", async (req, res) => {
       return await handleExtraMicrosoftAccount(res, stateData, svc, tokens);
     }
 
-    if (stateData.flow === "telegram") {
-      await handleTelegramOAuthComplete(res, stateData, serviceKey, svc, tokens);
-    } else if (stateData.flow === "line") {
-      await handleLineOAuthComplete(res, stateData, serviceKey, svc, tokens);
-    } else if (stateData.flow === "chat_popup") {
-      // Chat popup flow: do signup/connect, then close popup with postMessage
-      if (svc.isSignup) {
-        await handleSignupOAuthComplete(res, stateData, serviceKey, svc, tokens);
-      } else {
-        await handleServiceOAuthComplete(req, res, stateData, serviceKey, tokens);
-      }
-      // Override redirect with popup-close HTML (handleSignup already sent response in some cases)
-      if (!res.headersSent) {
-        return res.send(`<!DOCTYPE html><html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml"><title>Connected</title></head><body><script>
-          window.opener && window.opener.postMessage({type:'oauth_complete',service:'${serviceKey}'},'*');
-          window.close();
-        </script><p>Connected. You can close this window.</p></body></html>`);
-      }
-    } else if (svc.isSignup) {
+    if (svc.isSignup) {
       await handleSignupOAuthComplete(res, stateData, serviceKey, svc, tokens);
     } else {
       await handleServiceOAuthComplete(req, res, stateData, serviceKey, tokens);
@@ -3298,12 +2965,6 @@ app.get("/auth/:service/callback", async (req, res) => {
 
   } catch (err) {
     console.error(`OAuth error (${serviceKey}):`, err.message, err.stack);
-    if (stateData?.flow === "telegram") {
-      return res.redirect(`/telegram-app?error=oauth_failed&service=${serviceKey}`);
-    }
-    if (stateData?.flow === "line") {
-      return res.redirect(`/line-app?error=oauth_failed&service=${serviceKey}`);
-    }
     return res.redirect(svc?.isSignup ? "/?error=" + encodeURIComponent(err.message).substring(0, 100) : "/dashboard?error=oauth_failed");
   }
 });
@@ -3625,170 +3286,6 @@ async function handleServiceOAuthComplete(req, res, stateData, serviceKey, token
   }
 
   res.redirect("/dashboard?connected=" + serviceKey);
-}
-
-// Handle: Telegram Mini App OAuth completion
-async function handleTelegramOAuthComplete(res, stateData, serviceKey, svc, tokens) {
-  const telegramId = stateData.tgId;
-  const telegramName = stateData.tgName;
-
-  const { data: existingLink } = await supabase
-    .from("chat_links")
-    .select("user_id")
-    .eq("platform", "telegram")
-    .eq("platform_user_id", telegramId)
-    .single();
-
-  let userId;
-
-  if (existingLink) {
-    userId = existingLink.user_id;
-  } else {
-    if (svc.isSignup && svc.profileUrl) {
-      const rawProfile = await fetchServiceProfile(svc, tokens.access_token);
-      const profile = {
-        email: rawProfile.email || rawProfile.mail || rawProfile.userPrincipalName,
-        name: rawProfile.name || rawProfile.displayName || rawProfile.email,
-      };
-      userId = getAdminUserId(); // single-tenant: attach to the admin, don't create a user
-    } else {
-      return res.redirect("/telegram-app?error=no_account");
-    }
-
-    await supabase
-      .from("chat_links")
-      .delete()
-      .eq("user_id", userId)
-      .eq("platform", "telegram")
-      .is("platform_user_id", null);
-
-    await supabase.from("chat_links").upsert(
-      {
-        user_id: userId,
-        platform: "telegram",
-        platform_user_id: telegramId,
-        activation_code: null,
-        expires_at: null,
-      },
-      { onConflict: "user_id,platform" }
-    );
-  }
-
-  await autoEnableNotificationPlatform(userId, "telegram");
-
-  const metadata = await fetchAccountMetadata(serviceKey, svc, tokens);
-  await saveConnection(userId, serviceKey, tokens, svc, metadata);
-  res.redirect(`/telegram-app?setup=complete&name=${encodeURIComponent(telegramName)}&service=${serviceKey}`);
-}
-
-async function handleLineOAuthComplete(res, stateData, serviceKey, svc, tokens) {
-  const lineId = stateData.lineId;
-  const lineName = stateData.lineName;
-  console.log(`[LINE] OAuth complete: lineId=${lineId}, lineName=${lineName}`);
-
-  const { data: existingLink } = await supabase
-    .from("chat_links")
-    .select("user_id")
-    .eq("platform", "line")
-    .eq("platform_user_id", lineId)
-    .single();
-
-  let userId;
-
-  if (existingLink) {
-    userId = existingLink.user_id;
-  } else {
-    if (svc.isSignup && svc.profileUrl) {
-      const rawProfile = await fetchServiceProfile(svc, tokens.access_token);
-      const profile = {
-        email: rawProfile.email || rawProfile.mail || rawProfile.userPrincipalName,
-        name: rawProfile.name || rawProfile.displayName || rawProfile.email,
-      };
-      userId = getAdminUserId(); // single-tenant: attach to the admin, don't create a user
-    } else {
-      return res.redirect("/line-app?error=no_account");
-    }
-
-    // Clear any existing LINE links for this user or this LINE ID
-    await supabase.from("chat_links").delete().eq("platform", "line").eq("platform_user_id", lineId);
-    await supabase.from("chat_links").delete().eq("user_id", userId).eq("platform", "line");
-
-    const { error: insertErr } = await supabase.from("chat_links").insert({
-      user_id: userId,
-      platform: "line",
-      platform_user_id: lineId,
-      activation_code: null,
-      expires_at: null,
-    });
-    if (insertErr) console.error("[LINE] chat_links insert error:", insertErr.message);
-    else console.log(`[LINE] Linked user ${userId} to LINE ${lineId}`);
-  }
-
-  await autoEnableNotificationPlatform(userId, "line");
-
-  const metadata = await fetchAccountMetadata(serviceKey, svc, tokens);
-  await saveConnection(userId, serviceKey, tokens, svc, metadata);
-
-  // Set onboarding step so bot expects the name answer (we already asked)
-  await patchSettings(supabase, userId, { set: { onboarding_step: "name_bot" } })
-    .catch((e) => console.error(`[settings] could not save: ${e.message}`));
-
-  // Send welcome Flex Message + onboarding prompt via LINE push
-  const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (lineToken && lineId) {
-    const liffId = process.env.LINE_LIFF_ID;
-    const dashUrl = liffId ? `https://liff.line.me/${liffId}?view=dashboard` : `${BASE_URL}/dashboard`;
-    const firstName = (lineName || "").split(/\s+/)[0];
-    try {
-      await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${lineToken}` },
-        body: JSON.stringify({
-          to: lineId,
-          messages: [
-            {
-              type: "flex",
-              altText: "Your Closedhand dashboard is ready.",
-              contents: {
-                type: "bubble",
-                body: {
-                  type: "box",
-                  layout: "vertical",
-                  spacing: "md",
-                  contents: [
-                    { type: "text", text: "Your dashboard", weight: "bold", size: "lg", align: "center" },
-                    { type: "text", text: "Add connections to make Closedhand more powerful. Email, calendar, Shopify, Slack, and more.", size: "sm", color: "#999999", align: "center", wrap: true, margin: "sm" },
-                  ],
-                },
-                footer: {
-                  type: "box",
-                  layout: "vertical",
-                  spacing: "sm",
-                  contents: [
-                    {
-                      type: "button",
-                      action: { type: "uri", label: "Open Dashboard", uri: dashUrl },
-                      style: "primary",
-                      color: "#06C755",
-                      height: "md",
-                    },
-                  ],
-                },
-              },
-            },
-            {
-              type: "text",
-              text: (firstName ? `Hi ${firstName}. ` : "Hi. ") + "First things first. What would you like to call me?",
-            },
-          ],
-        }),
-      });
-    } catch (e) {
-      console.error("[LINE] Welcome push error:", e.message);
-    }
-  }
-
-  res.redirect(`/line-setup-complete?name=${encodeURIComponent(lineName)}&service=${serviceKey}`);
 }
 
 // Save connection tokens to Supabase
@@ -4181,99 +3678,6 @@ app.get("/api/services", (req, res) => {
   res.json(getAvailableServices());
 });
 
-// Telegram Mini App status
-app.post("/api/telegram/status", async (req, res) => {
-  const { initData } = req.body;
-  const tgUser = validateTelegramInitData(initData, await telegramBotToken());
-
-  if (!tgUser) {
-    return res.status(400).json({ error: "Invalid Telegram session" });
-  }
-
-  try {
-    const { data: link } = await supabase
-      .from("chat_links")
-      .select("user_id")
-      .eq("platform", "telegram")
-      .eq("platform_user_id", tgUser.id.toString())
-      .single();
-
-    if (!link) {
-      return res.json({ status: "new", name: tgUser.first_name });
-    }
-
-    const { data: connections } = await supabase
-      .from("connections")
-      .select("service")
-      .eq("user_id", link.user_id);
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", link.user_id)
-      .single();
-
-    res.json({
-      status: "linked",
-      name: tgUser.first_name,
-      email: profile?.email,
-      services: (connections || []).map(c => c.service),
-    });
-  } catch (err) {
-    console.error("Telegram status error:", err.message);
-    res.status(500).json({ error: "Failed to check status" });
-  }
-});
-
-// LINE LIFF Mini App status
-app.post("/api/line/status", async (req, res) => {
-  const { accessToken } = req.body;
-
-  const tokenValid = await validateLineAccessToken(accessToken);
-  if (!tokenValid) {
-    return res.status(400).json({ error: "Invalid LINE session" });
-  }
-
-  const lineProfile = await getLineProfile(accessToken);
-  if (!lineProfile) {
-    return res.status(400).json({ error: "Could not get LINE profile" });
-  }
-
-  try {
-    const { data: link } = await supabase
-      .from("chat_links")
-      .select("user_id")
-      .eq("platform", "line")
-      .eq("platform_user_id", lineProfile.userId)
-      .single();
-
-    if (!link) {
-      return res.json({ status: "new", name: lineProfile.displayName });
-    }
-
-    const { data: connections } = await supabase
-      .from("connections")
-      .select("service")
-      .eq("user_id", link.user_id);
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", link.user_id)
-      .single();
-
-    res.json({
-      status: "linked",
-      name: lineProfile.displayName,
-      email: profile?.email,
-      services: (connections || []).map(c => c.service),
-    });
-  } catch (err) {
-    console.error("LINE status error:", err.message);
-    res.status(500).json({ error: "Failed to check status" });
-  }
-});
-
 // Dashboard status
 app.get("/api/status", async (req, res) => {
   const userId = getUserIdFromRequest(req);
@@ -4303,12 +3707,6 @@ app.get("/api/status", async (req, res) => {
     const conf = (k) => process.env[k] || require("./config").getConfCached(k);
     const waLinkedRow = chatLinks?.find((l) => l.platform === "whatsapp_linked" && l.platform_user_id);
     const tgUsername = conf("TELEGRAM_BOT_USERNAME") || null;
-    // Keys come from .env or from the dashboard's "Set up" card (runtime config).
-    const extraAvailable = {
-      discord: !!conf("DISCORD_BOT_TOKEN"),
-      slack: !!(conf("SLACK_BOT_TOKEN") || process.env.SLACK_CLIENT_ID),
-      line: !!(conf("LINE_CHANNEL_ACCESS_TOKEN") && conf("LINE_CHANNEL_SECRET")),
-    };
     for (const [key, info] of Object.entries(SUPPORTED_PLATFORMS)) {
       const link = chatLinks?.find((l) => l.platform === key);
       platforms[key] = {
@@ -4328,12 +3726,6 @@ app.get("/api/status", async (req, res) => {
         platforms[key].botName = tgUsername ? "@" + tgUsername : null;
         platforms[key].botUsername = tgUsername;
         platforms[key].configured = !!conf("TELEGRAM_BOT_TOKEN");
-      }
-      if (key in extraAvailable) {
-        platforms[key].available = extraAvailable[key];
-        platforms[key].keysConfigured = extraAvailable[key];
-        const own = conf(`${key.toUpperCase()}_BOT_NAME`);
-        if (own) platforms[key].botName = own;
       }
     }
 
@@ -5065,7 +4457,7 @@ app.delete("/api/agents/:id", async (req, res) => {
 // Where a task started on the Agents tab can answer: the person's chat apps
 // (chat_links), the web chat, or only here. The page names one; the chat it
 // goes to is looked up here, never taken from the page.
-const PLACE_NAMES = { whatsapp_linked: "WhatsApp", whatsapp: "WhatsApp", telegram: "Telegram", slack: "Slack", discord: "Discord", line: "LINE" };
+const PLACE_NAMES = { whatsapp_linked: "WhatsApp", telegram: "Telegram" };
 async function answerPlaces(userId) {
   const { data: links, error } = await supabase.from("chat_links").select("platform,platform_user_id").eq("user_id", userId);
   if (error) throw error;

@@ -89,18 +89,6 @@ h2 {
   text-align: center;
 }
 
-/* Error banner */
-.error-banner {
-  margin-top: 1.25rem;
-  padding: 0.75rem 1rem;
-  background: var(--raised);
-  border: 1px solid rgba(var(--fg-rgb),0.16);
-  border-radius: 0.5rem;
-  color: var(--accent);
-  font-size: 0.875rem;
-  text-align: center;
-}
-
 /* Dashboard sections */
 .section {
   border-top: 1px solid rgba(var(--fg-rgb),0.16);
@@ -339,16 +327,6 @@ h2 {
 
 .seg-btn.active .seg-desc {
   color: var(--muted);
-}
-
-.pulse-label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 0.625rem;
 }
 
 .pulse-delivery {

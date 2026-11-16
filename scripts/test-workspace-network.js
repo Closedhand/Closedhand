@@ -15,8 +15,8 @@ test('DNS results must all be public before any connection is made', async () =>
 });
 
 test('saved service credentials can only be sent to the selected provider', () => {
-  for (const [service,url] of [['google','https://gmail.googleapis.com/gmail/v1/users/me/messages'],['slack','https://slack.com/api/conversations.list'],['whatsapp','https://graph.facebook.com/v22.0/messages'],['shopify','https://example.myshopify.com/admin/api/products.json']]) assert.equal(serviceURLAllowed(service,url),true);
-  for (const service of ['google','slack','whatsapp','meta','shopify']) {
+  for (const [service,url] of [['google','https://gmail.googleapis.com/gmail/v1/users/me/messages'],['slack','https://slack.com/api/conversations.list'],['shopify','https://example.myshopify.com/admin/api/products.json']]) assert.equal(serviceURLAllowed(service,url),true);
+  for (const service of ['google','slack','meta','shopify']) {
     assert.equal(serviceURLAllowed(service,'https://attacker.example/'),false,service);
     assert.equal(serviceURLAllowed(service,'https://www.googleapis.com.attacker.example/'),false,service);
   }

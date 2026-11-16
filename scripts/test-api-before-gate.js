@@ -32,7 +32,7 @@ test("every API route before the login gate checks access, or is public by desig
     if (!GUARDS.test(before.slice(m.index, end))) open.push(m[1].toUpperCase() + " " + route);
   });
   assert.deepEqual(open, [], "open to anyone who can reach the dashboard: " + open.join(", "));
-  for (const r of ['app.get("/api/wallet"', 'app.post("/api/wallet"', 'app.delete("/api/wallet/:id"', 'app.post("/api/settings/spend-limits"', 'app.post("/api/chat-apps/:app"', 'app.delete("/api/chat-apps/:app"']) assert.ok(before.includes(r), r + " is still checked here");
+  for (const r of ['app.get("/api/wallet"', 'app.post("/api/wallet"', 'app.delete("/api/wallet/:id"', 'app.post("/api/settings/spend-limits"']) assert.ok(before.includes(r), r + " is still checked here");
 });
 
 test("without a session, setup status says how far setup has got and nothing about whose accounts", () => {

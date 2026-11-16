@@ -12,7 +12,6 @@ test("each sign-in goes to its own service's API addresses", () => {
     ["google", "https://www.googleapis.com/drive/v3/files"],
     ["github", "https://api.github.com/user/repos"],
     ["slack", "https://slack.com/api/conversations.list"],
-    ["whatsapp", "https://graph.facebook.com/v21.0/123/messages"],
     ["salesforce", "https://kestrel-co.my.salesforce.com/services/data/v59.0/query"],
     ["microsoft", "https://graph.microsoft.com/v1.0/me"],
   ]) assert.equal(signInMayGo(service, url), true, `${service} ${url}`);

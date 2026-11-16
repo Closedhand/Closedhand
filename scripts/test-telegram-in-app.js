@@ -163,5 +163,4 @@ test("WhatsApp gets the full personal URL for every Closedhand page", () => {
   assert.equal(absolutePageLinks(`See /page/${SAIGON} and [the dashboard](/dashboard#agents), not https://example.com/page/${SAIGON}`, BASE),
     `See ${BASE}/page/${SAIGON} and [the dashboard](${BASE}/dashboard#agents), not https://example.com/page/${SAIGON}`);
   assert.match(read("lib/platforms/whatsapp-linked.js"), /formatWhatsApp\(require\("\.\.\/page-links"\)\.absolutePageLinks\(message, base\)\)/);
-  assert.match(read("lib/messaging.js"), /formatWhatsApp\(require\("\.\/page-links"\)\.absolutePageLinks\(text, base\)\)/);
 });

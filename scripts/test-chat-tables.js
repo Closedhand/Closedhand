@@ -19,16 +19,16 @@ test("each row goes as a line, its first cell the label, bold where the app show
     "an empty cell is left out");
   assert.match(tables.flatten(ANSWER, "telegram"), /\nSmall van: Buy £18k, Rent £400\/mo\nLarge van, refrigerated: Buy £31k\n/, "Telegram and LINE show asterisks as typed");
   assert.match(require("../lib/chat-format").formatWhatsApp(ANSWER), /\n\*Small van\*: Buy £18k, Rent £400\/mo\n/, "WhatsApp's own bold");
-  assert.equal(tables.flatten("| Hotel | Per night |\n|---|---:|\n| Harbour Inn | £92 |", "discord"), "**Harbour Inn**: £92", "with one column beside the label, just its value");
-  assert.equal(tables.flatten("| Stop | Times |\n|---|---|\n| Quay | 9:10, 9:40 |\n", "slack"), "**Quay**: 9:10, 9:40\n");
-  assert.equal(tables.flatten("| Day | Open | Shut |\n|---|---|---|\n| Sat | 9, or 10 in winter | 17 |", "line"), "Sat: Open 9, or 10 in winter; Shut 17", "a value with a comma in it is kept apart");
+  assert.equal(tables.flatten("| Hotel | Per night |\n|---|---:|\n| Harbour Inn | £92 |", "whatsapp_linked"), "**Harbour Inn**: £92", "with one column beside the label, just its value");
+  assert.equal(tables.flatten("| Stop | Times |\n|---|---|\n| Quay | 9:10, 9:40 |\n", "whatsapp_linked"), "**Quay**: 9:10, 9:40\n");
+  assert.equal(tables.flatten("| Day | Open | Shut |\n|---|---|---|\n| Sat | 9, or 10 in winter | 17 |", "telegram"), "Sat: Open 9, or 10 in winter; Shut 17", "a value with a comma in it is kept apart");
 });
 
 test("the web chat, code and pipes that are not a table are left as written", () => {
   assert.equal(tables.flatten(ANSWER, "web"), ANSWER);
   const code = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```";
-  assert.equal(tables.flatten(code, "whatsapp"), code);
-  assert.equal(tables.flatten("Pick A | B, either works.", "whatsapp"), "Pick A | B, either works.");
+  assert.equal(tables.flatten(code, "whatsapp_linked"), code);
+  assert.equal(tables.flatten("Pick A | B, either works.", "whatsapp_linked"), "Pick A | B, either works.");
   assert.equal(tables.hasTable("Pick A | B"), false);
 });
 
@@ -73,9 +73,9 @@ test("no second page when the turn made one, and none in the web chat or without
   const mod = load(stubs(saved, updated), t);
   assert.equal(await mod.forChatApp({ userId: "u1", platform: "telegram", text: ANSWER, asked: "vans?", madePage: true }), tables.flatten(ANSWER, "telegram"));
   const linked = ANSWER + "\n\nOpen the page: https://example.test/page/abc";
-  assert.equal(await mod.forChatApp({ userId: "u1", platform: "slack", text: linked, asked: "vans?" }), tables.flatten(linked, "slack"));
+  assert.equal(await mod.forChatApp({ userId: "u1", platform: "telegram", text: linked, asked: "vans?" }), tables.flatten(linked, "telegram"));
   assert.equal(await mod.forChatApp({ userId: "u1", platform: "web", text: ANSWER, asked: "vans?" }), ANSWER);
-  assert.equal(await mod.forChatApp({ userId: "u1", platform: "whatsapp", text: "No table here.", asked: "vans?" }), "No table here.");
+  assert.equal(await mod.forChatApp({ userId: "u1", platform: "whatsapp_linked", text: "No table here.", asked: "vans?" }), "No table here.");
   assert.equal(saved.length, 0);
 });
 
@@ -115,7 +115,7 @@ test("every way an answer reaches a chat app goes through it", () => {
   assert.match(engine, /finalText = await require\("\.\/chat-tables"\)\.forChatApp\(\{ userId, platform: deliverPlatform, text: finalText, asked: require\("\.\/one-chat"\)\.theirWords\(userMessage\), madePage: toolsUsed\.has\("save_report"\) \}\);\n(?:\s*\/\/.*\n)*\s*finalText = require\("\.\/page-link"\)\.linkLast\(finalText\);/, "a chat turn, before its page link is placed");
   assert.match(engine, /wrapText = await require\("\.\/chat-tables"\)\.forChatApp\(/, "the summary of a turn that ran out of time");
   assert.match(read("lib/messaging.js"), /message = require\("\.\/chat-tables"\)\.flatten\([\s\S]{0,140}, platform\);/, "background answers, Pulse and reminders");
-  assert.match(read("lib/chat-format.js"), /require\("\.\/chat-tables"\)\.flatten\(String\(text\), "whatsapp"\)/, "WhatsApp, a turn from elsewhere copied into the person's own chat included");
+  assert.match(read("lib/chat-format.js"), /require\("\.\/chat-tables"\)\.flatten\(String\(text\), "whatsapp_linked"\)/, "WhatsApp, a turn from elsewhere copied into the person's own chat included");
   const delivery = read("lib/task-delivery.js");
   assert.match(delivery, /const reportId = await reportFor\(db, row, table\) \|\| await tablePage\(row, table, report, destinations\) \|\| await answerPage\(db, row, table, report, destinations\);/, "a run's answer");
   assert.doesNotMatch(delivery, /needsTableAdaptation/, "no model call to rewrite a table");

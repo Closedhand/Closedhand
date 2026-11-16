@@ -80,10 +80,6 @@ test("the engine takes messages in at each step, and the platforms say what each
   const wiring = {
     "lib/platforms/whatsapp-linked.js": /\}, media \? \{\} : \{ text: engineText, platform: "whatsapp_linked", chatId: _selfJid \}\);/,
     "lib/web-chat-ws.js": /\}, fileData \|\| project \? \{\} : \{ text, platform: "web", chatId: userId \}\);/,
-    "lib/platforms/discord.js": /\}, \{ text, platform: "discord", chatId: discordUserId \}\);/,
-    "lib/platforms/line.js": /\}, message\.type === "text" \? \{ text: message\.text, platform: "line", chatId: lineUserId \} : \{\}\);/,
-    "lib/platforms/slack-handler.js": /\}, \{ text, platform: "slack", chatId: slackUserId \}\);/,
-    "lib/platforms/whatsapp.js": /\}, text \? \{ text, platform: "whatsapp", chatId: waId \} : \{\}\);/,
     "lib/platforms/telegram.js": /\}, msg\.text \? \{ text: msg\.text, platform: "telegram", chatId \} : \{\}\); \/\/ end queueUserMessage/,
   };
   for (const [file, re] of Object.entries(wiring)) assert.match(read(file), re, file);

@@ -498,7 +498,7 @@ test("a message sent with a project open in the web chat is in it, unless it sta
 
 test("threads are gone: no commands for them in any chat app", () => {
   assert.doesNotMatch(read("lib/engine.js"), /CONVERSATION THREADING|\/threads/);
-  for (const f of ["telegram", "slack-handler", "line", "discord", "whatsapp", "whatsapp-linked"]) {
+  for (const f of ["telegram", "whatsapp-linked"]) {
     const src = read(`lib/platforms/${f}.js`);
     assert.doesNotMatch(src, /archiveThread|switchThread|getThreadList|pendingThreadSelect|"\/threads"|"\/new"/, f);
   }

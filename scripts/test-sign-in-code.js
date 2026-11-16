@@ -61,9 +61,6 @@ test("the code goes to every linked chat app, else to the person's email", async
   assert.match(sent[0][1], /If you didn't just sign in, someone has your dashboard password \(the attempt came from 203\.0\.113\.x\)\./);
   assert.equal(mailed, null, "no email when a chat app took it");
   sent.length = 0;
-  const others = await deliver("u1", "482915", "", { db: db([{ platform: "discord", platform_user_id: "4" }, { platform: "slack", platform_user_id: "5" }, { platform: "line", platform_user_id: "6" }]), sendToPlatform, sendToOwner });
-  assert.deepEqual(others, ["your Discord", "your Slack", "your LINE"], "every chat app the bot can message");
-  sent.length = 0;
   const twice = await deliver("u1", "482915", "", { db: db([{ platform: "whatsapp", platform_user_id: "dead" }, { platform: "whatsapp_linked", platform_user_id: "7" }]), sendToPlatform, sendToOwner });
   assert.deepEqual(twice, ["your WhatsApp"], "a failed WhatsApp route falls through to the linked one");
   const fallback = await deliver("u1", "482915", "", { db: db([{ platform: "whatsapp", platform_user_id: "dead" }]), sendToPlatform, sendToOwner });

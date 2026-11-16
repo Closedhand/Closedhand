@@ -152,14 +152,6 @@ async function getSetupState() {
     microsoftCode,
     googleQuick,
     waLinked,
-    // Chat apps beyond Telegram and WhatsApp need the operator's own app
-    // credentials in .env; the dashboard says so rather than offering a
-    // Connect button that cannot work.
-    extraChat: {
-      discord: !!process.env.DISCORD_BOT_TOKEN,
-      slack: !!(process.env.SLACK_BOT_TOKEN || process.env.SLACK_CLIENT_ID),
-      line: !!(process.env.LINE_CHANNEL_ACCESS_TOKEN && process.env.LINE_CHANNEL_SECRET),
-    },
     // The exact redirect URI the server will send in the Google OAuth flow
     // (mirrors server.js BASE_URL). The Google wizard renders this so the value
     // pasted into the console always matches what the server uses.

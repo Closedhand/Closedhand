@@ -26,14 +26,12 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("[FATAL] Unhandled rejection:", reason?.message || reason);
 });
 const TelegramBot = require("node-telegram-bot-api");
-const { Client: DiscordClient, GatewayIntentBits, Partials } = require("discord.js");
 
 // Shared context singleton — every module reads/writes state through this
 const ctx = require("./lib/context");
 
 // --- Environment ---
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const WA_PORT = process.env.PORT || 3000;
 
 // Boot with nothing: the process starts even with no keys configured. Anything
@@ -63,32 +61,14 @@ if (TELEGRAM_TOKEN) {
   if (tgWatcher.unref) tgWatcher.unref();
 }
 
-// Discord (optional). The token comes from the environment at boot, or from
-// runtime config when it is pasted in the dashboard later: the client starts
-// the moment it appears, no restart, the same way Telegram's does.
-function startDiscord(token) {
-  ctx.discordClient = new DiscordClient({
-    intents: [GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent],
-    partials: [Partials.Channel],
-  });
-  ctx.discordClient.login(token).catch(err => {
-    console.error("Discord login failed:", err.message);
-    ctx.discordClient = null;
-  });
-  ctx.discordClient.once("ready", () => console.log(`Discord bot ready: ${ctx.discordClient.user.tag}`));
-  ctx.discordClient.on("error", (err) => console.error("Discord client error:", err.message));
-  ctx.discordClient.on("warn", (msg) => console.warn("Discord warning:", msg));
-}
-if (DISCORD_BOT_TOKEN) startDiscord(DISCORD_BOT_TOKEN);
-
-// Express (for WhatsApp + Slack webhooks)
+// Express: the web chat's socket and the routes the dashboard calls.
 ctx.expressApp = require("express")();
-// JSON up to the usual 100 KB, with the raw body kept for webhooks. Routes that
+// JSON up to the usual 100 KB. Routes that
 // take more parse their own body with their own limit (File Search's pictures
 // to embed, passages to rank, speech): this parser refused them before theirs
 // ever ran, so photos were never embedded by what they show.
 const OWN_BODY = new Set(["/internal/embed", "/internal/rerank", "/internal/hear", "/internal/dictation"]);
-const jsonBody = require("express").json({ verify: (req, res, buf) => { req.rawBody = buf; } });
+const jsonBody = require("express").json();
 ctx.expressApp.use((req, res, next) => (OWN_BODY.has(req.path) ? next() : jsonBody(req, res, next)));
 
 // Gateway proxy — sandbox containers call back through this
@@ -107,19 +87,12 @@ const { startDataSync } = require("./lib/services/data-sync");
 
 // --- Platform handlers ---
 const telegramHandler = require("./lib/platforms/telegram");
-const whatsappHandler = require("./lib/platforms/whatsapp");
-const slackHandler = require("./lib/platforms/slack-handler");
-const discordHandler = require("./lib/platforms/discord");
-const lineHandler = require("./lib/platforms/line");
 const webHandler = require("./lib/platforms/web");
 
-// Wire up all platform message handlers. Each platform activates only when its
-// own credentials are present; telegram.setup() registers on ctx.bot, so it is
-// gated on the bot existing (the others self-guard on their own tokens).
+// The chat apps: Telegram, WhatsApp as a linked device, and the web chat.
+// telegram.setup() registers on ctx.bot, so it waits for the bot to exist.
 if (ctx.bot) telegramHandler.setup();
-whatsappHandler.setup();
-// Linked-device WhatsApp (self-host tier): only ever activates when the setup
-// page has written its connection row, so cloud never starts a socket.
+// WhatsApp starts once the setup page has written its connection row.
 require("./lib/platforms/whatsapp-linked").setup();
 // A restart used to kill the process outright. WhatsApp's keys on disk could
 // then lag what was in memory, and the phone could not read the next message.
@@ -143,27 +116,8 @@ require("./lib/phone-link-delivery").setup();
 // Self-host: read the inbox as soon as Google is connected, so the first
 // chat message already has something to show.
 require("./lib/onboarding").watchForFirstGoogle();
-slackHandler.setup();
-discordHandler.setup();
-lineHandler.setup();
 webHandler.setup();
 require("./lib/assistant-email").setup();
-if (!ctx.discordClient) {
-  const discordWatcher = setInterval(async () => {
-    try {
-      if (ctx.discordClient) { clearInterval(discordWatcher); return; }
-      const token = await require("./lib/config").getConf("DISCORD_BOT_TOKEN");
-      if (!token) return;
-      clearInterval(discordWatcher);
-      startDiscord(token);
-      discordHandler.setup();
-      console.log("[setup] Discord token saved in the dashboard: bot starting.");
-    } catch (e) {
-      console.error("[setup] Discord config watcher:", e.message);
-    }
-  }, 5000);
-  if (discordWatcher.unref) discordWatcher.unref();
-}
 
 // Health check
 ctx._lastMessageTime = Date.now();
@@ -268,10 +222,7 @@ async function main() {
   // Gives any row of the index without a vector its vector.
   require("./lib/embed-backfill").start();
 
-  // Subscribe app to WABA for receiving real WhatsApp messages
-  await whatsappHandler.subscribeWhatsAppWebhook();
-
-  // Start Express server for webhooks
+  // Start the Express server
   // LISTEN_HOST keeps the bot to this computer where nothing else needs to
   // reach it (the Mac app); Docker and a host leave it unset, since other
   // containers and the host's own network call it.

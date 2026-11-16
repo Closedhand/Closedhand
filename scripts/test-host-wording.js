@@ -43,7 +43,7 @@ test("what scripts write follows the host too", () => {
   const script = dash.slice(dash.indexOf("function hostText("));
   assert.doesNotMatch(script.replace(/hostText\([^)]*\)/g, ""), /(Stays on your own computer|never leaves your computer|keeps for you on your own computer)/);
   assert.match(read("webapp/public/connection-catalogue.js"), /const HOME=typeof document!=='undefined'&&document\.documentElement&&document\.documentElement\.dataset\.host==='railway'\?'in your Railway account':'on your computer';/);
-  for (const f of ["lib/automations.js", "lib/platforms/line.js"]) {
+  for (const f of ["lib/automations.js"]) {
     assert.doesNotMatch(read(f).replace(/\$\{process\.env\.RAILWAY_ENVIRONMENT_ID \? [^}]+\}/g, ""), /your own computer/, f);
   }
   for (const page of ["webapp/views/privacy.html", "closedhand-com/views/privacy.html"]) {

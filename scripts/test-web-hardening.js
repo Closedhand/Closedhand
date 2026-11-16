@@ -29,8 +29,6 @@ test('a request that fails before its route gets a plain answer, never a stack t
 });
 
 test('words from the address bar reach a page as text', () => {
-  const line = server.slice(server.indexOf('app.get("/line-setup-complete"'), server.indexOf('app.get("/line-setup-complete"') + 700);
-  assert.match(line, /\.replace\(\/\[&<>"'\]\/g/);
   const delight = read('webapp/public/delight.js');
   const toast = delight.slice(delight.indexOf('toast: function (msg, type)'), delight.indexOf('// Auto-remove'));
   assert.match(toast, /text\.textContent = String\(msg\);/);
@@ -210,13 +208,9 @@ test("secrets are compared in constant time, and records are read by owner as we
   const gateway = r("lib/gateway.js");
   assert.match(gateway, /if \(!token \|\| !sameSecret\(token, STATIC_SANDBOX_TOKEN\)\)/);
   assert.match(r("sandbox-image/agent/server.js"), /if \(!token \|\| !sameSecret\(token, SANDBOX_TOKEN\)\)/);
-  assert.match(r("lib/platforms/line.js"), /crypto\.timingSafeEqual\(crypto\.createHash\("sha256"\)\.update\(hash\)\.digest\(\)/);
   const web = r("webapp/server.js");
   assert.match(web, /process\.env\.BRIDGE_TOKEN && crypto\.timingSafeEqual\(/);
   assert.doesNotMatch(web, /msg\.token === process\.env\.BRIDGE_TOKEN/);
-  const wa = r("lib/platforms/whatsapp.js");
-  assert.match(wa, /return res\.status\(200\)\.type\("text\/plain"\)\.send\(String\(challenge\)\);/, "the webhook echo is never a page");
-  assert.match(wa, /const sameToken = crypto\.timingSafeEqual\(/);
   assert.match(gateway, /if \(!data \|\| !sameSecret\(data\.sandbox_token, token\)\)/);
   assert.match(r("lib/bridge-server.js"), /if \(\/\^\[ABCDEFGHJKLMNPQRSTUVWXYZ23456789\]\{6\}\$\/\.test\(code\) && !pendingPairs\.has\(code\) && pendingPairs\.size < 50\)/, "the bot's pairing listener keeps the same rules");
   assert.match(r("lib/services/usi.js"), /\(\(\{ _content_hash, \.\.\.rest \}\) => rest\)\(r\.source_metadata\)/, "the content hash is not sent to the model");
@@ -260,8 +254,5 @@ test('a file name never runs as a command, in the sandbox or on the Mac', () => 
 test("a chat app answers only in the person's own chat, never in a group", () => {
   const r = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
   assert.match(r("lib/platforms/telegram.js"), /if \(msg\.chat\.type && msg\.chat\.type !== "private"\) return;/);
-  assert.match(r("lib/platforms/discord.js"), /if \(!msg\.channel\.isDMBased\(\)\) return;/);
-  assert.match(r("lib/platforms/slack-handler.js"), /if \(event\.channel_type !== "im"\) return;/);
-  assert.match(r("lib/platforms/line.js"), /if \(event\.source\?\.type !== "user"\) return;/);
   assert.match(r("lib/platforms/whatsapp-linked.js"), /if \(!isSelfJid\(jid\)\) continue;/);
 });

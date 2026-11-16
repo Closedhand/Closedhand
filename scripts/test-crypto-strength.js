@@ -36,17 +36,6 @@ test("no MD5 or SHA-1 is computed anywhere in Closedhand", () => {
   assert.match(read("lib/services/usi.js"), /if \(existingHash\.length === 32\) \{ adopted\.push\(i\); return false; \}/, "MD5-era hashes are replaced, not re-indexed");
 });
 
-test("a webhook secret shorter than 128 bits is never used", () => {
-  const { usableSecret, MIN_LENGTH } = require("../lib/webhook-secret");
-  assert.equal(MIN_LENGTH, 32);
-  assert.equal(usableSecret("TEST_SECRET", "a".repeat(31)), null);
-  assert.equal(usableSecret("TEST_SECRET", ""), null);
-  assert.equal(usableSecret("TEST_SECRET", "f".repeat(32)), "f".repeat(32));
-  for (const [f, name] of [["lib/platforms/slack-handler.js", "SLACK_SIGNING_SECRET"], ["lib/platforms/whatsapp.js", "WHATSAPP_APP_SECRET"], ["lib/platforms/line.js", "LINE_CHANNEL_SECRET"]]) {
-    assert.match(read(f), new RegExp(`require\\("\\.\\./webhook-secret"\\)\\.usableSecret\\("${name}"`), f);
-  }
-});
-
 test("the dashboard password is hashed at N=2^17, and older hashes are raised on the next sign-in", () => {
   const server = read("webapp/server.js");
   assert.match(server, /const SCRYPT_COST = \{ N: 2 \*\* 17, r: 8, p: 1, maxmem: 256 \* 1024 \* 1024 \};/);

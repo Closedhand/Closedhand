@@ -355,8 +355,7 @@
   $('search').addEventListener('input', drawPeople);
 
   // Where the report was sent from.
-  const PLATFORMS = { web: 'web chat', dashboard: 'dashboard', telegram: 'Telegram', whatsapp: 'WhatsApp', whatsapp_linked: 'WhatsApp',
-    slack: 'Slack', discord: 'Discord', line: 'LINE', email: 'email', own_email: 'email' };
+  const PLATFORMS = { web: 'web chat', dashboard: 'dashboard', telegram: 'Telegram', whatsapp_linked: 'WhatsApp', email: 'email', own_email: 'email' };
   function drawReports(d) {
     const list = d.reports || [];
     $('reports-title').textContent = d.bugs.open ? `Bug reports (${n(d.bugs.open)} open)` : 'Bug reports';

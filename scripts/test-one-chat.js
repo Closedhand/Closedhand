@@ -34,11 +34,9 @@ test("switching to a bot app mid-topic shows where they left off, both sides, as
   ];
   const card = catchUp(chat("web", ago(1)), "telegram", { botName: "Pete" });
   assert.deepEqual(card, { from: "the web chat", you: "Can you find the Harbour Hall booking form?", them: "Found it: it's attached to the venue's email from Tuesday.", botName: "Pete" });
-  assert.equal(catchUpMessage(card, "discord").text, "Earlier, in the web chat:\n> You: Can you find the Harbour Hall booking form?\n> Pete: Found it: it's attached to the venue's email from Tuesday.");
   assert.equal(catchUpMessage(card, "telegram").text, "Earlier, in the web chat:\n<blockquote>You: Can you find the Harbour Hall booking form?\nPete: Found it: it's attached to the venue's email from Tuesday.</blockquote>");
   assert.equal(catchUpMessage(card, "telegram").html, true);
-  assert.equal(catchUpMessage(card, "line").text, "Earlier, in the web chat:\nYou: Can you find the Harbour Hall booking form?\nPete: Found it: it's attached to the venue's email from Tuesday.", "LINE shows no quote marks");
-  assert.equal(catchUp(chat("whatsapp_linked", ago(1)), "slack").from, "WhatsApp");
+  assert.equal(catchUp(chat("whatsapp_linked", ago(1)), "telegram").from, "WhatsApp");
   assert.equal(catchUp(chat("telegram", ago(1)), "telegram"), null, "same app: the chat shows it already");
   assert.equal(catchUp(chat("telegram", ago(1)), "web"), null, "the web chat shows everything, so never");
   assert.equal(catchUp(chat("telegram", ago(1)), "whatsapp_linked"), null, "nor WhatsApp linked to their account, which gets every turn");
@@ -50,14 +48,8 @@ test("switching to a bot app mid-topic shows where they left off, both sides, as
   assert.match(catchUpMessage({ from: "the web chat", you: "a < b & c", them: "", botName: "Pete" }, "telegram").text, /You: a &lt; b &amp; c<\/blockquote>$/, "their words are text, never markup");
 });
 
-test("after the card, the answer goes as a reply to their new message, in each app that has replies", () => {
+test("after the card, the answer goes as a reply to their new message", () => {
   assert.match(read("lib/platforms/telegram.js"), /if \(statusOpts\.opts\.caughtUp\) \{[\s\S]{0,800}i === 0 \? \{ reply_to_message_id: msg\.message_id, allow_sending_without_reply: true \} : undefined/);
-  assert.match(read("lib/platforms/discord.js"), /sendDiscordMessage\(discordUserId, response, opts\.caughtUp \? \{ replyTo: msg\.id \} : \{\}\)/);
-  assert.match(read("lib/platforms/line.js"), /sendLinePush\(lineUserId, response, lineOpts\.caughtUp \? \{ quoteToken: event\.message\?\.quoteToken \} : \{\}\)/);
-  assert.match(read("lib/platforms/whatsapp.js"), /sendWhatsAppMessage\(waId, response, opts\.caughtUp \? \{ replyTo: waMessageId \} : \{\}\)/);
-  const messaging = read("lib/messaging.js");
-  assert.match(messaging, /\.\.\.\(answering \? \{ context: \{ message_id: answering \} \} : \{\}\)/);
-  assert.match(messaging, /reply: \{ messageReference: replyTo, failIfNotExists: false \}/);
   // A reply in parts quotes their message on its first part only.
   const sent = [];
   const bot = require("../lib/follow-on").splitTelegram({ sendMessage: async (id, text, o) => sent.push(o || null) });
@@ -182,3 +174,24 @@ test("the model reads what earlier replies sent, so the same person can be shown
   assert.match(im.askedFrom([...conv, { role: "user", content: "now her on a beach" }]), /Closedhand said: Here she is\.\n\n\[Sent with this reply: att_7, made from "a woman with short silver hair/);
 });
 
+
+// The person talks to Closedhand in WhatsApp, Telegram or the web chat, and
+// nowhere else. Slack and the like are connections Closedhand works in, not
+// places it is talked to. Half-built handlers for four more chat apps once sat
+// beside these, each with its own way to send, sign in and set up.
+test("the chat apps are Telegram, WhatsApp as a linked device and the web chat, and no other", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const root = path.join(__dirname, "..");
+  assert.deepEqual(fs.readdirSync(path.join(root, "lib", "platforms")).sort(), ["telegram.js", "web.js", "whatsapp-linked.js"]);
+  const server = read("webapp/server.js");
+  const supported = server.slice(server.indexOf("const SUPPORTED_PLATFORMS = {"), server.indexOf("};", server.indexOf("const SUPPORTED_PLATFORMS = {")));
+  assert.deepEqual([...supported.matchAll(/^  (\w+): \{/gm)].map((m) => m[1]), ["telegram", "whatsapp"], "the two cards the dashboard draws");
+  const messaging = read("lib/messaging.js");
+  const sender = messaging.slice(messaging.indexOf("async function sendToPlatformOnly("), messaging.indexOf("async function pinMessage("));
+  assert.deepEqual([...sender.matchAll(/case "(\w+)":/g)].map((m) => m[1]), ["telegram", "whatsapp_linked", "web"]);
+  assert.deepEqual([...require("../lib/one-chat").BOT_APPS], ["telegram"], "the one app where Closedhand is a bot");
+  for (const f of ["index.js", "lib/messaging.js", "lib/context.js", "webapp/server.js", "webapp/views/dashboard.html", "webapp/views/index.html"]) {
+    assert.doesNotMatch(read(f), /DISCORD_BOT_TOKEN|discordClient|sendLinePush|LINE_CHANNEL|liff|SLACK_BOT_TOKEN|WHATSAPP_ACCESS_TOKEN|chat-apps/i, f);
+  }
+  assert.equal(JSON.parse(read("package.json")).dependencies["discord.js"], undefined);
+});

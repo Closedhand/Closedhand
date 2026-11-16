@@ -86,10 +86,10 @@ test('every way a file comes in is checked before it is kept', () => {
   assert.ok(queued.indexOf('uploads.acceptChatFile(fileData)') > 0, 'queuedAsk checks the file');
   assert.ok(queued.indexOf('uploads.acceptChatFile(fileData)') < queued.indexOf('isBugReport(userMessage)'), 'before /bug can keep it');
   assert.match(queued, /if \(!uploads\.acceptChatFile\(fileData\)\) \{[\s\S]{0,200}?return uploads\.REFUSED;/);
-  for (const f of ['lib/web-chat-ws.js', 'lib/platforms/telegram.js', 'lib/platforms/whatsapp.js', 'lib/platforms/whatsapp-linked.js', 'lib/platforms/discord.js']) {
+  for (const f of ['lib/web-chat-ws.js', 'lib/platforms/telegram.js', 'lib/platforms/whatsapp-linked.js']) {
     assert.doesNotMatch(read(f), /saveAttachment\(/, `${f} keeps no file before queuedAsk`);
   }
-  for (const f of ['lib/platforms/telegram.js', 'lib/platforms/whatsapp.js', 'lib/platforms/whatsapp-linked.js']) {
+  for (const f of ['lib/platforms/telegram.js', 'lib/platforms/whatsapp-linked.js']) {
     assert.doesNotMatch(read(f), /supportedTypes|TEXT_EXTENSIONS|OFFICE_EXTENSIONS|can't read \./, `${f} keeps no list of its own; queuedAsk decides`);
   }
   const email = read('lib/assistant-email.js');
