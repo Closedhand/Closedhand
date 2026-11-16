@@ -12,4 +12,7 @@ hexgrad/kokoro, kokoro.js/src/phonemize.js, also Apache License 2.0.
 Changes: CommonJS loading and escaping punctuation for this application.
 Phonemizer (xenova/phonemizer.js) is Apache License 2.0.
 OpusScript is MIT licensed; its libopus component is BSD licensed.
+The web chat, the dashboard and closedhand.com carry their own copies of
+three.js (MIT), D3 (ISC) and canvas-confetti (ISC), in public/vendor with
+their licence texts beside them.
 Dependency licence texts ship alongside their packages.

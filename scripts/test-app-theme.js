@@ -156,3 +156,37 @@ test("the typefaces come from Closedhand itself, never from Google", () => {
   assert.match(read("webapp/server.js"), /style-src 'self' 'unsafe-inline'; font-src 'self';/);
 });
 
+
+// The dashboard, the web chat and closedhand.com's home page loaded d3,
+// three.js, its model loader and canvas-confetti from three other companies'
+// servers, unchecked: each visit told them who was looking, and a changed file
+// there would have run inside the signed-in dashboard. They are Closedhand's
+// own copies now, as the typefaces are.
+test("no page loads a script from another company's server", () => {
+  const crypto = require("node:crypto");
+  // Two hosted-era pages that open inside LINE and Telegram load those apps' own kits.
+  const insideChatApps = new Set(["webapp/views/line-app.html", "webapp/views/telegram-app.html"]);
+  const pages = ["closedhand-com/views", "webapp/views"].flatMap((d) => fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith(".html")).map((f) => `${d}/${f}`)).filter((f) => !insideChatApps.has(f));
+  const scripts = ["closedhand-com/public", "webapp/public"].flatMap((d) => fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith(".js")).map((f) => `${d}/${f}`));
+  for (const f of pages.concat(scripts)) {
+    const src = read(f);
+    assert.doesNotMatch(src, /<script[^>]+src=["'](?:https?:)?\/\//, f + ": a script tag from another server");
+    assert.doesNotMatch(src, /\.src\s*=\s*["'](?:https?:)?\/\/[^"']+\.js/, f + ": a script loaded from another server");
+    assert.doesNotMatch(src, /\b(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|d3js\.org)\b/, f);
+  }
+  const sha = (f) => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, f))).digest("hex");
+  // The pinned copies, by what they hold: three.js r128 and its GLTFLoader,
+  // d3 7.9.2, canvas-confetti 1.9.3.
+  const pinned = {
+    "webapp/public/vendor/three.min.js": "9274bbcec8d96168",
+    "webapp/public/vendor/GLTFLoader.js": null,
+    "webapp/public/vendor/d3.min.js": null,
+    "webapp/public/vendor/confetti.browser.js": null,
+  };
+  for (const [f, start] of Object.entries(pinned)) { assert.ok(fs.statSync(path.join(root, f)).size > 10000, f); if (start) assert.ok(sha(f).startsWith(start), f); }
+  for (const f of ["three.min.js", "GLTFLoader.js", "LICENSE-three.txt"]) assert.equal(sha(`closedhand-com/public/vendor/${f}`), sha(`webapp/public/vendor/${f}`), `${f} is the same on the site and in the app`);
+  for (const f of ["LICENSE-three.txt", "LICENSE-d3.txt", "LICENSE-canvas-confetti.txt"]) assert.ok(fs.existsSync(path.join(root, "webapp/public/vendor", f)), f);
+  assert.match(read("webapp/views/index.html"), /<script src="\/vendor\/three\.min\.js">/);
+  assert.match(read("webapp/views/dashboard.html"), /<script src="\/vendor\/d3\.min\.js">/);
+  assert.match(read("closedhand-com/views/home.html"), /<script src="\/vendor\/three\.min\.js">/);
+});
