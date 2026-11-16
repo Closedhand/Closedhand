@@ -63,7 +63,7 @@ test('Shopify app secret is encrypted in both service copies', () => {
     assert.ok(encoded.client_secret.startsWith('enc:v1:'));assert.equal(crypto.decryptTokens(encoded).client_secret,'fixture-secret');
   }
 });
-test('Shopify connection endpoint authenticates, persists encrypted data, and does not claim success on failed writes', async () => {
+test('Shopify connection endpoint sits behind the login, persists encrypted data, and does not claim success on failed writes', async () => {
   const src=fs.readFileSync(path.join(root,'webapp/server.js'),'utf8');const start=src.indexOf('app.post("/api/connect-shopify-token",');
   let handler,code=200,payload,row,user='fixture-user',fail=false;
   const auth={storeDomain,exchangeCredentials:async()=>({access_token:'new',client_secret:'secret'}),inspectShop:async()=>({name:'Fixture',scopes:['read_orders']})};
@@ -74,5 +74,6 @@ test('Shopify connection endpoint authenticates, persists encrypted data, and do
   await handler({body:{storeDomain:'example',clientId:'client',clientSecret:'secret'}},res);
   assert.equal(payload.success,true);assert.equal(row.user_id,user);assert.equal(row.tokens.client_secret,'encrypted');
   fail=true;await handler({body:{storeDomain:'example',accessToken:'token'}},res);assert.equal(code,400);assert.equal(payload.success,undefined);
-  row=null;user=null;await handler({body:{}},res);assert.equal(code,401);assert.equal(row,null);
+  // Who may ask is the login gate's to decide, for every route registered after it.
+  assert.ok(start>src.indexOf('const SIGNED_BY_BRIDGE'),'registered after the login gate');
 });

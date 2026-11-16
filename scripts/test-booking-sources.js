@@ -88,13 +88,12 @@ test('a booking with no end moves to Past an hour after it starts', () => {
 test('the file route is behind the login, checks its inputs, asks the bot and never serves script', () => {
   const route = server.slice(server.indexOf('app.get("/api/mail/attachment"'), server.indexOf('app.get("/mail"'));
   assert.ok(server.indexOf('app.get("/api/mail/attachment"') > server.indexOf('const SIGNED_BY_BRIDGE'), 'registered after the dashboard login gate');
-  assert.match(route, /if \(!userId\) return res\.status\(401\)/);
   assert.match(route, /if \(!MAIL_SOURCE\.test\(source\) \|\| !MAIL_ID\.test\(id\)/);
   assert.match(route, /await askBot\(userId, `\/internal\/mail-file\?/);
   assert.match(route, /"Content-Security-Policy": "sandbox"/);
   assert.match(route, /viewable \? type : "application\/octet-stream"/);
   const view = server.slice(server.indexOf('app.get("/mail"'), server.indexOf('app.get("/api/bookings"'));
-  assert.match(view, /if \(!userId\) return res\.redirect\("\/login/);
+  assert.ok(server.indexOf('app.get("/mail"') > server.indexOf('const SIGNED_BY_BRIDGE'), 'and so is the page that shows it');
   assert.match(view, /"Content-Security-Policy": "default-src 'none'/, 'Closedhand\'s copy of an email runs no script');
 });
 

@@ -13,15 +13,16 @@ function response() {
   return { code: 200, status(code) { this.code = code; return this; }, sendStatus(code) { this.code = code; }, json(body) { this.body = body; } };
 }
 
-test('runtime preparation requires a signed-in user and accepts only status/start', async () => {
-  let handler, calls = [], user = null;
+test('runtime preparation sits behind the login and accepts only status/start', async () => {
+  let handler, calls = [], user = 'fixture';
   vm.runInNewContext(section(server, 'app.all("/api/sandbox/runtime",', 'app.post("/api/sandbox/browser",'), {
     app: { all(route, callback) { handler = callback; } }, process: { env: { WORKSPACE_VM: '1' } },
     getUserIdFromRequest: () => user, getSandboxInfo: async () => ({ port: 8181 }),
     sandboxFetch: async (info, method, route) => { calls.push({ method, route }); return { status: 'starting' }; },
   });
-  let res = response(); await handler({ method: 'POST' }, res); assert.equal(res.code, 401); assert.equal(calls.length, 0);
-  user = 'fixture'; res = response(); await handler({ method: 'DELETE' }, res); assert.equal(res.code, 405);
+  // Who may ask is the login gate's to decide, for every route registered after it.
+  assert.ok(server.indexOf('app.all("/api/sandbox/runtime",') > server.indexOf('const SIGNED_BY_BRIDGE'), 'registered after the login gate');
+  let res = response(); await handler({ method: 'DELETE' }, res); assert.equal(res.code, 405); assert.equal(calls.length, 0);
   res = response(); await handler({ method: 'GET' }, res); assert.equal(calls[0].route, '/desktop/status');
   res = response(); await handler({ method: 'POST' }, res); assert.equal(calls[1].route, '/runtime/start'); assert.equal(res.body.status, 'starting');
 });

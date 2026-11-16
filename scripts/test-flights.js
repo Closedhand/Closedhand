@@ -138,7 +138,7 @@ test('dashboard renders airport-local clocks using the shipped browser helper', 
   assert.equal(fs.readFileSync(path.join(root, 'webapp/public/flight-time.js'), 'utf8'), fs.readFileSync(path.join(root, 'lib/flight-time.js'), 'utf8'));
 });
 
-test('flights API excludes superseded records and keeps authentication enforced', async () => {
+test('flights API excludes superseded records and sits behind the login', async () => {
   const source = fs.readFileSync(path.join(root, 'webapp/server.js'), 'utf8');
   const start = source.indexOf('app.get("/api/flights",');
   const end = source.indexOf('\n});', start) + 4;
@@ -150,7 +150,8 @@ test('flights API excludes superseded records and keeps authentication enforced'
   const res = { json(value) { payload = value; }, status(code) { status = code; return this; } };
   await handler({}, res);
   assert.deepEqual(Array.from(payload, f => f.flightNumber), ['XY648']);
-  user = null; await handler({}, res); assert.equal(status, 401);
+  // Who may ask is the login gate's to decide, for every route registered after it.
+  assert.ok(start > source.indexOf('const SIGNED_BY_BRIDGE'), 'registered after the login gate');
 });
 
 test('confirmed email clears pending, while stale mail cannot reverse it', () => {
