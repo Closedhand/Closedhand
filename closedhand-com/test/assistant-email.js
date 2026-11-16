@@ -141,6 +141,33 @@ test('a new email goes to the owner only; a reply only to someone who wrote firs
   assert.equal((await (await call('GET', '/api/assistant-mail-relay/inbox', null, c.auth)).json()).messages.length, 0);
 });
 
+test('the maintainer is told once as each share of the month\'s email budget is reached, with no write on later passes', async () => {
+  const { monitor } = require('../lib/assistant-mail-usage');
+  const month = new Date().toISOString().slice(0, 7) + '-01';
+  await db.query("UPDATE mail_relay_controls SET monthly_usd = 10, paused = false WHERE id = true");
+  await db.query("DELETE FROM mail_relay_alerts");
+  await db.query("INSERT INTO mail_relay_usage (owner_key, period, estimated_usd) VALUES ('global', $1, 8) ON CONFLICT (owner_key, period) DO UPDATE SET estimated_usd = 8", [month]);
+  // The same client, counting what is written to the alerts.
+  let inserts = 0;
+  const counting = { ...mailDb, from(table) { const q = mailDb.from(table); if (table === 'mail_relay_alerts') { const insert = q.insert.bind(q); q.insert = (...a) => { inserts++; return insert(...a); }; } return q; } };
+  const told = [];
+  let cut = 0;
+  const pass = () => monitor(counting, async n => { told.push(n.threshold); }, async () => { cut++; });
+  await pass();
+  assert.deepEqual(told, [50, 75], 'at 80% of the budget: half and three quarters, each said once');
+  assert.equal(inserts, 2);
+  await pass(); await pass();
+  assert.deepEqual(told, [50, 75], 'never said twice');
+  assert.equal(inserts, 2, 'and later passes write nothing');
+  await db.query("UPDATE mail_relay_usage SET estimated_usd = 10 WHERE owner_key = 'global' AND period = $1", [month]);
+  await pass();
+  assert.deepEqual(told, [50, 75, 90, 100]);
+  assert.equal(cut, 1, 'and at the whole budget, sending stops');
+  await db.query("UPDATE mail_relay_usage SET estimated_usd = 0 WHERE owner_key = 'global' AND period = $1", [month]);
+  await db.query("DELETE FROM mail_relay_alerts");
+  await db.query("UPDATE mail_relay_controls SET monthly_usd = DEFAULT WHERE id = true");
+});
+
 test('allowances are counted per owner, and an owner may run three copies', async () => {
   const owner = await signIn('google', google('g-jo', 'jo@example.com'));
   for (let i = 0; i < 3; i++) assert.equal((await pair(copy(), owner.cookie)).status, 200);

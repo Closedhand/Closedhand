@@ -37,8 +37,13 @@ async function monitor(db, notify, cutoff) {
   const global = mustWrite(await db.from('mail_relay_usage').select('estimated_usd').eq('owner_key', 'global').eq('period', month).maybeSingle());
   const used = Number(global?.estimated_usd || 0), budget = Number(control.monthly_usd);
   if (control.paused || used >= budget) await cutoff();
-  for (const threshold of [50,75,90,100]) {
-    if (used < budget * threshold / 100) continue;
+  const reached = [50,75,90,100].filter(threshold => used >= budget * threshold / 100);
+  if (!reached.length) return;
+  // Told once each: what was told this month is read, where an insert used
+  // to be tried for every share reached, on every pass, and left to fail.
+  const told = new Set(mustWrite(await db.from('mail_relay_alerts').select('threshold').eq('month', month)).map(row => Number(row.threshold)));
+  for (const threshold of reached) {
+    if (told.has(threshold)) continue;
     const claim = await db.from('mail_relay_alerts').insert({ month, threshold }).select('threshold');
     if (claim.error?.code === '23505') continue;
     mustWrite(claim);

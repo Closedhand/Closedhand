@@ -131,19 +131,24 @@ function start(db, env = process.env) {
       } catch (e) { console.error('[Assistant email] Queue:', e.name || 'Error', e.name === 'AccessDenied' ? String(e.message).slice(0, 800) : ''); await new Promise(r => setTimeout(r, 5000)); }
     }
   }
-  let sending = false;
+  let sending = false, tidiedAt = 0;
   async function flush() {
     if (sending || stopped) return; sending = true;
     try {
       await usage.monitor(db, guard.notify, guard.cutoff);
       const events = mustWrite(await db.from('mail_relay_feedback').select('event').order('received_at').limit(100));
       for (const item of events) await feedback(db, item.event, true);
-      mustWrite(await db.from('mail_relay_feedback').delete().lt('received_at', new Date(Date.now() - 14 * 86400000).toISOString()));
-      // Unknown sends are visible and are never automatically resubmitted.
-      mustWrite(await db.from('mail_relay_outbox').update({ state: 'uncertain', error: 'Delivery was interrupted. Check the recipient before sending again.' }).eq('state', 'sending').lt('updated_at', new Date(Date.now() - 300000).toISOString()));
-      mustWrite(await db.from('mail_relay_inbound').update({ sealed: null }).lt('expires_at', new Date().toISOString()).not('sealed', 'is', null));
-      mustWrite(await db.from('mail_relay_outbox').update({ state: 'failed', payload: null, error: 'Delivery expired after 14 days. No email was sent.' }).eq('state', 'pending').lt('created_at', new Date(Date.now() - 14 * 86400000).toISOString()));
-      mustWrite(await db.from('mail_relay_outbox').update({ payload: null }).lt('created_at', new Date(Date.now() - 14 * 86400000).toISOString()).neq('state', 'pending'));
+      // Old feedback, sends that were interrupted and what has expired are
+      // put right once a minute; every pass was five statements each five seconds.
+      if (Date.now() - tidiedAt >= 60000) {
+        tidiedAt = Date.now();
+        mustWrite(await db.from('mail_relay_feedback').delete().lt('received_at', new Date(Date.now() - 14 * 86400000).toISOString()));
+        // Unknown sends are visible and are never automatically resubmitted.
+        mustWrite(await db.from('mail_relay_outbox').update({ state: 'uncertain', error: 'Delivery was interrupted. Check the recipient before sending again.' }).eq('state', 'sending').lt('updated_at', new Date(Date.now() - 300000).toISOString()));
+        mustWrite(await db.from('mail_relay_inbound').update({ sealed: null }).lt('expires_at', new Date().toISOString()).not('sealed', 'is', null));
+        mustWrite(await db.from('mail_relay_outbox').update({ state: 'failed', payload: null, error: 'Delivery expired after 14 days. No email was sent.' }).eq('state', 'pending').lt('created_at', new Date(Date.now() - 14 * 86400000).toISOString()));
+        mustWrite(await db.from('mail_relay_outbox').update({ payload: null }).lt('created_at', new Date(Date.now() - 14 * 86400000).toISOString()).neq('state', 'pending'));
+      }
       const jobs = mustWrite(await db.from('mail_relay_outbox').select('id').eq('state', 'pending').order('created_at').limit(10));
       for (const job of jobs) {
         const row = mustWrite(await db.rpc('claim_mail_relay_outbox', { job: job.id }))[0]; if (!row) continue;
