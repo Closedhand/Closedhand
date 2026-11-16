@@ -1,10 +1,10 @@
 FROM python:3.12-slim
 
-# Install Node.js 20 LTS + gosu (for entrypoint user switching) + tini (reaps
+# Install Node.js 22 LTS + gosu (for entrypoint user switching) + tini (reaps
 # the processes a crashed browser leaves behind) + Playwright system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates gosu tini && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 

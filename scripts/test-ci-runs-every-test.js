@@ -22,8 +22,13 @@ test("CI tests on the Node that every build ships", () => {
   const shipped = new Set([
     ...["Dockerfile", "webapp/Dockerfile"].map((f) => read(f).match(/^FROM node:(\d+)/m)[1]),
     read("desktop/build.sh").match(/NODE_VERSION:-v(\d+)\./)[1],
+    // The sandbox computer too: it stayed on Node 20 past its end of life.
+    read("sandbox-image/Dockerfile").match(/deb\.nodesource\.com\/setup_(\d+)\.x/)[1],
   ]);
   assert.equal(shipped.size, 1, "the builds ship one Node");
+  assert.ok(shipped.has(read("lib/engine.js").match(/sandbox computer running Python [\d.]+, Node\.js (\d+), and Bash/)[1]), "and Closedhand is told the sandbox computer's Node as it is");
+  assert.doesNotMatch(read("lib/engine.js").match(/Pre-installed: [^.\n]*/)[0], /plotly/, "nothing named as installed that the image lacks");
+  for (const name of read("lib/engine.js").match(/Pre-installed: ([^.\n`]*)/)[1].split(",").map((n) => n.trim()).filter(Boolean)) assert.match(read("sandbox-image/Dockerfile"), new RegExp("\\b" + name.replace(/[-.]/g, "[-.]") + "\\b"), name + " is in the image");
   for (const f of fs.readdirSync(path.join(root, ".github/workflows"))) {
     for (const [, v] of read(".github/workflows/" + f).matchAll(/node-version: "(\d+)"/g)) assert.ok(shipped.has(v), `${f} tests Node ${v}`);
   }
