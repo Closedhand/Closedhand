@@ -338,9 +338,9 @@ test("the Mac app keeps the bot, like the dashboard, to this computer", async ()
   assert.match(read("index.js"), /ctx\.expressApp\.listen\(WA_PORT, process\.env\.LISTEN_HOST \|\| undefined, /);
   assert.match(read("lib/move-idle.js"), /app\.listen\(port, process\.env\.LISTEN_HOST \|\| undefined, /);
   assert.doesNotMatch(read("docker-compose.yml"), /LISTEN_HOST/, "containers reach the bot by name");
-  // What that call does: this computer only with a host, as before with none.
-  const express = require("express");
-  const listen = (host) => new Promise((resolve, reject) => { const s = express().listen(0, host || undefined, () => resolve(s)); s.once("error", reject); });
+  // What that call does (Express hands its arguments to Node's own listen):
+  // this computer only with a host, every interface, as before, with none.
+  const listen = (host) => new Promise((resolve, reject) => { const s = http.createServer().listen(0, host || undefined, () => resolve(s)); s.once("error", reject); });
   const here = await listen("127.0.0.1"), anywhere = await listen("");
   try {
     assert.equal(here.address().address, "127.0.0.1");
