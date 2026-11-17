@@ -44,6 +44,9 @@ const words = [
 ];
 const CURSOR = { at: new Date(NOW - 1800000).toISOString(), id: "m-2" };
 const items = (list = words, cursor = CURSOR) => async () => ({ items: list, cursor });
+// Fitting a finding to the notes it could join, as the LLM would when the
+// note does not say it yet: the same note, the whole finding.
+const keep = async (u, held) => ({ note: held.key, adds: held.adds });
 
 test("what comes in from any connection becomes a Pinned Fact only on the item's own words, written through pin_fact", async () => {
   const facts = { "family-partner": { value: "Robin's wife is Ana Fixture.", category: "person", subject: "Ana Fixture", source: "chat" } };
@@ -57,7 +60,7 @@ test("what comes in from any connection becomes a Pinned Fact only on the item's
       { key: "work-boss", category: "person", subject: "Dana Fixture", adds: "Dana Fixture is Robin's manager.", replaces: "", n: 2, quote: "Dana is your manager" },
       { key: "_pulse_last", category: "topic", subject: "x", adds: "Something long enough here.", replaces: "", n: 1, quote: "my wife Ana is pregnant" },
     ]; };
-    const r = await mod.review("u1", { now: NOW, items: items(), judge, confirm: async () => true, pin: async (f) => { pinned.push(f); } });
+    const r = await mod.review("u1", { fit: keep, now: NOW, items: items(), judge, confirm: async () => true, pin: async (f) => { pinned.push(f); } });
     assert.equal(shown.name, "Robin");
     assert.match(shown.prose, /\[family-partner\]/, "the facts it may rewrite, by key");
     assert.deepEqual(pinned.map((f) => f.key), ["family-partner", "work-employer"], "on the words of the item each names, the person's own or a record from whoever would know; once a note however many readings found it; a key of Closedhand's own is never written; words not in the item are never a fact");
@@ -69,31 +72,45 @@ test("what comes in from any connection becomes a Pinned Fact only on the item's
     assert.equal(r.read, 2);
     assert.deepEqual(mod.readRecord(facts).cursor, CURSOR, "the next look reads only what came after");
     // A second note about the same person goes into the one there is.
-    const again = await mod.review("u1", { now: NOW + 7200000, items: items([{ ...words[0], n: 1, at: NOW + 3600000 }]), judge: async () => [{ key: "family-baby", category: "person", subject: "Ana Fixture (Ana), Robin's wife", adds: "Ana Fixture is expecting a baby.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const again = await mod.review("u1", { fit: keep, now: NOW + 7200000, items: items([{ ...words[0], n: 1, at: NOW + 3600000 }]), judge: async () => [{ key: "family-baby", category: "person", subject: "Ana Fixture (Ana), Robin's wife", adds: "Ana Fixture is expecting a baby.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.deepEqual([again.pinned[0].key, again.pinned[0].subject], ["family-partner", "Ana Fixture"], "one note per subject, under its own name");
-    const sum = await mod.review("u1", { now: NOW + 9000000, items: items([{ ...words[0], n: 1, at: NOW + 8000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Ana Fixture is expecting a baby, due in 2027.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const sum = await mod.review("u1", { fit: keep, now: NOW + 9000000, items: items([{ ...words[0], n: 1, at: NOW + 8000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Ana Fixture is expecting a baby, due in 2027.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.deepEqual(sum.pinned, [], "a year nobody wrote is not a fact");
-    const dated = await mod.review("u1", { now: NOW + 11000000, items: items([{ ...words[0], n: 1, at: NOW + 10000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const dated = await mod.review("u1", { fit: keep, now: NOW + 11000000, items: items([{ ...words[0], n: 1, at: NOW + 10000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.equal(dated.pinned.length, 1, "the year they wrote it in is theirs");
     facts["family-partner"].value = "Robin's wife is Ana Fixture. She lives in Lisbon. She was expecting their first child as of December 2026.";
-    const same = await mod.review("u1", { now: NOW + 13000000, items: items([{ ...words[0], n: 1, at: NOW + 12000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const same = await mod.review("u1", { fit: keep, now: NOW + 13000000, items: items([{ ...words[0], n: 1, at: NOW + 12000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.deepEqual(same.pinned, [], "a note with nothing new is left as it was");
-    const moved = await mod.review("u1", { now: NOW + 15000000, items: items([{ ...words[0], n: 1, at: NOW + 14000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She lives in Porto.", replaces: "She lives in Lisbon.", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const moved = await mod.review("u1", { fit: keep, now: NOW + 15000000, items: items([{ ...words[0], n: 1, at: NOW + 14000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She lives in Porto.", replaces: "She lives in Lisbon.", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.equal(moved.pinned[0].value, "Robin's wife is Ana Fixture. She lives in Porto. She was expecting their first child as of December 2026.", "only the sentence their words make untrue is replaced");
     // Which note a fact goes in is code's to say. About the person
     // themselves: one note for each part of their life, whatever note the
     // LLM named; about anyone else, only a note about that same one.
     facts["health-procedure"] = { value: "Robin had a knee operation in 2025.", category: "person", subject: "Robin Fixture" };
-    const routed = await mod.review("u1", { now: NOW + 17000000, pin: async () => {}, items: items([{ ...words[1], n: 1, at: NOW + 16000000, text: "Your payslip for November 2026. Employee: Robin Fixture, robin@freight.example. Employer: Example Freight Ltd." }]), confirm: async () => true, judge: async () => [
+    const routed = await mod.review("u1", { fit: keep, now: NOW + 17000000, pin: async () => {}, items: items([{ ...words[1], n: 1, at: NOW + 16000000, text: "Your payslip for November 2026. Employee: Robin Fixture, robin@freight.example. Employer: Example Freight Ltd." }]), confirm: async () => true, judge: async () => [
       { key: "[health-procedure]", category: "person", subject: "Robin Fixture", adds: "Robin's work email is robin@freight.example.", replaces: "", n: 1, quote: "robin@freight.example", topic: "Work contact" },
       { key: "[family-partner]", category: "business", subject: "Example Freight", adds: "Example Freight Ltd employs Robin.", replaces: "", n: 1, quote: "Employer: Example Freight Ltd.", topic: "" },
       { key: "profile-home", category: "profile", subject: "Robin", adds: "Robin lives at Harbour Row.", replaces: "", n: 1, quote: "Employer: Example Freight Ltd.", topic: "" },
     ] });
     assert.deepEqual(routed.pinned.map((f) => [f.key, f.category]), [["profile-work-contact", "profile"], ["business-example-freight", "business"]],
       "the work address in a note on work, not the one on their health; the company in a note of its own, not the partner's; a fact about them with no part of life named is not filed");
+    // A finding is fitted to what is pinned: said already, it is passed
+    // over; partly said, only the rest is added; about the person, it joins
+    // whichever of their notes it belongs to.
+    facts["profile-email"] = { value: "Robin's email is robin@home.example.", category: "profile", subject: "Robin" };
+    const offered = [];
+    const fitted = await mod.review("u1", { now: NOW + 21000000, pin: async () => {}, confirm: async () => true, items: items([{ ...words[0], n: 1, at: NOW + 20000000, text: "My numbers: robin@home.example, +44 7000 000000. And Ana's my wife, she's from Lisbon." }]),
+      judge: async () => [
+        { key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Robin's wife is Ana Fixture.", replaces: "", n: 1, quote: "Ana's my wife" },
+        { key: "profile-contact", category: "profile", subject: "Robin", adds: "Robin's email is robin@home.example and his phone number is +44 7000 000000.", replaces: "", n: 1, quote: "+44 7000 000000", topic: "contact" },
+      ],
+      fit: async (u, held, notes) => { offered.push([held.key, notes.map((x) => x.key)]); return held.key === "family-partner" ? { note: "family-partner", adds: "" } : { note: "profile-email", adds: "Robin's phone number is +44 7000 000000." }; } });
+    assert.deepEqual(offered, [["family-partner", ["family-partner"]], ["profile-contact", ["profile-email"]]], "each finding beside the notes it could join: its subject's, or all of the person's own");
+    assert.deepEqual(fitted.pinned.map((f) => [f.key, f.value]), [["profile-email", "Robin's email is robin@home.example. Robin's phone number is +44 7000 000000."]],
+      "a finding the note already says is passed over; the rest joins the note it belongs in, not a second note beside it");
     // Anything but their own words is checked once more beside its item.
     const asked = [];
-    const checked = await mod.review("u1", { now: NOW + 19000000, pin: async () => {}, items: items([{ ...words[1], n: 1, at: NOW + 18000000, text: "Dana Fixture will view the flat on Robin's behalf on Saturday." }, { ...words[0], n: 2, at: NOW + 18000001, text: "Ana and I are moving to Porto for good next spring." }]), judge: async () => [
+    const checked = await mod.review("u1", { fit: keep, now: NOW + 19000000, pin: async () => {}, items: items([{ ...words[1], n: 1, at: NOW + 18000000, text: "Dana Fixture will view the flat on Robin's behalf on Saturday." }, { ...words[0], n: 2, at: NOW + 18000001, text: "Ana and I are moving to Porto for good next spring." }]), judge: async () => [
       { key: "person-dana", category: "person", subject: "Dana Fixture", adds: "Dana Fixture views flats on Robin's behalf.", replaces: "", n: 1, quote: "will view the flat on Robin's behalf" },
       { key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Ana and Robin are moving to Porto for good.", replaces: "", n: 2, quote: "moving to Porto for good" },
     ], confirm: async (u, held, item) => { asked.push([held.key, item.text]); return false; } });
@@ -164,6 +181,26 @@ test("a look reads every connection's items in the order they reached Closedhand
     if (saved) require.cache[dbPath] = saved; else delete require.cache[dbPath];
     delete require.cache[mPath];
   }
+});
+
+// What the fit step keeps of the LLM's answer: the rest of a sentence reads
+// as one, and an answer longer than the finding itself is not taken.
+test("what a finding adds to a note reads as a sentence, and is never more than the finding", async () => {
+  let answer = "";
+  const stub = (rel, exports) => { const p = require.resolve(rel); const was = require.cache[p]; require.cache[p] = { id: p, filename: p, loaded: true, exports }; return () => { if (was) require.cache[p] = was; else delete require.cache[p]; }; };
+  const undo = [stub("../lib/llm", { getInternalClient: () => ({ model: "m", client: { messages: { create: async () => ({ answer }) } } }) }), stub("../lib/model-wire", { responseText: (r) => r.answer })];
+  const mPath = require.resolve("../lib/facts-follow");
+  delete require.cache[mPath];
+  try {
+    const { fit } = require("../lib/facts-follow");
+    const held = { key: "family-mum", adds: "Robin's mother is Jill Fixture, and she keeps two allotment plots." };
+    answer = '{"note": "[family-mum]", "adds": "she keeps two allotment plots"}';
+    assert.deepEqual(await fit("u1", held, [{ key: "family-mum", value: "Robin's mother is Jill Fixture." }], "Robin"), { note: "family-mum", adds: "She keeps two allotment plots." });
+    answer = '{"note": "family-mum", "adds": ""}';
+    assert.equal((await fit("u1", held, [], "Robin")).adds, "", "said already");
+    answer = JSON.stringify({ note: "family-mum", adds: "Robin's mother is Jill Fixture, who keeps two allotment plots and grows prize-winning leeks for the county show every year." });
+    assert.equal((await fit("u1", held, [], "Robin")).adds, held.adds, "nothing made up on the way");
+  } finally { undo.forEach((u) => u()); delete require.cache[mPath]; }
 });
 
 // Thinning Pinned Facts at 150: the LLM was handed every key in the store,
