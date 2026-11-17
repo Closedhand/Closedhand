@@ -489,12 +489,22 @@
     .starter-about { font-size: 0.8125rem; color: var(--muted); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .plan { margin-top: 1.25rem; animation: plan-in .4s cubic-bezier(.2, .8, .2, 1) both; }
     @keyframes plan-in { from { opacity: 0; transform: translateY(0.375rem); } to { opacity: 1; transform: none; } }
-    .plan-line { margin: 0; font-size: 1.0625rem; line-height: 1.95; color: var(--muted); }
-    .tok { display: inline; padding: 0 0.125rem; margin: 0 -0.125rem; border: 0; border-bottom: 1.5px dotted rgba(var(--fg-rgb),0.45); border-radius: 0.25rem 0.25rem 0 0; background: none; color: var(--fg); font: inherit; line-height: inherit; cursor: pointer; transition: background .15s, border-color .15s; }
-    .tok:hover { border-bottom-color: var(--fg); }
-    .tok[aria-expanded="true"] { background: rgba(var(--fg-rgb),0.08); border-bottom-style: solid; border-bottom-color: var(--fg); }
-    .tok[data-tok="name"] { font-weight: 600; }
-    .tok:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.125rem; }
+    /* The plan's rows: what each setting is, what it is set to and a mark
+       saying it can be changed, a hairline between them; the open one's
+       panel sits right under it. */
+    .plan-settings { display: grid; border-top: 1px solid rgba(var(--fg-rgb),0.1); }
+    .plan-setting { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; width: 100%; min-height: 2.75rem; padding: 0.5rem 0.25rem; border: 0; border-bottom: 1px solid rgba(var(--fg-rgb),0.1); background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: background .15s; }
+    .plan-setting:hover { background: rgba(var(--fg-rgb),0.04); }
+    .plan-setting:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 0.375rem; }
+    .plan-setting-label { font-size: 0.875rem; color: var(--muted); }
+    .plan-setting-value { font-size: 0.9375rem; font-weight: 500; overflow-wrap: anywhere; }
+    .plan-setting-value.empty { font-weight: 400; color: var(--muted); }
+    .plan-mark { color: var(--muted); transition: transform .2s ease; }
+    .plan-setting:hover .plan-mark { color: var(--fg); }
+    .plan-setting[aria-expanded="true"] .plan-mark { transform: rotate(180deg); }
+    .plan-setting[data-tok="name"][aria-expanded="true"] .plan-mark { transform: none; color: var(--fg); }
+    .plan-settings .plan-panel { margin: 0.5rem 0 0.75rem; }
+    .plan-joins { margin: 0.75rem 0 0; font-size: 0.9375rem; color: var(--muted); }
     .plan-again { margin-top: 0.25rem; }
     .plan-panel { margin-top: 0.75rem; padding: 0.875rem; border: 1px solid rgba(var(--fg-rgb),0.1); border-radius: 0.875rem; background: rgba(var(--fg-rgb),0.03); animation: plan-in .3s cubic-bezier(.2, .8, .2, 1) both; }
     .choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.25rem; }
@@ -7934,48 +7944,56 @@
       renderPlan();
     }
 
-    // The plan as one sentence, each part a word to tap.
-    function tok(id, text) {
-      return '<button type="button" class="tok" data-tok="' + id + '" aria-expanded="' + (_openTok === id) + '" onclick="openToken(\'' + id + '\')">' + escHtml(text) + '</button>';
-    }
-    function whenWords() {
-      if (_when.kind === 'now') return 'starts now';
-      if (_when.kind === 'manual') return 'runs when you ask';
+    // The plan as labelled rows, each set to what Closedhand read.
+    function whenValue() {
+      if (_when.kind === 'now') return 'Now';
+      if (_when.kind === 'manual') return 'When you ask';
       if (_when.kind === 'once') {
         var at = new Date(document.getElementById('auto-once-at').value);
-        return isNaN(at) ? 'runs once, on a date' : 'runs once, ' + at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' at ' + at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        return isNaN(at) ? 'Once, on a date' : 'Once, ' + at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' at ' + at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       }
       if (_when.kind === 'event') {
         var kind = (_watchKinds || []).find(function (k) { return k.id === document.getElementById('auto-event-source').value; });
         var timing = document.getElementById('auto-event-when').value, cond = document.getElementById('auto-event-condition').value.trim();
         var what = (kind ? kind.label : 'something').toLowerCase();
-        return timing === 'before' ? 'runs before each of your ' + what : timing === 'after' ? 'runs after each of your ' + what : 'runs when ' + (cond || 'something new comes in');
+        return timing === 'before' ? 'Before each of your ' + what : timing === 'after' ? 'After each of your ' + what : 'When ' + (cond || 'something new comes in');
       }
-      var human = _when.human || _when.cron || 'on a timetable';
-      // "Every morning" reads on in the sentence; a day's or month's name keeps its capital.
-      return 'runs ' + (/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(human) ? human : human.charAt(0).toLowerCase() + human.slice(1));
+      var human = _when.human || _when.cron || 'On a timetable';
+      return human.charAt(0).toUpperCase() + human.slice(1);
     }
-    function whereWords() {
+    function whereValue() {
       if (_when.kind === 'now') {
         var p = (_places || []).find(function (x) { return x.id === _answerIn; });
-        return p ? (p.id === 'dashboard' ? 'answers only here' : 'answers in ' + p.name) : 'answers here';
+        return p ? (p.id === 'dashboard' ? 'Here only' : p.name) : 'Here';
       }
-      return _selectedDest === 'email' ? 'emails you what it finds' : _selectedDest === 'dashboard' ? 'keeps what it finds here' : 'sends what it finds to your chat apps';
+      return _selectedDest === 'email' ? 'Your email' : _selectedDest === 'dashboard' ? 'Kept here' : 'Your chat apps';
+    }
+    function setRow(id, label, value, empty) {
+      var row = document.querySelector('.plan-setting[data-tok="' + id + '"]');
+      document.getElementById('plan-' + id + '-label').textContent = label;
+      var v = document.getElementById('plan-' + id + '-value');
+      v.textContent = value; v.classList.toggle('empty', !!empty);
+      row.setAttribute('aria-expanded', String(_openTok === id));
     }
     function renderPlan() {
-      var line = document.getElementById('auto-plan-line');
-      if (!line || !_planned) return;
-      var name = document.getElementById('auto-name-input').value.trim() || 'It';
-      if (_mode === 'join') {
-        line.innerHTML = tok('name', name) + ' joins ' + (_teamForm && _teamForm.name ? '<b>' + escHtml(_teamForm.name) + '</b>' : 'the team') + ' and runs when the team runs.';
-        return goLabel();
-      }
+      if (!document.getElementById('auto-plan-line') || !_planned) return;
+      var name = document.getElementById('auto-name-input').value.trim();
+      setRow('name', 'Name', name || 'Give it a name', !name);
+      // An agent joining a team runs when the team does: its name, and that.
+      var join = _mode === 'join', projects = !!(_projectList && _projectList.length);
+      ['when', 'where'].forEach(function (id) { document.querySelector('.plan-setting[data-tok="' + id + '"]').hidden = join; });
+      document.querySelector('.plan-setting[data-tok="project"]').hidden = join || !projects;
+      var joins = document.getElementById('plan-joins');
+      joins.hidden = !join;
+      if (join) { joins.innerHTML = 'Joins ' + (_teamForm && _teamForm.name ? '<b>' + escHtml(_teamForm.name) + '</b>' : 'the team') + ' and runs when the team runs.'; return goLabel(); }
+      setRow('when', 'When', whenValue());
+      setRow('where', _when.kind === 'now' ? 'Answers in' : 'Sends to', whereValue());
       var project = (_projectList || []).find(function (p) { return p.id === _planProject; });
-      line.innerHTML = tok('name', name) + ' ' + tok('when', whenWords()) + (_projectList && _projectList.length ? ', ' + tok('where', whereWords()) + ' and sits ' + tok('project', project ? 'in ' + project.emoji + ' ' + project.name : 'in no project') : ' and ' + tok('where', whereWords())) + '.';
+      if (projects) setRow('project', 'Project', project ? project.emoji + ' ' + project.name : 'None');
       goLabel();
     }
 
-    // One part open at a time, under the sentence.
+    // One row open at a time, its panel right under it.
     var _openTok = '';
     function openToken(id) {
       _openTok = _openTok === id ? '' : id;
@@ -9540,49 +9558,59 @@
         <div class="starter-list" id="auto-starter-list"></div>
       </div>
       <div class="plan" id="auto-plan" hidden>
-        <p class="plan-line" id="auto-plan-line" aria-live="polite"></p>
-        <button type="button" class="quiet-link plan-again" id="auto-replan" hidden onclick="planIt()">Read it again</button>
-        <div class="plan-panel" id="plan-name" hidden>
-          <input type="text" id="auto-name-input" class="plan-input" maxlength="60" autocomplete="off" aria-label="Its name" oninput="renderPlan()">
-        </div>
-        <div class="plan-panel" id="plan-when" hidden>
-          <div class="choices" id="auto-when-choices"></div>
-          <input type="datetime-local" id="auto-once-at" class="plan-input" hidden aria-label="The day and time it starts" onchange="renderPlan()">
-          <input type="text" id="auto-cron-input" class="plan-input" hidden placeholder="A timetable in cron, e.g. 0 8 * * *" oninput="_when.cron = this.value.trim(); _when.human = this.value.trim(); renderPlan()">
-          <!-- What it waits for: a watch, lib/watches.js -->
-          <div id="auto-event-picker" hidden>
-            <div class="plan-row">
-              <select id="auto-event-source" class="plan-input" aria-label="What it looks at" onchange="showWatchTiming(); renderPlan()"><option value="email">Emails</option></select>
-              <div id="auto-event-when-row" class="plan-row">
-                <select id="auto-event-when" class="plan-input" aria-label="When it runs" onchange="changeWatchWhen(); renderPlan()">
-                  <option value="arrives">As each new one arrives</option>
-                  <option value="before">Before each one starts</option>
-                  <option value="after">After each one ends</option>
-                </select>
-                <select id="auto-event-offset" class="plan-input" style="display:none" aria-label="How long before or after" onchange="renderPlan()">
-                  <option value="0">Right then</option>
-                  <option value="15">15 minutes</option>
-                  <option value="30">30 minutes</option>
-                  <option value="60">An hour</option>
-                  <option value="120">2 hours</option>
-                  <option value="1440">A day</option>
-                </select>
-              </div>
-            </div>
-            <p class="plan-label" id="auto-event-condition-label">What it waits for</p>
-            <input type="text" id="auto-event-condition" class="plan-input" placeholder="e.g. the shop's email saying my order has shipped" oninput="renderPlan()">
-            <input type="text" id="auto-event-words" class="plan-input" placeholder="Words it will contain, if you know them: an order number or the sender">
-            <label class="plan-check"><input type="checkbox" id="auto-event-once" checked> <span id="auto-event-once-text">Stop after the first one (it ends after 30 days if nothing comes)</span></label>
+        <!-- The plan as labelled rows: what each setting is, what it is set
+             to, and its panel opening right under it. A sentence with the
+             parts to change underlined in it was not seen as something to
+             change. -->
+        <div class="plan-settings" id="auto-plan-line" aria-live="polite">
+          <button type="button" class="plan-setting" data-tok="name" aria-expanded="false" aria-controls="plan-name" onclick="openToken('name')"><span class="plan-setting-label" id="plan-name-label">Name</span><span class="plan-setting-value" id="plan-name-value"></span><svg class="plan-mark" viewBox="0 0 24 24" width="1rem" height="1rem" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16z"/></svg></button>
+          <div class="plan-panel" id="plan-name" hidden>
+            <input type="text" id="auto-name-input" class="plan-input" maxlength="60" autocomplete="off" aria-label="Its name" oninput="renderPlan()">
           </div>
+          <button type="button" class="plan-setting" data-tok="when" aria-expanded="false" aria-controls="plan-when" onclick="openToken('when')"><span class="plan-setting-label" id="plan-when-label">When</span><span class="plan-setting-value" id="plan-when-value"></span><svg class="plan-mark" viewBox="0 0 24 24" width="1rem" height="1rem" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="plan-panel" id="plan-when" hidden>
+            <div class="choices" id="auto-when-choices"></div>
+            <input type="datetime-local" id="auto-once-at" class="plan-input" hidden aria-label="The day and time it starts" onchange="renderPlan()">
+            <input type="text" id="auto-cron-input" class="plan-input" hidden placeholder="A timetable in cron, e.g. 0 8 * * *" oninput="_when.cron = this.value.trim(); _when.human = this.value.trim(); renderPlan()">
+            <!-- What it waits for: a watch, lib/watches.js -->
+            <div id="auto-event-picker" hidden>
+              <div class="plan-row">
+                <select id="auto-event-source" class="plan-input" aria-label="What it looks at" onchange="showWatchTiming(); renderPlan()"><option value="email">Emails</option></select>
+                <div id="auto-event-when-row" class="plan-row">
+                  <select id="auto-event-when" class="plan-input" aria-label="When it runs" onchange="changeWatchWhen(); renderPlan()">
+                    <option value="arrives">As each new one arrives</option>
+                    <option value="before">Before each one starts</option>
+                    <option value="after">After each one ends</option>
+                  </select>
+                  <select id="auto-event-offset" class="plan-input" style="display:none" aria-label="How long before or after" onchange="renderPlan()">
+                    <option value="0">Right then</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">An hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="1440">A day</option>
+                  </select>
+                </div>
+              </div>
+              <p class="plan-label" id="auto-event-condition-label">What it waits for</p>
+              <input type="text" id="auto-event-condition" class="plan-input" placeholder="e.g. the shop's email saying my order has shipped" oninput="renderPlan()">
+              <input type="text" id="auto-event-words" class="plan-input" placeholder="Words it will contain, if you know them: an order number or the sender">
+              <label class="plan-check"><input type="checkbox" id="auto-event-once" checked> <span id="auto-event-once-text">Stop after the first one (it ends after 30 days if nothing comes)</span></label>
+            </div>
+          </div>
+          <button type="button" class="plan-setting" data-tok="where" aria-expanded="false" aria-controls="plan-where" onclick="openToken('where')"><span class="plan-setting-label" id="plan-where-label">Sends to</span><span class="plan-setting-value" id="plan-where-value"></span><svg class="plan-mark" viewBox="0 0 24 24" width="1rem" height="1rem" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="plan-panel" id="plan-where" hidden>
+            <div class="choices" id="auto-where-choices"></div>
+            <p id="auto-email-hint" class="auto-email-hint" role="status" hidden></p>
+          </div>
+          <button type="button" class="plan-setting" data-tok="project" aria-expanded="false" aria-controls="plan-project" onclick="openToken('project')"><span class="plan-setting-label" id="plan-project-label">Project</span><span class="plan-setting-value" id="plan-project-value"></span><svg class="plan-mark" viewBox="0 0 24 24" width="1rem" height="1rem" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="plan-panel" id="plan-project" hidden>
+            <div class="choices" id="auto-project-choices"></div>
+            <p class="plan-hint">In a project, it works with the project's instructions and files, and its results come in the project's conversation.</p>
+          </div>
+          <p class="plan-joins" id="plan-joins" hidden></p>
         </div>
-        <div class="plan-panel" id="plan-where" hidden>
-          <div class="choices" id="auto-where-choices"></div>
-          <p id="auto-email-hint" class="auto-email-hint" role="status" hidden></p>
-        </div>
-        <div class="plan-panel" id="plan-project" hidden>
-          <div class="choices" id="auto-project-choices"></div>
-          <p class="plan-hint">In a project, it works with the project's instructions and files, and its results come in the project's conversation.</p>
-        </div>
+        <button type="button" class="quiet-link plan-again" id="auto-replan" hidden onclick="planIt()">Read it again</button>
         <div class="agents-row" id="auto-agents-row" hidden>
           <div class="agents-row-head"><h4>Agents</h4><button type="button" class="quiet-link" id="auto-suggest-agents" onclick="suggestAgents()">Suggest agents</button></div>
           <p class="agents-row-note">Closedhand coordinates these agents and sends you one answer.</p>

@@ -317,13 +317,20 @@ test("a reminder about an appointment shows the appointment's time, and when it 
   assert.match(read("user-store.js"), /run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" \? "task" : "reminder" \}/);
 });
 
-test("New agent: one description, then the plan as one sentence; a team led by Closedhand is one task; it answers in the chat chosen", async () => {
+test("New agent: one description, then the plan as labelled rows; a team led by Closedhand is one task; it answers in the chat chosen", async () => {
   const form = dashboard.slice(dashboard.indexOf('id="auto-create-modal"'), dashboard.indexOf('<!-- Note Modal -->'));
   assert.match(form, /<h3 id="auto-modal-title">What should the agent do\?<\/h3>/);
-  assert.match(form, /<p class="plan-line" id="auto-plan-line" aria-live="polite"><\/p>/);
-  for (const part of ['id="plan-name"', 'id="plan-when"', 'id="plan-where"', 'id="plan-project"'])
-    assert.ok(form.includes(part), "a part of the plan: " + part);
-  assert.match(dashboard, /line\.innerHTML = tok\('name', name\) \+ ' ' \+ tok\('when', whenWords\(\)\)/);
+  // The plan as labelled rows, each with its panel right under it: a
+  // sentence with the parts to change underlined was not seen as something
+  // to change.
+  assert.match(form, /<div class="plan-settings" id="auto-plan-line" aria-live="polite">/);
+  for (const part of ['name', 'when', 'where', 'project']) {
+    const row = form.indexOf(`class="plan-setting" data-tok="${part}"`), panel = form.indexOf(`<div class="plan-panel" id="plan-${part}" hidden>`);
+    assert.ok(row > 0 && panel > row && !form.slice(row + 1, panel).includes('class="plan-setting"'), "a row of the plan, its panel under it: " + part);
+  }
+  assert.doesNotMatch(dashboard, /class="tok"|function whenWords/);
+  assert.match(dashboard, /setRow\('name', 'Name', name \|\| 'Give it a name', !name\);/);
+  assert.match(dashboard, /setRow\('where', _when\.kind === 'now' \? 'Answers in' : 'Sends to', whereValue\(\)\);/);
   // New agent makes one agent: saved on its own or added to a team, never a
   // team inside it ("Add an agent" inside New agent read as a loop). A team's
   // window has its agents, a card each, the tile that adds one last.
@@ -333,7 +340,7 @@ test("New agent: one description, then the plan as one sentence; a team led by C
   assert.match(form, /<button type="button" class="quiet-link" id="auto-back-btn" onclick="composerBack\(\)">Cancel<\/button>\n\s*<button type="button" class="btn-quiet" id="auto-to-team" hidden onclick="openPick\(\)">Add to a team<\/button>\n\s*<button type="button" class="cta" id="auto-save-btn" onclick="composerGo\(\)">Next<\/button>/, "one main action, the team a secondary one");
   assert.match(dashboard, /document\.getElementById\('auto-to-team'\)\.hidden = !\(_mode === 'agent' && _planned && !editing\);/);
   assert.match(dashboard, /team: \['What should the team do\?', /);
-  assert.match(dashboard, /line\.innerHTML = tok\('name', name\) \+ ' joins ' \+ /, "an agent for a team runs when the team runs");
+  assert.match(dashboard, /joins\.innerHTML = 'Joins ' \+ \(_teamForm && _teamForm\.name \? '<b>' \+ escHtml\(_teamForm\.name\) \+ '<\/b>' : 'the team'\) \+ ' and runs when the team runs\.';/, "an agent for a team runs when the team runs");
   assert.match(dashboard, /fetch\('\/api\/agents\/plan', \{ method: 'POST'/, "Closedhand reads the plan from the words");
   assert.match(dashboard, /if \(!editingRoutine\(\)\) rows\.push\(\{ kind: 'now', label: 'Now', note: 'Once, starting straight away' \}\);/, "Now first, beside the routine choices");
   assert.doesNotMatch(dashboard, /if \(box\.children\.length >= 4\) return;/, "no cap of five");

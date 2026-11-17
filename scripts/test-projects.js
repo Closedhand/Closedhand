@@ -523,7 +523,7 @@ test("a routine can belong to a project: it runs with the project and reports in
   assert.match(server, /project_id: project,\n\s*\.\.\.watch\.fields,/);
   const dash = read("webapp/views/dashboard.html");
   // In the New agent plan the project is one tap on the sentence, read from the words when they name one.
-  assert.match(dash, /tok\('project', project \? 'in ' \+ project\.emoji \+ ' ' \+ project\.name : 'in no project'\)/);
+  assert.match(dash, /if \(projects\) setRow\('project', 'Project', project \? project\.emoji \+ ' ' \+ project\.name : 'None'\);/);
   assert.match(dash, /project_id: _planProject \|\| null,/);
   assert.match(server, /plan\.project = named \? \{ id: named\.id, name: named\.name, emoji: named\.emoji \|\| "" \} : null;/);
   const { projectHtml } = require("../webapp/projects");
