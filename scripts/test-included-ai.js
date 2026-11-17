@@ -346,7 +346,7 @@ test("Closedhand speaks as itself: it names its LLM only when asked, explains ho
   assert.match(engine, /About Closedhand the company, say only what closedhand\.com publishes \(the subscription and Always on too\); for its own costs, users or systems, point to support@closedhand\.com\./);
   assert.match(engine, /Always on, in My Account on the dashboard, moves all of you to a server in \$\{userName\}'s own Railway account/, "it can explain Always on");
   assert.match(engine, /A subscription keeps it going, renewing every month \(\$\{prices\.plus \? prices\.plus \+ " a month" : "monthly"\}\) or every 6 or 12 months for less a month/, "and the subscription, with its price");
-  assert.match(engine, /let prompt = identityLines\(\) \+ builtLines\(\) \+/, "how it is built goes in the full prompt only");
+  assert.match(engine, /let prompt = identityLines\(\) \+ WITH_THEM \+ WITH_THEM_ACTING \+ "\\n" \+ builtLines\(\) \+/, "how it is built goes in the full prompt only");
   assert.match(engine, /HOW YOU ARE BUILT \(public: Closedhand is open source/);
   assert.match(engine, /so nobody but \$\{userName\} can read anything that goes in or comes out, not even closedhand\.com/, "asked what happens to what it sends, it knows");
   assert.match(engine, /Never name the company running the TEE\./, "and never names who runs the hardware");

@@ -25,6 +25,11 @@ Rules for working on this codebase, for anyone doing it, human or agent.
 ## Code Standards
 - Simplicity first. Minimal changes. Don't over-engineer.
 - No temporary fixes. Find root causes.
+- What the chat's LLM is told (`lib/engine.js`) changes by measurement, never from one example:
+  `scripts/prompt-probes.js` asks the real LLM across kinds of question, before and after. How
+  Closedhand is with the person is one part near the top (`WITH_THEM`), written as principles: a
+  new rule joins the principle it belongs to and never stands as a line about one incident.
+  `scripts/test-prompt-size.js` checks.
 - Verify syntax before committing. Run `node -c` on all changed JS files.
 - closedhand.com sizes everything in rem (1rem = 16px on phones and tablets). Computers show
   the whole site at 87.5% from the one root size at the top of `public/interface.css`, so a
