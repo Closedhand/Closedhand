@@ -118,5 +118,9 @@ test("every chat that shows a reply as it is written marks it as unfinished and 
   assert.equal((linked.match(/atWork\(/g) || []).length, 5, "text, voice notes, documents and pictures all show the turn the same way");
   // A change to one of Closedhand's own messages is never read as the person's message.
   assert.match(linked, /if \(_sentIds\.has\(changedId\(msg\.message\)\)\) continue;/);
-  assert.match(linked, /_sentIds\.add\(id\);\n  return remember\(await _sock\.sendMessage\(jid, \{ text, edit: sent\.key/);
+  assert.match(linked, /_sentIds\.add\(id\);\n  return remember\(await _sock\.sendMessage\(jid, \{ text, edit: ownKey\(jid, sentId\)/);
+  // What a send gives back (the message's id) is what a change and a taking away take.
+  assert.match(linked, /async function sendLinkedMessage\(chatId, message, messageId\) \{[\s\S]*?last = remember\(await _sock\.sendMessage/);
+  assert.match(linked, /function remember\(out\) \{[\s\S]*?return out\?\.key\?\.id \|\| null;\n\}/);
+  assert.match(linked, /send: \(text\) => sendLinkedMessage\(_selfJid, text\),\n    edit: \(sentId, text\) => editLinkedMessage\(sentId, text\),\n    remove: \(sentId\) => removeLinkedMessage\(sentId\),/);
 });
