@@ -124,12 +124,31 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
         const name = near.open(body.tools[0].function.name, mine), params = JSON.parse(near.open(body.tools[0].function.parameters, mine));
         message.tool_calls = [{ id: "call_1", type: "function", function: { name: toClient(name), arguments: toClient(JSON.stringify({ seen: Object.keys(params.properties) })) } }];
       }
-      const resBytes = Buffer.from(JSON.stringify({ id: "chatcmpl-" + fake.posts.length, model: body.model, choices: [{ index: 0, message, finish_reason: body.tools ? "tool_calls" : "stop" }], usage: { prompt_tokens: 5, completion_tokens: 3 } }));
+      // Asked for as it is written: the same words in pieces, each encrypted on
+      // its own, as server-sent events the signature covers whole.
+      const id = "chatcmpl-" + fake.posts.length;
+      const event = (o) => "data: " + JSON.stringify(o) + "\n\n";
+      const streamed = () => event({ id, model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "" } }] })
+        + ("Echo: " + said).match(/.{1,7}/gs).map((part) => event({ id, model: body.model, choices: [{ index: 0, delta: { content: toClient(part) } }] })).join("")
+        + event({ id, model: body.model, choices: [], usage: { prompt_tokens: 5, completion_tokens: 3 } }) + "data: [DONE]\n\n";
+      const resBytes = Buffer.from(body.stream ? streamed() : JSON.stringify({ id, model: body.model, choices: [{ index: 0, message, finish_reason: body.tools ? "tool_calls" : "stop" }], usage: { prompt_tokens: 5, completion_tokens: 3 } }));
       const signer = fake.mode.gatewaySigns ? GATEWAY : fake.mode.strangerSigns ? STRANGER : MODEL;
       const text = fake.mode.gatewaySigns ? `${sha("sha256", raw).toString("hex")}:${sha("sha256", resBytes).toString("hex")}` : `${body.model}:${sha("sha256", raw).toString("hex")}:${sha("sha256", resBytes).toString("hex")}`;
       fake.signature = { text, signing_address: signer.pub.toString("hex"), signing_algo: "ed25519", signature_kind: fake.mode.gatewaySigns ? "gateway" : "provider_tee",
         signature: crypto.sign(null, Buffer.from(fake.mode.badSignature ? text + "x" : text), signer.privateKey).toString("hex") };
       fake.signatures["chatcmpl-" + fake.posts.length] = fake.signature;
+      if (body.stream) {
+        // In slices that fall anywhere, as a network delivers them; cut off part way when told to.
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        const slices = [];
+        for (let at = 0; at < resBytes.length; at += 61) slices.push(resBytes.subarray(at, at + 61));
+        const part = fake.mode.cutShort ? slices.slice(0, Math.ceil(slices.length / 2)) : slices;
+        (function next(i) {
+          if (i === part.length) return fake.mode.cutShort ? req.socket.destroy() : res.end();
+          res.write(part[i]); setTimeout(() => next(i + 1), fake.mode.slowly || 0);
+        })(0);
+        return;
+      }
       res.writeHead(200, { "Content-Type": "application/json", "Content-Length": resBytes.length });
       return res.end(resBytes);
     }
@@ -392,6 +411,44 @@ test("a request encrypted elsewhere is passed on as it came, only to a key the p
   // A reply that is not signed for is not passed back.
   reset({ badSignature: true });
   await assert.rejects(near.relay(conn(), body, { modelKey: key, clientKey: theirs.publicHex }), (e) => e.code === "near_unsigned");
+});
+
+test("a request encrypted elsewhere can be answered as it is written: each piece handed on still encrypted, the whole stream signed for at the end", async () => {
+  await ready; reset();
+  const c = conn();
+  const key = await near.warm(c, MODEL_ID);
+  const ask = (theirs, options) => near.relay(c, { model: MODEL_ID, messages: [{ role: "user", content: near.seal("words that arrive a few at a time, as they are written", Buffer.from(key, "hex")) }] },
+    { modelKey: key, clientKey: theirs.publicHex }, options);
+  const theirs = near.clientKeys(), got = [];
+  const res = await ask(theirs, { onChunk: (piece) => got.push(piece) });
+  assert.equal(res.ok, true);
+  assert.equal(JSON.parse(fake.posts[0].raw).stream, true, "asked for as it is written");
+  assert.equal(fake.posts[0].headers.accept, "text/event-stream");
+  const parts = got.map((p) => p.choices[0]?.delta?.content).filter(Boolean);
+  assert.ok(parts.length > 5, "in pieces");
+  assert.ok(parts.every((p) => /^[0-9a-f]+$/.test(p)), "each still encrypted");
+  assert.equal(parts.map((p) => near.open(p, theirs.x25519Secret)).join(""), "Echo: words that arrive a few at a time, as they are written");
+  assert.equal(got.at(-1).usage.completion_tokens, 3, "every piece is handed on, the last one too");
+  // The signature covers the whole stream, so it can only fail at the end: the caller takes back what it showed.
+  fake.mode = { badSignature: true };
+  const shown = [];
+  await assert.rejects(ask(near.clientKeys(), { onChunk: (piece) => shown.push(piece) }), { code: "near_unsigned" });
+  assert.ok(shown.length > 5, "the pieces had gone by then");
+  // A stream that stops part way is no reply.
+  reset({ cutShort: true });
+  await assert.rejects(ask(near.clientKeys(), { onChunk: () => {} }), { code: "near_unproven" });
+  // The caller can stop listening part way, and a reader that throws stops nothing.
+  reset({ slowly: 5 });
+  const stop = new AbortController(), heard = [];
+  await assert.rejects(ask(near.clientKeys(), { signal: stop.signal, onChunk: (piece) => { heard.push(piece); if (heard.length === 3) stop.abort(new Error("stopped listening")); } }), /stopped listening/);
+  assert.ok(heard.length < 8, "and no more comes");
+  reset();
+  const all = [];
+  assert.equal((await ask(near.clientKeys(), { onChunk: (piece) => { all.push(piece); throw new Error("the reader tripped"); } })).ok, true);
+  assert.ok(all.length > 5);
+  // Without onChunk the reply comes whole, as before.
+  const whole = await (await ask(theirs)).json();
+  assert.equal(near.open(whole.choices[0].message.content, theirs.x25519Secret), "Echo: words that arrive a few at a time, as they are written");
 });
 
 test("a connection that stalls, in its handshake or its proof, is given up in time instead of waiting for good", async () => {

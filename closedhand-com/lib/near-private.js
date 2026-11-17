@@ -29,6 +29,7 @@
 const crypto = require("crypto");
 const tls = require("tls");
 const https = require("https");
+const { StringDecoder } = require("string_decoder");
 const hexBytes = (v) => Buffer.from(String(v || "").replace(/^0x/i, ""), "hex");
 const sha = (alg, ...parts) => { const h = crypto.createHash(alg); for (const p of parts) h.update(p); return h.digest(); };
 const parsed = (v) => (typeof v === "string" ? JSON.parse(v) : v);
@@ -534,7 +535,7 @@ function stateFor(conn, model, deps) {
   return st;
 }
 
-function send(st, options, build) {
+function send(st, options, build, onData) {
   return new Promise((resolve, reject) => {
     const req = https.request({ agent: st.agent, host: st.host, port: st.port, servername: st.host, ...options });
     let sent = null;
@@ -547,9 +548,10 @@ function send(st, options, build) {
     });
     req.once("response", (res) => {
       const parts = [];
-      res.on("data", (d) => parts.push(d));
+      res.on("data", (d) => { parts.push(d); if (onData && res.statusCode >= 200 && res.statusCode < 300) onData(d); });
       res.once("end", () => resolve({ status: res.statusCode, headers: res.headers, raw: Buffer.concat(parts), evidence: st.agent.evidence.get(req.socket), sent }));
       res.once("error", reject);
+      res.once("close", () => { if (!res.complete) reject(new Error("the reply was cut short")); });
     });
     req.once("error", reject);
     if (options.signal) options.signal.addEventListener("abort", () => req.destroy(options.signal.reason || new Error("aborted")), { once: true });
@@ -563,6 +565,26 @@ let deps = DEFAULT_DEPS;
 function useDeps(d) { deps = d ? { ...DEFAULT_DEPS, ...d } : DEFAULT_DEPS; }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A reply written out as it is made (stream: true) comes as server-sent
+// events, one JSON piece in each. Returns what to give the bytes to as they
+// arrive; each whole piece goes to `each`, whose own trouble stops nothing.
+function pieces(each) {
+  const decoder = new StringDecoder("utf8");
+  let rest = "", warned = false;
+  return (bytes) => {
+    rest += decoder.write(bytes);
+    for (let m; (m = /\r?\n\r?\n/.exec(rest));) {
+      const event = rest.slice(0, m.index);
+      rest = rest.slice(m.index + m[0].length);
+      const data = event.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart()).join("\n");
+      if (!data || data === "[DONE]") continue;
+      let piece;
+      try { piece = JSON.parse(data); } catch { continue; }
+      try { each(piece); } catch (e) { if (!warned) console.warn(`[near] a piece was not taken: ${String(e.message).slice(0, 120)}`); warned = true; }
+    }
+  };
+}
+
 // A request to NEAR AI, privately: sent only on a proven connection, its
 // private fields encrypted to the model enclave, the reply's signature checked
 // over the exact bytes and its fields decrypted. Resolves to a fetch-like
@@ -575,11 +597,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // clientKey }, hex): closedhand.com's page does this in a visitor's browser
 // (relay below). It goes as it came, only on a connection whose proof names
 // that key, and its reply is returned still encrypted once signed for.
-async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal, sealed } = {}) {
+//
+// onChunk (with sealed, and stream: true in the body): each piece of the reply
+// is handed over, still encrypted, as it arrives, before the signature can be
+// checked, which covers the whole stream and so comes last. What is shown from
+// the pieces is therefore taken back if this rejects; nobody but the holder of
+// the reply key could read them either way.
+async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal, sealed, onChunk } = {}) {
   if (signal?.aborted) throw signal.reason;
   const st = stateFor(conn, model, deps);
-  const auth = { Authorization: "Bearer " + conn.apiKey, "Content-Type": "application/json", Accept: "application/json", "Accept-Encoding": "identity" };
-  let result;
+  const auth = { Authorization: "Bearer " + conn.apiKey, "Content-Type": "application/json", Accept: onChunk ? "text/event-stream" : "application/json", "Accept-Encoding": "identity" };
+  let result, streamId = null;
   try {
     result = await send(st, { method: "POST", path: st.prefix + endpoint, headers: auth, signal }, (evidence) => {
       const keys = sealed ? null : clientKeys();
@@ -590,7 +618,7 @@ async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal
         "Content-Length": bytes.length, "X-Signing-Algo": "ed25519", "X-Client-Pub-Key": sealed ? sealed.clientKey : keys.publicHex,
         "X-Model-Pub-Key": modelKey.toString("hex"), "X-Encryption-Version": "2", "X-Encrypt-All-Fields": "true", "x-no-aliasing": "true",
       } };
-    });
+    }, onChunk && pieces((piece) => { streamId = streamId || piece.id; onChunk(piece); }));
   } catch (e) {
     if (signal?.aborted) throw signal.reason;
     // Encrypted to a key the enclave has since replaced: nothing went, and the
@@ -607,7 +635,7 @@ async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal
   }
   let reply;
   try {
-    const json = JSON.parse(result.raw.toString("utf8"));
+    const json = onChunk ? { id: streamId } : JSON.parse(result.raw.toString("utf8"));
     await checkSignature(st, json.id, model, result.sent.bytes, result.raw, result.evidence, signal);
     reply = sealed ? json : decrypt(json, result.sent.keys.x25519Secret);
   } catch (e) {
@@ -634,9 +662,11 @@ function image(conn, { model, prompt, n = 1, size }, options) {
 }
 
 // A chat completion whose messages were encrypted elsewhere (privately above,
-// sealed), passed on as it came. Its reply's fields stay encrypted.
+// sealed), passed on as it came. Its reply's fields stay encrypted. With
+// options.onChunk the reply is asked for as it is written, and each piece
+// handed over as it arrives.
 function relay(conn, body, sealed, options) {
-  return privately(conn, body.model, "/chat/completions", { ...body, stream: false }, null, null, { ...options, sealed });
+  return privately(conn, body.model, "/chat/completions", { ...body, stream: !!options?.onChunk }, null, null, { ...options, sealed });
 }
 
 // A connection opened and proven ahead of a request, so a reply does not wait

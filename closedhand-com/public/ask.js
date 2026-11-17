@@ -1,8 +1,9 @@
 // The home page's question box: one short conversation with the uncensored
 // LLM Closedhand provides, before downloading anything. Each question is
 // encrypted here (ask-private.js) to the sealed hardware the LLM runs in, and
-// the answer comes back encrypted to a key made here for that question, so
-// closedhand.com carries both and can read neither (lib/ask.js). The
+// the answer comes back encrypted to a key made here for that question, a
+// few words at a time as it is written, so closedhand.com carries both and
+// can read neither (lib/ask.js). The
 // conversation lives in this page only: closing the page forgets it.
 (function () {
   var box = document.getElementById('ask');
@@ -61,31 +62,48 @@
     });
     el.churn = setInterval(function () { for (var i = 0; i < 6; i++) cells[Math.floor(Math.random() * cells.length)].textContent = noise(); }, 70);
   }
-  // The answer, its letters sharpening out of noise in a wave, then left as
-  // plain text.
-  function show(el, text) {
+  // The answer as it is written: the letters of each piece sharpen out of
+  // noise as it arrives, and the whole is left as plain text once it has all
+  // come.
+  function writing(el) {
     el.style.whiteSpace = 'pre-wrap';
-    if (still) { el.textContent = text; return; }
-    var cells = [];
-    text.split(/(\s+)/).forEach(function (part) {
-      if (!part) return;
-      if (/^\s+$/.test(part)) { el.appendChild(document.createTextNode(part)); return; }
-      var w = document.createElement('span');
-      w.className = 'ask-w';
-      Array.from(part).forEach(function (letter) {
-        var ch = document.createElement('span'), real = document.createElement('span'), fuzz = document.createElement('span');
-        ch.className = 'ask-ch'; real.className = 'ask-real'; fuzz.className = 'ask-noise';
-        real.textContent = letter; fuzz.textContent = noise();
-        ch.appendChild(real); ch.appendChild(fuzz); w.appendChild(ch); cells.push(ch);
-      });
-      el.appendChild(w);
-    });
-    var at = 0, each = Math.max(2, Math.ceil(cells.length / 130));
-    (function step() {
-      for (var i = 0; i < each && at < cells.length; i++, at++) cells[at].classList.add('on');
-      if (at < cells.length) return requestAnimationFrame(step);
-      setTimeout(function () { el.textContent = text; }, 650);
-    })();
+    var text = '', queue = [], word = null, running = false, whole = false;
+    function step() {
+      // More at once when more is waiting, so the letters keep up with the answer.
+      for (var n = Math.max(1, Math.ceil(queue.length / 12)); n > 0 && queue.length; n--) queue.shift().classList.add('on');
+      if (queue.length) return requestAnimationFrame(step);
+      running = false;
+      if (whole) setTimeout(function () { if (whole) el.textContent = text; }, 650);
+    }
+    return {
+      add: function (piece) {
+        if (!text) piece = piece.replace(/^\s+/, '');
+        if (!piece) return;
+        text += piece;
+        if (still) { el.textContent = text; return; }
+        piece.split(/(\s+)/).forEach(function (part) {
+          if (!part) return;
+          if (/^\s+$/.test(part)) { el.appendChild(document.createTextNode(part)); word = null; return; }
+          // A word that comes in two pieces stays one word, so it never breaks across lines.
+          if (!word) { word = document.createElement('span'); word.className = 'ask-w'; el.appendChild(word); }
+          Array.from(part).forEach(function (letter) {
+            var ch = document.createElement('span'), real = document.createElement('span'), fuzz = document.createElement('span');
+            ch.className = 'ask-ch'; real.className = 'ask-real'; fuzz.className = 'ask-noise';
+            real.textContent = letter; fuzz.textContent = noise();
+            ch.appendChild(real); ch.appendChild(fuzz); word.appendChild(ch); queue.push(ch);
+          });
+        });
+        if (!running) { running = true; requestAnimationFrame(step); }
+      },
+      // All of it has come: returns the answer.
+      end: function () {
+        text = text.replace(/\s+$/, ''); whole = true;
+        if (still) el.textContent = text; else if (!running) step();
+        return text;
+      },
+      // Taken back: no answer came after all.
+      stop: function () { whole = false; queue = []; }
+    };
   }
 
   function link(words, act) {
@@ -135,19 +153,53 @@
     note.hidden = true;
   }
 
-  function sent(turns, again) {
+  // The answer's events as they arrive (lib/ask.js): each piece is opened
+  // here, in order, and given to hear; the last event says how it ended.
+  function read(res, secret, hear) {
+    var opened = Promise.resolve(), ended = null, rest = '';
+    function take(some) {
+      rest += some;
+      for (var at; (at = rest.indexOf('\n\n')) >= 0;) {
+        var line = rest.slice(0, at), event = null;
+        rest = rest.slice(at + 2);
+        if (line.indexOf('data: ') !== 0) continue;
+        try { event = JSON.parse(line.slice(6)); } catch (e) { continue; }
+        if (event.c) opened = opened.then(P.open.bind(null, event.c, secret)).then(hear);
+        else ended = event;
+      }
+    }
+    function finish() {
+      return opened.then(function () {
+        // Signed for by the sealed hardware only when whole: anything less is no answer.
+        if (!ended || !ended.done) throw new Error('busy');
+        state.left = ended.left;
+      });
+    }
+    if (!res.body || !res.body.getReader || !window.TextDecoder) return res.text().then(take).then(finish);
+    var reader = res.body.getReader(), decoder = new TextDecoder();
+    return (function more() {
+      return reader.read().then(function (got) {
+        if (got.done) return finish();
+        take(decoder.decode(got.value, { stream: true }));
+        return more();
+      });
+    })().catch(function (e) { opened.catch(function () {}); throw e; });
+  }
+  function sent(turns, hear, again) {
     return hello().then(function () {
       var mine = P.keys();
       return Promise.all(turns.map(function (t) { return P.seal(t.text, state.key); })).then(function (sealed) {
         return fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key: state.key, client: mine.publicHex, messages: turns.map(function (t, i) { return { role: t.role, content: sealed[i] }; }) }) });
-      }).then(function (res) { return res.json().then(function (body) { return { status: res.status, body: body }; }); }).then(function (r) {
-        // The sealed hardware has a new key: encrypted again, once.
-        if (r.status === 409 && r.body.key && !again) { state.key = r.body.key; return sent(turns, true); }
-        if (r.status === 429) throw Object.assign(new Error('limit'), { limit: true });
-        if (r.status !== 200 || !r.body.content) throw new Error('busy');
-        state.left = r.body.left;
-        return P.open(r.body.content, mine.secret);
+      }).then(function (res) {
+        if (String(res.headers.get('Content-Type')).indexOf('text/event-stream') === 0) return read(res, mine.secret, hear);
+        // No answer at all: said in JSON, with why.
+        return res.json().then(function (body) {
+          // The sealed hardware has a new key: encrypted again, once.
+          if (res.status === 409 && body.key && !again) { state.key = body.key; return sent(turns, hear, true); }
+          if (res.status === 429) throw Object.assign(new Error('limit'), { limit: true });
+          throw new Error('busy');
+        });
       });
     });
   }
@@ -167,28 +219,35 @@
     wait(theirs);
     theirs.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'nearest' });
     var turns = state.turns.concat([{ role: 'user', text: question }]);
-    sent(turns).then(function (answer) {
-      answer = answer.trim();
-      state.turns = turns.concat([{ role: 'assistant', text: answer }]);
-      // Everything the answer brings arrives with it, so the page moves once:
-      // its words (forming), who answered, the first time, and where this leads.
-      clearInterval(theirs.churn);
-      theirs.textContent = '';
-      var words = document.createElement('span');
-      theirs.appendChild(words);
-      if (!state.told && state.name) {
-        var by = document.createElement('span');
-        by.className = 'ask-by';
-        by.textContent = state.name + ', the uncensored LLM Closedhand provides';
-        theirs.appendChild(by);
+    // The answer takes the place of the waiting line at its first words, with
+    // who is answering under it the first time.
+    var out = null;
+    function hear(piece) {
+      if (!out) {
+        clearInterval(theirs.churn);
+        theirs.textContent = '';
+        var words = document.createElement('span');
+        theirs.appendChild(words);
+        if (!state.told && state.name) {
+          var by = document.createElement('span');
+          by.className = 'ask-by';
+          by.textContent = state.name + ', the uncensored LLM Closedhand provides';
+          theirs.appendChild(by);
+        }
+        out = writing(words);
       }
+      out.add(piece);
+    }
+    sent(turns, hear).then(function () {
+      if (!out) throw new Error('busy');
+      state.turns = turns.concat([{ role: 'assistant', text: out.end() }]);
       state.told = true;
-      show(words, answer);
       after();
       // A long answer starts under its question, at the top of the screen.
       if (form.getBoundingClientRect().bottom > window.innerHeight) mine.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
-    }, function (e) {
+    }).catch(function (e) {
       clearInterval(theirs.churn);
+      if (out) out.stop();
       if (e.limit) { thread.removeChild(mine); thread.removeChild(theirs); state.left = 0; return over(); }
       state.unanswered = [mine, theirs];
       theirs.classList.add('failed');

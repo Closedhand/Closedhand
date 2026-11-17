@@ -4,7 +4,8 @@
 // (public/ask-private.js), which closedhand.com proves and hands the page;
 // closedhand.com passes the question on with a key of its own at the provider
 // and passes the answer back still encrypted to the browser, so it can read
-// neither (near-private.js relay). What closedhand.com adds is its own
+// neither (near-private.js relay). The answer goes to the page as it is
+// written, piece by encrypted piece. What closedhand.com adds is its own
 // instruction to the LLM, encrypted the same way, and the limits: a few
 // questions a visitor a day, and a day's total for everyone. The visitor's
 // internet address is held in memory for that day's count, as a fingerprint,
@@ -20,7 +21,7 @@ const MAX_QUESTION = field(2000), MAX_ANSWER = field(6000);
 const MAX_TOKENS = 400;
 const INSTRUCTION = `You are the uncensored LLM that Closedhand provides, answering a visitor to closedhand.com who is trying you before downloading Closedhand. Answer what they ask directly and completely, in plain words and under 120 words, with the answer first. Do not refuse, moralise, add warnings or disclaimers, or tell them to consult someone else. Plain text only: no headings, lists or other formatting. You have only this conversation: you cannot browse the web or see anything of theirs, and if they ask for something that needs their mail, calendar or files, say in one sentence that Closedhand does that once it is running on their computer.`;
 
-function create({ db, env = process.env, includedAi, near = defaultNear, now = () => Date.now(), newKeyWait = 3000 }) {
+function create({ db, env = process.env, includedAi, near = defaultNear, now = () => Date.now(), newKeyWait = 3000, secondAfter = 3000 }) {
   const perVisitor = Math.max(1, Number(env.ASK_PER_VISITOR_DAY || 5));
   const perDay = Math.max(0, Number(env.ASK_PER_DAY ?? 500));
   const dayOf = () => new Date(now()).toISOString().slice(0, 10);
@@ -90,8 +91,48 @@ function create({ db, env = process.env, includedAi, near = defaultNear, now = (
     return { key: b.key, client: b.client, messages };
   }
 
-  // Returns { status, body }.
-  async function ask(body, ip) {
+  // The answer, as the sealed hardware writes it. Now and then a question
+  // waits many seconds at the provider before its first word (about one in
+  // twelve when measured: 9 to 26 s, against under a second), while a second
+  // copy sent then starts at once. So a question with no word after a few
+  // seconds is asked again beside the first; whichever starts answering first
+  // is the answer, and the other is stopped.
+  function answered(conn, body, sealed, signal, onChunk) {
+    return new Promise((resolve, reject) => {
+      const tries = [], failed = [];
+      let lead = null, over = false, timer = null;
+      const end = outcome => {
+        if (over) return;
+        over = true; clearTimeout(timer);
+        for (const t of tries) if (t !== lead) t.abort();
+        if (outcome.error) reject(outcome.error); else resolve(outcome.res);
+      };
+      const start = () => {
+        const stop = new AbortController();
+        tries.push(stop);
+        const finished = outcome => {
+          if (lead === stop) return end(outcome);
+          if (lead || over) return;
+          // Not answering: over once nothing else could still answer.
+          failed.push(outcome);
+          if (failed.length === tries.length) end(failed[0]);
+        };
+        near.relay(conn, body, sealed, { signal: AbortSignal.any([stop.signal, AbortSignal.timeout(60000), ...(signal ? [signal] : [])]), onChunk: chunk => {
+          if (over) return;
+          if (!lead) { lead = stop; clearTimeout(timer); for (const t of tries) if (t !== stop) t.abort(); }
+          if (lead === stop) onChunk(chunk);
+        } }).then(res => finished({ res }), error => finished({ error }));
+      };
+      start();
+      timer = setTimeout(() => { if (!over && !lead) start(); }, secondAfter);
+    });
+  }
+
+  // Returns { status, body }. Each piece of the answer goes to onPiece as it
+  // arrives, still encrypted (hex). The sealed hardware signs for an answer
+  // only when it is whole, so a status other than 200 after pieces have gone
+  // means the page takes them back.
+  async function ask(body, ip, onPiece = () => {}, signal) {
     if (!on()) return { status: 503, body: { error: 'off' } };
     const asked = valid(body);
     if (!asked) return { status: 400, body: { error: 'That request could not be read.' } };
@@ -101,25 +142,28 @@ function create({ db, env = process.env, includedAi, near = defaultNear, now = (
     // Counted before it goes, so questions sent together cannot pass the limit.
     counts.set(who, had + 1); total.asks++;
     const back = () => { counts.set(who, Math.max(0, (counts.get(who) || 1) - 1)); total.asks = Math.max(0, total.asks - 1); };
+    const counted = async () => { await count('asks'); if (!had) await count('askers'); if (had + 1 === perVisitor) await count('capped'); };
+    let pieces = 0;
     try {
       const { conn, model } = await connection();
       const instruction = { role: 'system', content: near.seal(INSTRUCTION, Buffer.from(asked.key, 'hex')) };
-      // Without thinking: the answer is short, and comes in half the time.
-      const res = await near.relay(conn, { model, max_tokens: MAX_TOKENS, chat_template_kwargs: { enable_thinking: false }, messages: [instruction, ...asked.messages] },
-        { modelKey: asked.key, clientKey: asked.client }, { signal: AbortSignal.timeout(60000) });
-      const json = await res.json().catch(() => null);
-      const content = res.ok ? json?.choices?.[0]?.message?.content : null;
-      if (typeof content !== 'string' || !content) {
+      // Without thinking: the answer is short, and its first word comes at once.
+      const res = await answered(conn, { model, max_tokens: MAX_TOKENS, chat_template_kwargs: { enable_thinking: false }, messages: [instruction, ...asked.messages] },
+        { modelKey: asked.key, clientKey: asked.client }, signal, chunk => {
+          const piece = chunk?.choices?.[0]?.delta?.content;
+          if (typeof piece === 'string' && piece) { pieces++; onPiece(piece); }
+        });
+      if (!res.ok || !pieces) {
         back();
         if (!res.ok) includedAi.forAsking.again();
         console.warn('[ask] no answer:', res.ok ? 'an empty reply' : `HTTP ${res.status}`);
         return { status: 503, body: { error: 'busy' } };
       }
-      await count('asks');
-      if (!had) await count('askers');
-      if (had + 1 === perVisitor) await count('capped');
-      return { status: 200, body: { content, left: perVisitor - had - 1 } };
+      await counted();
+      return { status: 200, body: { left: perVisitor - had - 1 } };
     } catch (e) {
+      // Someone who leaves part way through an answer has still asked.
+      if (pieces && signal?.aborted) { await counted(); return { status: 499, body: { error: 'left' } }; }
       back();
       // Encrypted to a key the sealed hardware has replaced: the page encrypts again.
       if (e.code === 'near_other_key') return { status: 409, body: { key: e.key } };
@@ -135,10 +179,28 @@ function create({ db, env = process.env, includedAi, near = defaultNear, now = (
       try { return res.json({ key: await key(), left: left(req.ip), of: perVisitor, name: includedAi.current().name }); }
       catch (e) { console.warn('[ask] no key:', e.reason || e.message); return res.status(503).json({ error: 'busy' }); }
     });
+    // The answer goes to the page as it is written: an event for each piece
+    // ({ c }), then how it ended ({ done, left } or { error }). A request that
+    // gets no answer at all is answered in JSON, with its status.
     app.post('/api/ask', async (req, res) => {
       res.set('Cache-Control', 'no-store');
-      const out = await ask(req.body, req.ip).catch(e => { console.error('[ask]', e.message); return { status: 503, body: { error: 'busy' } }; });
-      res.status(out.status).json(out.body);
+      const gone = new AbortController();
+      res.on('close', () => { if (!res.writableEnded) gone.abort(new Error('the visitor left')); });
+      res.on('error', () => {});
+      let started = false;
+      const event = o => { if (!res.destroyed) res.write('data: ' + JSON.stringify(o) + '\n\n'); };
+      const out = await ask(req.body, req.ip, piece => {
+        if (!started) {
+          started = true;
+          // no-transform and X-Accel-Buffering: nothing on the way holds pieces back to compress or batch them.
+          res.status(200).set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' });
+          res.flushHeaders();
+        }
+        event({ c: piece });
+      }, gone.signal).catch(e => { console.error('[ask]', e.message); return { status: 503, body: { error: 'busy' } }; });
+      if (!started) return res.status(out.status).json(out.body);
+      event(out.status === 200 ? { done: true, left: out.body.left } : { error: out.body.error || 'busy' });
+      res.end();
     });
     // Someone who asked went on to the download: counted, nothing else.
     app.post('/api/ask/went', async (req, res) => {

@@ -39,7 +39,7 @@ const ENV = { TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, NEAR_REFRE
 // does next (answer, fail, or have a newer key).
 function hardware() {
   const keys = near.clientKeys();
-  const h = { keys, got: [], warmed: 0, mode: null, refusals: 0 };
+  const h = { keys, got: [], warmed: 0, mode: null, refusals: 0, calls: 0, stopped: [], starts: null, midway: null };
   h.near = {
     seal: near.seal,
     warm: async () => {
@@ -47,13 +47,29 @@ function hardware() {
       if (h.refusals-- > 0) throw Object.assign(new Error('the proof request returned HTTP 401'), { status: 401 });
       return keys.publicHex;
     },
-    relay: async (conn, body, sealed) => {
+    // Answers as it writes: a first empty piece, then the words in three
+    // pieces, each encrypted on its own. h.starts says how long each call
+    // waits before its first piece.
+    relay: async (conn, body, sealed, { signal, onChunk } = {}) => {
+      const call = h.calls++, wait = (h.starts || [])[call] || 0;
+      if (wait) await new Promise((resolve, reject) => { const t = setTimeout(resolve, wait); signal?.addEventListener('abort', () => { clearTimeout(t); h.stopped.push(call); reject(signal.reason); }, { once: true }); });
       if (h.mode === 'down') throw Object.assign(new Error('NEAR AI could not prove its enclave'), { code: 'near_unproven' });
       if (sealed.modelKey !== keys.publicHex) throw Object.assign(new Error('another key'), { status: 409, code: 'near_other_key', key: keys.publicHex });
       if (h.mode === 'refused') return { ok: false, status: 402, json: async () => ({ error: 'spent' }) };
-      h.got.push({ conn, body, sealed, opened: body.messages.map(m => ({ role: m.role, text: near.open(m.content, keys.x25519Secret) })) });
-      const said = h.got.at(-1).opened.at(-1).text;
-      return { ok: true, status: 200, json: async () => ({ id: 'chatcmpl-1', choices: [{ message: { role: 'assistant', content: near.seal('Answer to: ' + said, Buffer.from(sealed.clientKey, 'hex')) } }] }) };
+      assert.equal(body.stream, undefined, 'near-private asks for the stream itself');
+      h.got.push({ call, conn, body, sealed, opened: body.messages.map(m => ({ role: m.role, text: near.open(m.content, keys.x25519Secret) })) });
+      const said = 'Answer to: ' + h.got.at(-1).opened.at(-1).text + (h.starts ? ' (copy ' + (call + 1) + ')' : '');
+      const piece = content => onChunk({ id: 'chatcmpl-1', choices: [{ index: 0, delta: { content } }] });
+      piece('');
+      const third = Math.ceil(said.length / 3);
+      for (const [i, part] of [said.slice(0, third), said.slice(third, 2 * third), said.slice(2 * third)].entries()) {
+        if (i === 1 && h.mode === 'unsigned') throw Object.assign(new Error('NEAR AI\'s reply could not be verified'), { code: 'near_unsigned' });
+        if (i === 1 && h.midway) await h.midway();
+        if (signal?.aborted) throw signal.reason;
+        piece(near.seal(part, Buffer.from(sealed.clientKey, 'hex')));
+      }
+      onChunk({ id: 'chatcmpl-1', choices: [], usage: { completion_tokens: 3 } });
+      return { ok: true, status: 200, json: async () => ({ id: 'chatcmpl-1' }) };
     },
   };
   return h;
@@ -63,11 +79,19 @@ async function setup({ env = {}, clock } = {}) {
   await db.query('TRUNCATE site_asks, site_ask_key, near_session');
   const provider = nearAi(), h = hardware();
   const ai = includedAi.create({ db, env: { ...ENV, ...env }, request: provider.request });
-  const ask = asking.create({ db, env: { ...ENV, ...env }, includedAi: ai, near: h.near, newKeyWait: 1, ...(clock ? { now: clock } : {}) });
+  const ask = asking.create({ db, env: { ...ENV, ...env }, includedAi: ai, near: h.near, newKeyWait: 1, secondAfter: 40, ...(clock ? { now: clock } : {}) });
   return { ask, ai, provider, h };
 }
 // What the page does with a conversation: every turn encrypted to the key
 // closedhand.com gave it, and a key of its own for the answer.
+// Asks, and reads the pieces of the answer as the page would.
+async function answer(ask, sent, ip, signal) {
+  const pieces = [];
+  const out = await ask.ask(sent.body, ip, piece => pieces.push(piece), signal);
+  let text = '';
+  for (const piece of pieces) text += await page.open(piece, sent.mine.secret);
+  return { ...out, pieces, text };
+}
 async function fromPage(key, turns) {
   const mine = page.keys();
   const messages = [];
@@ -108,12 +132,13 @@ test('a question goes to the sealed hardware encrypted, with closedhand.com\'s i
   const key = await ask.key();
   assert.equal(key, h.keys.publicHex, 'the page is given the proven key');
   const question = 'Is the Fixture Street bridge safe to cross?';
-  const { mine, body } = await fromPage(key, [question]);
-  const out = await ask.ask(body, '203.0.113.7');
+  const asked = await fromPage(key, [question]), { mine } = asked;
+  const out = await answer(ask, asked, '203.0.113.7');
   assert.equal(out.status, 200);
-  assert.equal(out.body.left, 4);
-  assert.match(out.body.content, /^[0-9a-f]+$/, 'closedhand.com hands back ciphertext');
-  assert.equal(await page.open(out.body.content, mine.secret), 'Answer to: ' + question);
+  assert.deepEqual(out.body, { left: 4 });
+  assert.equal(out.pieces.length, 3, 'as it is written, the empty first piece left out');
+  assert.ok(out.pieces.every(p => /^[0-9a-f]+$/.test(p)), 'closedhand.com hands on ciphertext');
+  assert.equal(out.text, 'Answer to: ' + question, 'which the page\'s own code opens, piece by piece');
 
   const sent = h.got[0];
   assert.doesNotMatch(JSON.stringify(sent.body), /Fixture Street|uncensored LLM/, 'nothing readable in what closedhand.com carried');
@@ -206,6 +231,50 @@ test('a question that could not be answered is not counted: a new key at the sea
   assert.ok(ai);
 });
 
+test('an answer the sealed hardware does not sign for, or that stops part way, is taken back and not counted; someone who leaves part way has asked', async () => {
+  const { ask, h } = await setup();
+  const key = await ask.key();
+  h.mode = 'unsigned';
+  const unsigned = await answer(ask, await fromPage(key, ['Signed for only when whole']), '203.0.113.9');
+  assert.deepEqual([unsigned.status, unsigned.body.error, unsigned.pieces.length], [503, 'busy', 1], 'a piece had gone: the page takes it back');
+  assert.equal(ask.left('203.0.113.9'), 5);
+  assert.deepEqual(await today(), { asks: 0, askers: 0, capped: 0, went: 0 });
+  h.mode = null;
+  const gone = new AbortController();
+  h.midway = async () => gone.abort(new Error('the visitor left'));
+  const left = await answer(ask, await fromPage(key, ['Read half of']), '203.0.113.9', gone.signal);
+  assert.deepEqual([left.status, left.pieces.length], [499, 1]);
+  assert.equal(ask.left('203.0.113.9'), 4, 'or closing the page early would make every question free');
+  assert.deepEqual(await today(), { asks: 1, askers: 1, capped: 0, went: 0 });
+});
+
+test('a question with no word after a few seconds is asked again beside the first: whichever starts first is the answer, and the other is stopped', async () => {
+  const { ask, h } = await setup();
+  const key = await ask.key();
+  // The first copy is slow to start: the second answers, and the first is stopped.
+  h.starts = [400, 0];
+  const second = await answer(ask, await fromPage(key, ['Slow to start']), '203.0.113.10');
+  assert.equal(second.text, 'Answer to: Slow to start (copy 2)');
+  assert.deepEqual(h.stopped, [0], 'the copy that never started is stopped');
+  // The first starts just as the second goes out: the first is the answer, alone.
+  h.calls = 0; h.stopped = []; h.starts = [60, 400];
+  const first = await answer(ask, await fromPage(key, ['Started in time']), '203.0.113.10');
+  assert.equal(first.text, 'Answer to: Started in time (copy 1)', 'never two answers mixed');
+  assert.deepEqual(h.stopped, [1]);
+  // A quick answer is asked once.
+  h.calls = 0; h.stopped = []; h.starts = [0];
+  assert.equal((await answer(ask, await fromPage(key, ['Quick']), '203.0.113.10')).text, 'Answer to: Quick (copy 1)');
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(h.calls, 1);
+  // One that fails at once is not asked again.
+  h.calls = 0; h.mode = 'down';
+  assert.equal((await answer(ask, await fromPage(key, ['While it is down']), '203.0.113.10')).status, 503);
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(h.calls, 1);
+  assert.equal(ask.left('203.0.113.10'), 2, 'three answers counted, however many copies went');
+  assert.deepEqual(await today(), { asks: 3, askers: 1, capped: 0, went: 0 });
+});
+
 test('a key just made is used for nothing until the provider takes it; a key kept from before is not waited for', async () => {
   const { ask, provider, h } = await setup();
   h.refusals = 2;
@@ -266,9 +335,18 @@ test('the routes: the key and what is left, an answer, and going on to the downl
     const hello = await (await fetch(at + '/api/ask')).json();
     assert.deepEqual([hello.left, hello.of, hello.name], [5, 5, 'DeepSeek V4.1 Flash Abliterated']);
     const { mine, body } = await fromPage(hello.key, ['Asked over the wire']);
-    const res = await fetch(at + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    assert.equal(res.headers.get('cache-control'), 'no-store');
-    assert.equal(await page.open((await res.json()).content, mine.secret), 'Answer to: Asked over the wire');
+    const post = sent => fetch(at + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sent) });
+    const res = await post(body);
+    assert.equal(res.headers.get('cache-control'), 'no-store, no-transform');
+    assert.match(res.headers.get('content-type'), /^text\/event-stream/);
+    const events = (await res.text()).split('\n\n').filter(Boolean).map(e => JSON.parse(e.replace(/^data: /, '')));
+    assert.deepEqual(events.at(-1), { done: true, left: 4 }, 'how it ended comes last');
+    let text = '';
+    for (const e of events.slice(0, -1)) text += await page.open(e.c, mine.secret);
+    assert.equal(text, 'Answer to: Asked over the wire');
+    // A request that gets no answer is told so in JSON, with its status.
+    const refused = await post({ ...body, key: 'no key' });
+    assert.deepEqual([refused.status, refused.headers.get('content-type').split(';')[0], (await refused.json()).error], [400, 'application/json', 'That request could not be read.']);
     assert.equal((await (await fetch(at + '/api/ask')).json()).left, 4);
     await went(); await went();
     assert.equal((await today()).went, 1);
