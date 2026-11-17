@@ -387,6 +387,8 @@ test('the page: the box and its script are on the home page, and what it says is
   // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot: the download unlocks it.
   assert.match(asking.INSTRUCTION, /it generates images, takes actions for them and works with their mail, calendar, files and whatever else they connect/);
   assert.match(asking.INSTRUCTION, /never say that Closedhand cannot do it: say in one sentence that downloading Closedhand, below on this page, unlocks it/);
+  // And only then: an answer it can give here carries no line about downloading.
+  assert.match(asking.INSTRUCTION, /Say that only then: a question you can answer here gets its answer alone, with no mention of downloading\.$/);
   // A page left open over a night or a restart holds more conversation than closedhand.com takes:
   // it sends the latest of it, never a request that can only be turned away.
   assert.match(script, /turns = turns\.slice\(-\(Math\.max\(1, state\.of\) \* 2 - 1\)\);/);
