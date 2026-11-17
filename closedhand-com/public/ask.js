@@ -77,6 +77,9 @@
     }
     return {
       add: function (piece) {
+        // No emdashes in anything people read: a spaced hyphen, as Closedhand writes.
+        piece = piece.replace(/\s*\u2014\s*/g, ' - ');
+        if (/ $/.test(text)) piece = piece.replace(/^ +/, '');
         if (!text) piece = piece.replace(/^\s+/, '');
         if (!piece) return;
         text += piece;
@@ -106,43 +109,45 @@
     };
   }
 
-  function link(words, act) {
-    var b = document.createElement('button');
-    b.type = 'button'; b.textContent = words;
-    b.addEventListener('click', act);
-    return b;
-  }
   function went() { if (state.turns.length) fetch('/api/ask/went', { method: 'POST' }).catch(function () {}); }
   // Where a conversation leads: Closedhand itself. A computer has the
-  // download beside it; a phone can send its owner the link.
+  // download just below, so the button points there; a phone can send its
+  // owner the link.
+  var DOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
   function onward() {
+    var b = document.createElement('button');
+    b.type = 'button';
     if (!handheld) {
-      return link('Download Closedhand', function () {
+      b.innerHTML = '<span>Download below</span>' + DOWN;
+      b.addEventListener('click', function () {
         var ways = byId('ways'), dl = byId('macAppLink');
         if (ways) ways.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
         if (dl) dl.focus({ preventScroll: true });
       });
+      return b;
     }
-    return link('Send yourself the link', function (e) {
+    b.textContent = 'Send yourself the link';
+    b.addEventListener('click', function () {
       went();
-      var here = 'https://closedhand.com/', b = e.currentTarget;
+      var here = 'https://closedhand.com/';
       if (navigator.share) return navigator.share({ title: 'Closedhand', url: here }).catch(function () {});
       if (navigator.clipboard) navigator.clipboard.writeText(here).then(function () { b.textContent = 'Link copied'; }, function () {});
     });
+    return b;
   }
   function say(lead, words) {
     next.textContent = '';
-    if (lead) { var strong = document.createElement('strong'); strong.textContent = lead; next.appendChild(strong); }
-    next.appendChild(document.createTextNode(words + ' '));
+    var line = document.createElement('p');
+    if (lead) { var strong = document.createElement('strong'); strong.textContent = lead; line.appendChild(strong); }
+    line.appendChild(document.createTextNode(words));
+    next.appendChild(line);
     next.appendChild(onward());
     next.hidden = false;
   }
   var FREE = 'The first 14 days are free and need no card.';
   function after() {
     if (state.left === 0) return over();
-    say('', handheld
-      ? 'That was the LLM on its own. On a computer, Closedhand can take actions agentically and work with everything you connect.'
-      : 'That was the LLM on its own. On your computer, Closedhand can take actions agentically and work with everything you connect.');
+    say('', 'Generate images, take actions agentically and work with anything you connect.');
     if (state.left === 1) note.textContent = 'One question left here today.';
   }
   function over() {

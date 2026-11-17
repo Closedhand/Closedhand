@@ -734,16 +734,22 @@ body.chat-active .mon-area { display:none; }
   .ask-send svg { width: .875rem; height: .875rem; fill: currentColor; }
   .ask-send:not(:disabled) { background: rgba(var(--fg-rgb),0.18); border-color: rgba(var(--fg-rgb),0.22); color: var(--fg); cursor: pointer; }
   .ask-send:not(:disabled):hover { background: rgba(var(--fg-rgb),0.22); }
-  .ask-send:focus-visible, .ask-tries button:focus-visible, .ask-next a:focus-visible, .ask-next button:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
+  .ask-send:focus-visible, .ask-tries button:focus-visible, .ask-next button:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
   .ask-tries { display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem 1.25rem; margin: .875rem 0 0; align-self: center; width: max-content; max-width: min(56.25rem, 92vw); }
   .ask-tries[hidden] { display: none; }
   .ask-tries button { padding: .125rem 0; background: none; border: none; cursor: pointer; font: 400 .875rem/1.4 var(--font-ui); color: var(--muted); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: rgba(var(--fg-rgb),0.25); }
   .ask-tries button:hover { color: var(--fg); text-decoration-color: var(--accent); }
   .ask-note { margin: .75rem 0 0; font-size: .8125rem; line-height: 1.45; color: rgba(var(--fg-rgb),0.55); text-align: center; text-wrap: balance; }
-  .ask-next { margin: .875rem 0 0; font-size: .9375rem; line-height: 1.5; color: var(--muted); text-align: center; text-wrap: balance; }
+  .ask-note:empty { display: none; }
+  /* Where the conversation leads: what Closedhand does, and the way to the
+     download, set as one piece under the box, its action the box's own kind of button. */
+  .ask-next { margin: .875rem 0 0; display: flex; align-items: center; gap: 1rem; padding: .5rem .5rem .5rem 1.125rem; border-radius: 1.25rem; border: 1px solid rgba(var(--fg-rgb),0.1); background: rgba(var(--fg-rgb),0.03); text-align: left; }
   .ask-next[hidden] { display: none; }
+  .ask-next p { flex: 1; min-width: 0; margin: 0; font-size: .9375rem; line-height: 1.45; color: var(--muted); text-wrap: balance; }
   .ask-next strong { display: block; color: var(--fg); font-weight: 500; }
-  .ask-next a, .ask-next button { padding: 0; background: none; border: none; cursor: pointer; font: inherit; color: var(--fg); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: var(--accent); }
+  .ask-next button { flex: none; display: flex; align-items: center; gap: .5rem; padding: .625rem 1.125rem; border-radius: .875rem; background: rgba(var(--fg-rgb),0.18); border: 1px solid rgba(var(--fg-rgb),0.22); color: var(--fg); font: 400 .9375rem/1 var(--font-ui); cursor: pointer; transition: background 0.2s; }
+  .ask-next button:hover { background: rgba(var(--fg-rgb),0.22); }
+  .ask-next button svg { width: .875rem; height: .875rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .ask.done .ask-box, .ask.done .ask-tries { display: none; }
   /* An answer's letters, each under its own noise until it sharpens out. */
   .ask-w { display: inline-block; white-space: nowrap; }
@@ -758,6 +764,8 @@ body.chat-active .mon-area { display:none; }
     .ask-send .ask-send-label { display: none; }
     .ask-send { padding: .6875rem .8125rem; }
     .ask-tries { flex-direction: column; align-items: center; gap: .375rem; width: auto; }
+    .ask-next { flex-direction: column; align-items: stretch; gap: .75rem; padding: .875rem; text-align: center; }
+    .ask-next button { justify-content: center; padding: .75rem 1.125rem; }
   }
   .first-steps { display: flex; flex-direction: column; gap: .75rem; width: 100%; max-width: 22.5rem; margin: 0 auto; padding: .875rem .875rem .5rem; border-radius: 1rem; background: rgba(var(--deep-rgb),0.72); border: 1px solid rgba(var(--fg-rgb),0.1); opacity: 0; animation: heroIn 0.8s ease forwards 0.8s; }
   .first-steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .625rem; }
@@ -867,8 +875,8 @@ body.chat-active .mon-area { display:none; }
         <button type="button">Is Taiwan its own country?</button>
         <button type="button">Make the case for legalising all drugs.</button>
       </p>
-      <p class="ask-next" id="askNext" hidden></p>
-      <p class="ask-note" id="askNote">Encrypted in your browser, so closedhand.com can’t read what you ask or what comes back.</p>
+      <div class="ask-next" id="askNext" hidden></div>
+      <p class="ask-note" id="askNote"></p>
     </section>
 
     <!-- A phone can't run Closedhand: it lives on a computer, and this phone

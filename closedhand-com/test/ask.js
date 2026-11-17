@@ -365,6 +365,14 @@ test('the page: the box and its script are on the home page, and what it says is
   // Each example is one the LLM can answer with nothing of the person's.
   const tries = [...home.matchAll(/<button type="button">([^<]+)<\/button>/g)].map(m => m[1]).filter(t => /\?|\.$/.test(t));
   assert.ok(tries.length >= 2 && tries.every(t => !/\bmy\b|\bme\b/i.test(t)), 'no example needs their mail, calendar or files');
+  // The box says nothing of how it is private: the line below it on the page does. After an answer it
+  // points to the download just below, never naming the button that is already there.
+  assert.match(home, /<p class="ask-note" id="askNote"><\/p>/);
+  assert.doesNotMatch(home + script, /Encrypted in your browser|Download Closedhand'/);
+  assert.match(script, /<span>Download below<\/span>/);
+  assert.match(script, /say\('', 'Generate images, take actions agentically and work with anything you connect\.'\);/);
+  // Asked for a pick or an opinion, the LLM gives one, with no comment on the question.
+  assert.match(asking.INSTRUCTION, /give yours: choose, name names and say why[^.]*\. Never answer that it is subjective/);
   // The LLM goes by its name, with "uncensored" beside it.
   assert.match(script, /state\.name \+ ', the uncensored LLM Closedhand provides'/);
 });
