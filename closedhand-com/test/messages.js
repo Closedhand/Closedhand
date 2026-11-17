@@ -126,6 +126,24 @@ test('the website answers POST /api/message and every page people browse carries
   } finally { server.close(); stopMail(); }
 });
 
+// Railway's edge sometimes adds a hop of its own, and the address two hops
+// back is then one of Cloudflare's, a different one each time.
+test('behind Cloudflare a visitor is known by the address Cloudflare gives, however many hops the request took', async () => {
+  await fresh();
+  const secret = 'e'.repeat(48);
+  const { app, stopMail } = require('../server').createApp({ db, env: { ...process.env, SESSION_SECRET: 'x'.repeat(32), BASE_URL: 'http://localhost', EDGE_SECRET: secret }, startMailWorker: () => null });
+  const server = app.listen(0);
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const post = (visitor, hops) => fetch(base + '/api/message', { method: 'POST', body: JSON.stringify({ message: 'Hello' }),
+      headers: { 'Content-Type': 'application/json', 'X-ClosedHand-Edge': secret, 'CF-Connecting-IP': visitor, 'X-Forwarded-For': hops } });
+    for (let n = 1; n <= 5; n++) assert.equal((await post('203.0.113.50', `203.0.113.50, 198.51.100.${n}, 192.0.2.7`)).status, 200, 'message ' + n);
+    assert.equal((await post('203.0.113.50', '203.0.113.50, 198.51.100.99, 192.0.2.7')).status, 429, 'the same visitor through another of Cloudflare\'s addresses');
+    assert.equal((await post('203.0.113.51', '203.0.113.51, 198.51.100.1, 192.0.2.7')).status, 200, 'someone else through an address already seen');
+    assert.equal((await post('203.0.113.52', '203.0.113.52, 198.51.100.1')).status, 200, 'and with one hop fewer');
+  } finally { server.close(); stopMail(); }
+});
+
 test('the form says only its agreed words, carries the brush icons as drawn, and sends to /api/message', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'message-us.js'), 'utf8');
   for (const words of ['Send us a message', 'Questions, ideas or something not working: we read every message.', 'Your message',

@@ -81,7 +81,7 @@ Migrations in `migrations/` apply on start.
 | `ASK_PER_DAY` | The day's total of those questions for everyone (default 500), which is what holds their cost: a short answer costs about $0.0002. `0` turns the box off |
 | `ASK_KEY_USD` | The spending limit on closedhand.com's own key for those questions (default 20). It only stands behind the day's total; the key is made again once nearly spent |
 | `INCLUDED_AI_MODEL_NAME` | The chat model's name as people read it in Settings and setup (default `DeepSeek V4.1 Flash Abliterated`). Change it with `INCLUDED_AI_MODELS` |
-| `TRUSTED_PROXY_HOPS` | Proxies in front that add X-Forwarded-For (default 2: Cloudflare, then Railway) |
+| `TRUSTED_PROXY_HOPS` | Proxies in front that add X-Forwarded-For (default 2: Cloudflare, then Railway). With `EDGE_SECRET` set, the visitor's address is the one Cloudflare gives (CF-Connecting-IP) instead |
 | `ASSISTANT_EMAIL_ENABLED`, `ASSISTANT_EMAIL_RELEASED`, `ASSISTANT_EMAIL_PRODUCTION` | All `1` to offer assistant email; any other value keeps it off |
 | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | The mail transport's AWS user: send through SES, read the mail queues and bucket, invoke the guard |
 | `ASSISTANT_EMAIL_INBOUND_QUEUE`, `ASSISTANT_EMAIL_INBOUND_TOPIC` | Where SES announces incoming mail |

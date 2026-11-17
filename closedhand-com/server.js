@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const net = require('node:net');
 const express = require('express');
 const { createSessions, equal } = require('./lib/session');
 
@@ -60,7 +61,9 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   app.disable('x-powered-by');
   // Visitors arrive through Cloudflare, then Railway's edge, each adding one
   // X-Forwarded-For entry. Trusting exactly those two hops gives the address
-  // Cloudflare saw, which a visitor cannot forge from their side.
+  // Cloudflare saw, which a visitor cannot forge from their side. With
+  // EDGE_SECRET set, Cloudflare's own word for the address is used instead
+  // (below), as the number of hops is not always the same.
   app.set('trust proxy', Number(env.TRUSTED_PROXY_HOPS || 2));
   app.use((req, res, next) => {
     res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'DENY' });
@@ -75,8 +78,17 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   // secret, are let through.
   if (env.EDGE_SECRET) {
     app.use((req, res, next) => {
-      if (req.path === '/health' || req.path === '/jobs/relay-seen' || equal(req.headers['x-closedhand-edge'], env.EDGE_SECRET)) return next();
-      res.status(403).type('text/plain').send('Please open https://closedhand.com');
+      if (req.path === '/health' || req.path === '/jobs/relay-seen') return next();
+      if (!equal(req.headers['x-closedhand-edge'], env.EDGE_SECRET)) return res.status(403).type('text/plain').send('Please open https://closedhand.com');
+      // Cloudflare says whose request it is (CF-Connecting-IP), writing over
+      // anything a visitor sends under that name, so once the request is
+      // known to come through Cloudflare that is the visitor's address.
+      // Counting X-Forwarded-For hops gave Cloudflare's own addresses as the
+      // visitor's whenever Railway added one more on the way: one visitor then
+      // looked like many, and strangers like one.
+      const seen = String(req.headers['cf-connecting-ip'] || '').trim();
+      if (net.isIP(seen)) Object.defineProperty(req, 'ip', { value: seen });
+      next();
     });
   }
   // Only bug reports, assistant email replies (which may carry attachments)
