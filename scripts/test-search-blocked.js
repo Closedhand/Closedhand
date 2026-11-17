@@ -7,7 +7,7 @@
 // fail, saying so. A stopped task sends the last answer it wrote.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { parseDuckDuckGo, parseDuckDuckGoLite, parseBrave, createFreeSearch, BotCheck } = require("../lib/web-search-fallback");
+const { parseDuckDuckGo, parseDuckDuckGoLite, parseBrave, parseBing, browserGet, HEADERS, createFreeSearch, BotCheck } = require("../lib/web-search-fallback");
 const { writtenAnswer } = require("../lib/task-outcome");
 
 const ddgCheck = `<html><body><form id="challenge-form" class="anomaly-modal__form">
@@ -23,7 +23,14 @@ const braveCheck = `<html><body><h1>Please verify you are human</h1><div id="cap
 const litePage = `<table><tr><td>1.&nbsp;</td><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.harbour-line.example%2Ftimes&amp;rut=2" class='result-link'>Harbour Line timetable</a></td></tr>
 <tr><td>&nbsp;</td><td class='result-snippet'>Boats leave every <b>half hour</b> from the quay.</td></tr></table>`;
 
+const bingPage = `<ol id="b_results"><li class="b_algo" data-id iid=SERP.1><link rel="stylesheet" href="/rp/x.css"/><h2><a target="_blank" href="https://www.bing.com/ck/a?!&amp;&amp;p=ab12&amp;ptn=3&amp;u=a1${Buffer.from("https://quay.example.org/kestrel-timetable").toString("base64url")}&amp;ntb=1" h="ID=SERP,1">Kestrel Point <strong>timetable</strong></a></h2><div class="b_caption"><p class="b_lineclamp2"><span class="news_dt">3 Oct 2026</span>&nbsp;&#0183;&#32;Boats every <strong>40 minutes</strong> from the quay.</p></div></li>
+<li class="b_algo"><h2><a href="https://www.bing.com/images/search?q=kestrel">Images of Kestrel</a></h2></li></ol>`;
+const bingCheck = `<html><body><div id="b_captcha"><p>One last step: please solve the challenge below to continue.</p></div></body></html>`;
+
 test("each engine's results page reads into titles, links and snippets", () => {
+  assert.deepEqual(parseBing(200, bingPage), [
+    { title: "Kestrel Point timetable", url: "https://quay.example.org/kestrel-timetable", snippet: "Boats every 40 minutes from the quay." },
+  ], "the address out of Bing's redirect, without its date, and none of Bing's own pages");
   assert.deepEqual(parseDuckDuckGo(200, ddgPage), [
     { title: "Harbour Line & fares", url: "https://fares.example.org/harbour-line", snippet: "Singles from 4.20 each way · daily." },
   ]);
@@ -43,16 +50,38 @@ test("a check for bots is never read as an empty search", () => {
   assert.throws(() => parseBrave(429, ""), BotCheck);
   assert.throws(() => parseDuckDuckGoLite(200, ddgCheck), BotCheck);
   assert.throws(() => parseDuckDuckGoLite(403, litePage), BotCheck);
+  assert.throws(() => parseBing(200, bingCheck), BotCheck);
+  assert.throws(() => parseBing(429, bingPage), BotCheck);
+});
+
+// A request that said it came from a program was shown checks, and Bing gave
+// it results unrelated to the search: the engines are asked as an ordinary
+// browser asks.
+test("a results page is asked for as an ordinary browser asks for it", async () => {
+  const realFetch = global.fetch;
+  let sent = null;
+  global.fetch = async (url, init) => { sent = { url, headers: init.headers }; return { url, status: 200, text: async () => "<html></html>" }; };
+  try {
+    const got = await browserGet("https://www.bing.com/search?q=kestrel", HEADERS);
+    assert.deepEqual(got, { statusCode: 200, body: "<html></html>" });
+    assert.match(sent.headers["User-Agent"], /^Mozilla\/5\.0 \(Macintosh; Intel Mac OS X [\d_]+\) AppleWebKit\/537\.36 \(KHTML, like Gecko\) Chrome\/\d+/);
+    assert.doesNotMatch(JSON.stringify(sent.headers), /ClosedHand|compatible;/i, "nothing that says it is a program");
+    assert.match(sent.headers.Accept, /^text\/html,application\/xhtml\+xml/);
+    global.fetch = async () => ({ url: "http://127.0.0.1/admin", status: 200, text: async () => "" });
+    await assert.rejects(browserGet("https://www.bing.com/search?q=kestrel", HEADERS), /private\/internal/, "an engine's redirect never leads to this computer's network");
+  } finally { global.fetch = realFetch; }
 });
 
 // A stand-in for the web: each engine's next answer, and a clock to move.
+// An engine a test does not mention is showing a check.
 function world(answers) {
   const asked = [];
   let clock = 0;
   const get = async (url) => {
-    const name = url.includes("lite.duckduckgo") ? "lite" : url.includes("duckduckgo") ? "ddg" : "brave";
+    const name = url.includes("lite.duckduckgo") ? "lite" : url.includes("duckduckgo") ? "ddg" : url.includes("bing.com") ? "bing" : "brave";
     asked.push(name);
-    const next = answers[name].length > 1 ? answers[name].shift() : answers[name][0];
+    const list = answers[name] || [{ statusCode: 200, body: bingCheck }];
+    const next = list.length > 1 ? list.shift() : list[0];
     if (next instanceof Error) throw next;
     return next;
   };
@@ -75,8 +104,8 @@ test("a check rests that engine and the next one answers", quiet(async () => {
   w.pass(16 * 60000);
   w.asked.length = 0;
   const later = await search("harbour line fares");
-  assert.deepEqual(w.asked, ["brave", "lite", "ddg"]);
-  assert.equal(later.source, "DuckDuckGo", "after its rest DuckDuckGo answers again, now Brave and the Lite page are checking");
+  assert.deepEqual(w.asked, ["brave", "lite", "bing", "ddg"]);
+  assert.equal(later.source, "DuckDuckGo", "after its rest DuckDuckGo answers again, now Brave, the Lite page and Bing are checking");
 }));
 
 test("rests grow while an engine keeps checking, and search fails only when every engine is resting", quiet(async () => {
@@ -155,6 +184,16 @@ test("when DuckDuckGo and Brave both check, the Lite page answers", quiet(async 
   assert.deepEqual(w.asked, ["ddg", "brave", "lite"]);
   assert.equal(got.source, "DuckDuckGo Lite");
   assert.equal(got.results[0].url, "https://www.harbour-line.example/times");
+}));
+
+// A Railway server once had DuckDuckGo, Brave and the Lite page all showing
+// it checks at the same moment, and search had nowhere left to go.
+test("when DuckDuckGo, Brave and the Lite page all check, Bing answers", quiet(async () => {
+  const w = world({ ddg: [{ statusCode: 202, body: ddgCheck }], brave: [{ statusCode: 429, body: braveCheck }], lite: [{ statusCode: 202, body: ddgCheck }], bing: [{ statusCode: 200, body: bingPage }] });
+  const got = await createFreeSearch({ get: w.get, now: w.now, wait: w.wait })("kestrel point timetable");
+  assert.deepEqual(w.asked, ["ddg", "brave", "lite", "bing"]);
+  assert.equal(got.source, "Bing");
+  assert.equal(got.results[0].url, "https://quay.example.org/kestrel-timetable");
 }));
 
 // Photos rather than pages come from Wikimedia Commons: still photos only,
