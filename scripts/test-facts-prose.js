@@ -98,6 +98,7 @@ test("what comes in from any connection becomes a Pinned Fact only on the item's
     // over; partly said, only the rest is added; about the person, it joins
     // whichever of their notes it belongs to.
     facts["profile-email"] = { value: "Robin's email is robin@home.example.", category: "profile", subject: "Robin" };
+    facts["health-knee"] = { value: "Robin had a knee operation in 2025.", category: "person", subject: "Robin" };
     const offered = [];
     const fitted = await mod.review("u1", { now: NOW + 21000000, pin: async () => {}, confirm: async () => true, items: items([{ ...words[0], n: 1, at: NOW + 20000000, text: "My numbers: robin@home.example, +44 7000 000000. And Ana's my wife, she's from Lisbon." }]),
       judge: async () => [
@@ -105,7 +106,7 @@ test("what comes in from any connection becomes a Pinned Fact only on the item's
         { key: "profile-contact", category: "profile", subject: "Robin", adds: "Robin's email is robin@home.example and his phone number is +44 7000 000000.", replaces: "", n: 1, quote: "+44 7000 000000", topic: "contact" },
       ],
       fit: async (u, held, notes) => { offered.push([held.key, notes.map((x) => x.key)]); return held.key === "family-partner" ? { note: "family-partner", adds: "" } : { note: "profile-email", adds: "Robin's phone number is +44 7000 000000." }; } });
-    assert.deepEqual(offered, [["family-partner", ["family-partner"]], ["profile-contact", ["profile-email"]]], "each finding beside the notes it could join: its subject's, or all of the person's own");
+    assert.deepEqual(offered, [["family-partner", ["family-partner"]], ["profile-contact", ["profile-email"]]], "each finding beside the notes it could join: its subject's, or the person's own About you notes, never one filed among people under their name");
     assert.deepEqual(fitted.pinned.map((f) => [f.key, f.value]), [["profile-email", "Robin's email is robin@home.example. Robin's phone number is +44 7000 000000."]],
       "a finding the note already says is passed over; the rest joins the note it belongs in, not a second note beside it");
     // Anything but their own words is checked once more beside its item.
