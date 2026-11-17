@@ -66,5 +66,5 @@ test("every loop uses it: background runs, their sub-tasks, scheduled runs and c
   assert.match(agents, /if \(unfinished && retakes < 3\) \{[\s\S]{0,200}addNote\(messages, unfinished\);\n\s*continue;/);
   assert.match(read("lib/automations.js"), /if \(unfinished && retakes < 3\) \{[\s\S]{0,200}addNote\(messages, unfinished\);\n\s*continue;/);
   assert.match(read("lib/task-model.js"), /async function modelCall\(client, params, options = \{\}\) \{\n  return moreRoom\(/);
-  assert.match(read("lib/engine.js"), /response = await require\("\.\/task-model"\)\.moreRoom\(response, apiParams, \(roomier\) => llmClient\.messages\.create\(roomier\)\);/);
+  assert.match(read("lib/engine.js"), /response = await require\("\.\/task-model"\)\.moreRoom\(response, apiParams, \(roomier\) => llmClient\.messages\.create\(roomier, written\.options\(\)\)\);/);
 });

@@ -53,5 +53,7 @@ test("every chat app says when its message was sent", () => {
   assert.equal((read("telegram.js").match(/createTelegramStatusOpts\(chatId, msg\.date \* 1000\)/g) || []).length, 5);
   assert.match(read("telegram.js"), /\.\.\.\(sentAt \? \{ sentAt \} : \{\}\),/);
   assert.match(read("whatsapp-linked.js"), /const sentAt = Number\(msg\.messageTimestamp \|\| 0\) \* 1000 \|\| undefined;/);
-  assert.equal((read("whatsapp-linked.js").match(/_selfJid, \{ sentAt \}\)/g) || []).length, 2);
+  // Text, voice notes and documents each start their turn with it (atWork), which passes it on.
+  assert.equal((read("whatsapp-linked.js").match(/atWork\(key, sentAt\)/g) || []).length, 3);
+  assert.match(read("whatsapp-linked.js"), /function atWork\(keys, sentAt\) \{[\s\S]{0,900}?\.\.\.\(sentAt \? \{ sentAt \} : \{\}\),/);
 });

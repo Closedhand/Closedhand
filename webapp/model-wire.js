@@ -364,6 +364,145 @@ function runnerAway(e) {
   const code = e?.cause?.code || e?.code;
   return e?.status === 503 || ["ECONNREFUSED", "ECONNRESET", "UND_ERR_SOCKET", "UND_ERR_CLOSED"].includes(code) || /fetch failed/i.test(String(e?.message || ""));
 }
+// --- A reply as it is written ---------------------------------------------------
+// With options.onText a request asks its provider for the reply as it is
+// written and hands each stretch of the answer's words to onText as it
+// arrives. What request() returns is the same whole reply either way, put
+// together here from the pieces, so nothing downstream changes; tool calls are
+// only ever read from that whole reply.
+
+// Server-sent events: each one's data, parsed, goes to each.
+async function events(response, each) {
+  const decoder = new TextDecoder();
+  let rest = "";
+  const take = (last) => {
+    for (let m; (m = /\r?\n\r?\n/.exec(rest)) || (last && rest.trim());) {
+      const event = m ? rest.slice(0, m.index) : rest;
+      rest = m ? rest.slice(m.index + m[0].length) : "";
+      const data = event.split(/\r?\n/).filter(l => l.startsWith("data:")).map(l => l.slice(5).trimStart()).join("\n");
+      if (!data || data === "[DONE]") continue;
+      let json;
+      try { json = JSON.parse(data); } catch { continue; }
+      each(json);
+    }
+  };
+  for await (const chunk of response.body) { rest += decoder.decode(chunk, { stream: true }); take(false); }
+  take(true);
+}
+// The answer's words without what some models think aloud between <think>
+// tags, which can open or close anywhere across pieces.
+function visible(onText) {
+  let hidden = false, held = "";
+  return (text) => {
+    held += text;
+    let out = "";
+    for (;;) {
+      const tag = hidden ? "</think>" : "<think>", at = held.indexOf(tag);
+      if (at < 0) break;
+      if (!hidden) out += held.slice(0, at);
+      held = held.slice(at + tag.length);
+      hidden = !hidden;
+    }
+    // What could be the start of a tag waits for the next piece.
+    const tag = hidden ? "</think>" : "<think>";
+    let keep = 0;
+    for (let n = Math.min(tag.length - 1, held.length); n > 0; n--) if (tag.startsWith(held.slice(-n))) { keep = n; break; }
+    if (!hidden) out += held.slice(0, held.length - keep);
+    held = held.slice(held.length - keep);
+    if (out) { try { onText(out); } catch (_) { /* the listener's own trouble */ } }
+  };
+}
+const cutShort = () => Object.assign(new Error("The model provider's reply stopped part way."), { status: 502, code: "reply_cut_short" });
+// OpenAI's shape, which most providers speak: pieces of the message (delta).
+function openaiPieces(onText) {
+  const message = { role: "assistant", content: "" }, calls = [], details = [];
+  let id = null, model = null, usage = null, finish = null;
+  const say = visible(onText);
+  return {
+    take(piece) {
+      id = id || piece.id; model = model || piece.model;
+      if (piece.usage) usage = piece.usage;
+      const choice = piece.choices?.[0];
+      if (!choice) return;
+      if (choice.finish_reason) finish = choice.finish_reason;
+      const d = choice.delta || {};
+      if (typeof d.content === "string" && d.content) { message.content += d.content; say(d.content); }
+      if (typeof d.reasoning_content === "string") message.reasoning_content = (message.reasoning_content || "") + d.reasoning_content;
+      // OpenRouter's reasoning, kept to hand back: each entry arrives in stretches under its index.
+      for (const [n, part] of (Array.isArray(d.reasoning_details) ? d.reasoning_details : []).entries()) {
+        const i = Number.isInteger(part?.index) ? part.index : n, kept = details[i] = details[i] || {};
+        for (const [k, v] of Object.entries(part || {})) kept[k] = ["text", "summary", "data"].includes(k) && typeof v === "string" && typeof kept[k] === "string" ? kept[k] + v : v ?? kept[k];
+      }
+      // A tool call: its id and name once, its arguments a stretch at a time.
+      for (const tc of Array.isArray(d.tool_calls) ? d.tool_calls : []) {
+        const i = Number.isInteger(tc.index) ? tc.index : tc.id || tc.function?.name ? calls.length : Math.max(0, calls.length - 1);
+        const call = calls[i] = calls[i] || { id: "", type: "function", function: { name: "", arguments: "" } };
+        if (tc.id) call.id = tc.id;
+        if (tc.function?.name && tc.function.name !== call.function.name) call.function.name += tc.function.name;
+        if (typeof tc.function?.arguments === "string") call.function.arguments += tc.function.arguments;
+      }
+    },
+    whole() {
+      if (!finish) throw cutShort();
+      if (calls.some(Boolean)) message.tool_calls = calls.filter(Boolean);
+      if (details.some(Boolean)) message.reasoning_details = details.filter(Boolean);
+      return { id, model, choices: [{ index: 0, message, finish_reason: finish }], usage };
+    },
+  };
+}
+// Anthropic's events: the message, then each block of it in stretches.
+function anthropicPieces(onText) {
+  const blocks = [], json = [];
+  let message = null, failed = null;
+  return {
+    take(event) {
+      const block = blocks[event.index], d = event.delta || {};
+      if (event.type === "message_start") message = { ...event.message };
+      else if (event.type === "content_block_start") { blocks[event.index] = { ...event.content_block }; if (event.content_block?.type === "tool_use") json[event.index] = ""; }
+      else if (event.type === "content_block_delta" && block) {
+        if (d.type === "text_delta") { block.text = (block.text || "") + d.text; try { onText(d.text); } catch (_) { /* the listener's own trouble */ } }
+        else if (d.type === "input_json_delta") json[event.index] += d.partial_json || "";
+        else if (d.type === "thinking_delta") block.thinking = (block.thinking || "") + d.thinking;
+        else if (d.type === "signature_delta") block.signature = d.signature;
+      } else if (event.type === "content_block_stop" && block && json[event.index] !== undefined) {
+        try { block.input = json[event.index] ? JSON.parse(json[event.index]) : {}; } catch { failed = failed || cutShort(); }
+      } else if (event.type === "message_delta") message = { ...message, ...d, usage: { ...message?.usage, ...event.usage } };
+      else if (event.type === "error") failed = Object.assign(new Error("The model provider returned an error part way through its reply."), { status: event.error?.type === "overloaded_error" ? 529 : 500 });
+    },
+    whole() {
+      if (failed) throw failed;
+      if (!message?.stop_reason) throw cutShort();
+      return { ...message, content: blocks.filter(Boolean) };
+    },
+  };
+}
+// Gemini's: a whole response each time, holding the next parts.
+function geminiPieces(onText) {
+  const parts = [];
+  let usage = null, finish = null;
+  return {
+    take(event) {
+      if (event.usageMetadata) usage = event.usageMetadata;
+      const candidate = event.candidates?.[0];
+      if (!candidate) return;
+      if (candidate.finishReason) finish = candidate.finishReason;
+      for (const part of candidate.content?.parts || []) {
+        const last = parts.at(-1), words = typeof part.text === "string" && !part.functionCall;
+        // Stretches of the same text join up; anything a later stretch carries (its signature) stays with it.
+        if (words && last && typeof last.text === "string" && !last.functionCall && !!last.thought === !!part.thought) Object.assign(last, part, { text: last.text + part.text });
+        else parts.push({ ...part });
+        if (words && part.text && !part.thought) { try { onText(part.text); } catch (_) { /* the listener's own trouble */ } }
+      }
+    },
+    whole() {
+      if (!finish) throw cutShort();
+      return { candidates: [{ content: { role: "model", parts }, finishReason: finish }], usageMetadata: usage };
+    },
+  };
+}
+// A provider that would not write its reply out is asked for it whole from then on.
+const wholeOnly = new Set();
+
 // Told of every request, where the process wants to know (the bot counts
 // them as Closedhand being busy, lib/idle.js).
 let _onRequest = null;
@@ -392,7 +531,9 @@ async function request(conn, params, options = {}) {
   const controls = policy.effortOptions(cap, effort, max);
   if (controls.reasoning?.enabled === false && mustThink.has(model)) controls.reasoning = { effort: "low" };
   const headers = { "Content-Type": "application/json" };
-  let url, body, convert;
+  const written = [conn.backend, conn.baseUrl, model].join("|");
+  const onText = typeof options.onText === "function" && !wholeOnly.has(written) ? options.onText : null;
+  let url, body, convert, live = null;
   if (conn.backend === "anthropic") {
     headers["x-api-key"] = conn.apiKey;
     headers["anthropic-version"] = "2023-06-01";
@@ -409,6 +550,7 @@ async function request(conn, params, options = {}) {
     if (params.tool_choice) body.tool_choice = params.tool_choice;
     markCache(body);
     url = conn.baseUrl + "/messages";
+    if (onText) { body.stream = true; live = anthropicPieces(onText); }
     convert = data => ({ ...data, content: data.content?.map(b => ["thinking", "redacted_thinking"].includes(b.type) ? { ...b, _identity: id } : b) });
   } else if (conn.backend === "gemini") {
     const source = structuredClone(params.messages || []);
@@ -419,7 +561,8 @@ async function request(conn, params, options = {}) {
     if (params.tools?.length) body.tools = [{ functionDeclarations: params.tools.map(convertToolToGemini) }];
     if (params.tool_choice?.type === "any") body.toolConfig = { functionCallingConfig: { mode: "ANY" } };
     headers["x-goog-api-key"] = conn.apiKey;
-    url = conn.baseUrl + "/models/" + encodeURIComponent(model) + ":generateContent";
+    url = conn.baseUrl + "/models/" + encodeURIComponent(model) + (onText ? ":streamGenerateContent?alt=sse" : ":generateContent");
+    if (onText) live = geminiPieces(onText);
     convert = data => convertResponseFromGemini(data, id);
   } else {
     if (conn.apiKey) headers.Authorization = "Bearer " + conn.apiKey;
@@ -430,6 +573,8 @@ async function request(conn, params, options = {}) {
       body.tool_choice = params.tool_choice?.type === "any" ? "required" : params.tool_choice?.type === "tool"
         ? { type: "function", function: { name: params.tool_choice.name } } : "auto";
     }
+    // include_usage: the last piece then says what the reply used.
+    if (onText) { body.stream = true; body.stream_options = { include_usage: true }; live = openaiPieces(onText); }
     url = conn.baseUrl + "/chat/completions"; convert = data => convertResponseFromOpenAI(data, id);
   }
   named(conn, headers);
@@ -439,7 +584,9 @@ async function request(conn, params, options = {}) {
   const signal = options.signal || AbortSignal.timeout(180000);
   // NEAR AI: proven, end-to-end encrypted and signature-checked (near-private.js).
   const near = require("./near-private");
-  const response = conn.backend === "custom" && near.isNear(conn) ? await near.complete(conn, body, { signal })
+  // Its pieces are opened on this computer as they arrive; the reply is used
+  // only once the sealed hardware has signed for all of it.
+  const response = conn.backend === "custom" && near.isNear(conn) ? await near.complete(conn, body, { signal, ...(live ? { onChunk: live.take } : {}) })
     : await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal, redirect: "error" });
   // What the provider says is left this minute, for whoever is pacing calls.
   if (options.onLimits) { try { options.onLimits(limitsFrom(response.headers), response.status); } catch (_) {} }
@@ -457,6 +604,15 @@ async function request(conn, params, options = {}) {
       mustThink.add(model);
       return request(conn, params, options);
     }
+    // Asked to write its reply out and refusing the request for a reason not
+    // known above: asked again for the whole reply, and from then on if that
+    // is what it takes.
+    if (live && [400, 404, 405, 415, 422, 501].includes(response.status)) {
+      const whole = await request(conn, params, { ...options, onText: null });
+      wholeOnly.add(written);
+      console.warn(`[model-wire] ${conn.provider || conn.backend} would not write its reply out (HTTP ${response.status}); asking for whole replies`);
+      return whole;
+    }
     // The provider's own message goes to the log, trimmed, so a 400 can be
     // diagnosed; never to the user, and never the body, which can carry the request.
     if (detail.error?.message) console.warn(`[model-wire] ${conn.provider || conn.backend} HTTP ${response.status}: ${hideKeys(detail.error.message, conn).slice(0, 200)}`);
@@ -467,7 +623,9 @@ async function request(conn, params, options = {}) {
     Object.assign(error, refusal(response, detail, said));
     throw error;
   }
-  return convert(await response.json());
+  if (!live) return convert(await response.json());
+  if (!(conn.backend === "custom" && near.isNear(conn))) await events(response, live.take);
+  return convert(live.whole());
 }
 // How much a provider says is left, from the headers it sends with every
 // reply: Anthropic's anthropic-ratelimit-*, and the x-ratelimit-* that

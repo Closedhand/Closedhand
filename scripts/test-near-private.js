@@ -120,16 +120,22 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
       const mine = xSecret(MODEL.seed), toClient = (t) => near.seal(t, Buffer.from(req.headers["x-client-pub-key"], "hex"));
       const said = near.open(body.messages.at(-1).content, mine);
       const message = { role: "assistant", content: toClient("Echo: " + said) };
+      let called = null;
       if (body.tools) {
         const name = near.open(body.tools[0].function.name, mine), params = JSON.parse(near.open(body.tools[0].function.parameters, mine));
-        message.tool_calls = [{ id: "call_1", type: "function", function: { name: toClient(name), arguments: toClient(JSON.stringify({ seen: Object.keys(params.properties) })) } }];
+        called = { name, args: JSON.stringify({ seen: Object.keys(params.properties) }) };
+        message.tool_calls = [{ id: "call_1", type: "function", function: { name: toClient(called.name), arguments: toClient(called.args) } }];
       }
       // Asked for as it is written: the same words in pieces, each encrypted on
       // its own, as server-sent events the signature covers whole.
       const id = "chatcmpl-" + fake.posts.length;
       const event = (o) => "data: " + JSON.stringify(o) + "\n\n";
       const streamed = () => event({ id, model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "" } }] })
-        + ("Echo: " + said).match(/.{1,7}/gs).map((part) => event({ id, model: body.model, choices: [{ index: 0, delta: { content: toClient(part) } }] })).join("")
+        + ("Echo: " + said).match(/.{1,7}/gs).map((part) => event({ id, model: body.model, choices: [{ index: 0, delta: { content: fake.mode.badPiece ? "00".repeat(80) : toClient(part) } }] })).join("")
+        // A tool call comes as its name, then its arguments a stretch at a time, each sealed on its own.
+        + (called ? event({ id, model: body.model, choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: toClient(called.name) } }] } }] })
+          + called.args.match(/.{1,9}/gs).map((part) => event({ id, model: body.model, choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: toClient(part) } }] } }] })).join("") : "")
+        + event({ id, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: called ? "tool_calls" : "stop" }] })
         + event({ id, model: body.model, choices: [], usage: { prompt_tokens: 5, completion_tokens: 3 } }) + "data: [DONE]\n\n";
       const resBytes = Buffer.from(body.stream ? streamed() : JSON.stringify({ id, model: body.model, choices: [{ index: 0, message, finish_reason: body.tools ? "tool_calls" : "stop" }], usage: { prompt_tokens: 5, completion_tokens: 3 } }));
       const signer = fake.mode.gatewaySigns ? GATEWAY : fake.mode.strangerSigns ? STRANGER : MODEL;
@@ -289,7 +295,7 @@ test("the sealed hardware runs Managed Models and is no provider people pick: fo
   assert.equal(require("../webapp/provider-names").PROVIDERS.near, undefined);
   assert.doesNotMatch(read("webapp/model-summary.js"), /near\.ai/);
   assert.ok(near.isNear({ provider: "near" }) && near.isNear({ provider: "custom", baseUrl: "https://cloud-api.near.ai/v1" }) && !near.isNear({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1" }));
-  assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal \}\)/);
+  assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal, \.\.\.\(live \? \{ onChunk: live\.take \} : \{\}\) \}\)/);
 });
 
 test("only the NEAR AI models whose privacy can be proven are listed, as they say they read, asked once a day", async () => {
@@ -446,6 +452,23 @@ test("a request encrypted elsewhere can be answered as it is written: each piece
   const all = [];
   assert.equal((await ask(near.clientKeys(), { onChunk: (piece) => { all.push(piece); throw new Error("the reader tripped"); } })).ok, true);
   assert.ok(all.length > 5);
+  // Closedhand's own requests the same way: each piece opened here as it arrives, a tool's name and arguments too.
+  reset();
+  const read = [];
+  const own = await near.complete(c, { model: MODEL_ID, stream_options: { include_usage: true }, messages: [{ role: "user", content: "which fields" }],
+    tools: [{ type: "function", function: { name: "look_up", description: "Looks something up", parameters: { type: "object", properties: { place: { type: "string" }, day: { type: "string" } } } } }] }, { onChunk: (piece) => read.push(piece) });
+  assert.equal(own.ok, true);
+  const sentOwn = JSON.parse(fake.posts[0].raw);
+  assert.deepEqual([sentOwn.stream, sentOwn.stream_options], [true, { include_usage: true }]);
+  assert.equal(read.map((p) => p.choices[0]?.delta?.content || "").join(""), "Echo: which fields");
+  const calls = read.flatMap((p) => p.choices[0]?.delta?.tool_calls || []);
+  assert.deepEqual([calls[0].id, calls[0].function.name], ["call_1", "look_up"]);
+  assert.deepEqual(JSON.parse(calls.map((tc) => tc.function.arguments || "").join("")), { seen: ["place", "day"] });
+  assert.equal(read.find((p) => p.choices[0]?.finish_reason).choices[0].finish_reason, "tool_calls");
+  // A piece that does not open is no part of a reply: the whole reply is refused.
+  reset({ badPiece: true });
+  await assert.rejects(near.complete(c, { model: MODEL_ID, messages: [{ role: "user", content: "hello" }] }, { onChunk: () => {} }), { code: "near_unsigned" });
+  reset();
   // Without onChunk the reply comes whole, as before.
   const whole = await (await ask(theirs)).json();
   assert.equal(near.open(whole.choices[0].message.content, theirs.x25519Secret), "Echo: words that arrive a few at a time, as they are written");

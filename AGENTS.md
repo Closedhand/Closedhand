@@ -328,6 +328,14 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   makes beyond the chat answer, when one helps, is a "page" (/page/<id>, with PDF, Word and Excel),
   linked as an extra, never instead of the answer, and kept under Pages on the dashboard whichever
   chat or agent made it. Never "report" or "document" for it: documents are the files you connect. The code and its table still say report. Background progress is one live line in the web chat and one plain message elsewhere.
+- Nobody waits looking at nothing. A reply shows as the LLM writes it (`lib/reply-as-written.js`): in
+  the web chat its words appear a little muted with a brush mark breathing after them, and in Telegram
+  and linked WhatsApp in one message that changes and ends in an ellipsis. Shown that way the words are
+  not yet the reply: the finished reply, checked and set out, takes their place unmarked, and words
+  written on the way to using a tool are taken back. While Closedhand works, linked WhatsApp's one
+  message says what it is doing and then becomes the reply (`lib/live-message.js`). Tool calls are
+  acted on only from the whole reply, never from its pieces; with the uncensored LLM that is once the
+  TEE has signed for all of it. `scripts/test-reply-as-written.js` and `scripts/test-live-message.js` check.
 - Questions mid-task go to the chat the task came from. The dashboard only shows
   that Closedhand is waiting, where it asked and when, and repeats the question.
   It never expects the answer there.

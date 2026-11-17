@@ -737,24 +737,17 @@
   }
   .typing-indicator.visible { display: flex; }
 
-  /* === Streaming cursor === */
-  .stream-cursor {
-    display: inline-block;
-    width: 2px;
-    height: 1em;
-    background: var(--accent, var(--accent-strong));
-    margin-left: 1px;
-    animation: streamBlink 0.6s ease-in-out infinite;
-    vertical-align: text-bottom;
-  }
-  @keyframes streamBlink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.2; }
-  }
-  .message.streaming .message-bubble {
-    min-height: 1.5rem;
-    white-space: pre-wrap;
-  }
+  /* === A reply still being written ===
+     Its words show as they come, a little muted, with a stroke of the brush
+     breathing where the next ones will go: here to read, not yet the reply.
+     The finished reply, checked, takes its place at full strength. */
+  .message.bot.writing { min-height: 1.5rem; }
+  .message.bot.writing .writing-words { opacity: 0.68; }
+  .writing-mark { display: inline-block; width: 1.5em; height: 0.42em; margin-left: 0.35em; vertical-align: 0.05em; background: var(--accent, var(--accent-strong)); -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; transform-origin: left center; animation: writingBreathe 1.2s ease-in-out infinite; }
+  @keyframes writingBreathe { 0%, 100% { opacity: 0.3; transform: scaleX(0.55); } 50% { opacity: 1; transform: scaleX(1); } }
+  .message.bot.settled { animation: replySettle 0.5s ease-out; }
+  @keyframes replySettle { from { opacity: 0.68; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .writing-mark { animation: none; opacity: 0.7; } .message.bot.settled { animation: none; } }
 
   /* === Activity Timeline === */
   .timeline {
@@ -3506,34 +3499,19 @@
           // A reply ends the wait; progress while this tab waits restarts the timer.
           if (msg.type === 'message' || msg.type === 'stream_end' || msg.type === 'file') { _awaitingReply = false; disarmResponseWatchdog(); }
           else if (_awaitingReply) armResponseWatchdog();
-          if (msg.type === 'message') { hideTyping(); addMessage(msg.content, 'bot'); }
+          if (msg.type === 'message') { hideTyping(); dropWriting(); addMessage(msg.content, 'bot'); }
           else if (msg.type === 'file') { hideTyping(); addFileMessage(msg); }
           else if (msg.type === 'typing') { showTyping(); }
-          else if (msg.type === 'stream_start') {
-            hideTyping();
-            var streamDiv = document.createElement('div');
-            streamDiv.className = 'message bot streaming';
-            streamDiv.id = 'streamingMsg';
-            streamDiv.innerHTML = '<div class="message-bubble"><span class="stream-cursor"></span></div>';
-            messagesEl.insertBefore(streamDiv, typingEl);
-            scrollToBottom();
-          }
-          else if (msg.type === 'stream_token') {
-            var streamEl = document.getElementById('streamingMsg');
-            if (streamEl) {
-              var bubble = streamEl.querySelector('.message-bubble');
-              // A follow-on break shows as a paragraph while it streams; the
-              // finished reply arrives as separate messages.
-              streamEl._text = (streamEl._text || '') + msg.content;
-              bubble.textContent = streamEl._text.replace(/^[ \t]*\[\[next\]\][ \t]*$/gm, '').replace(/\[\[[a-z]*\]?$/, '');
-              bubble.insertAdjacentHTML('beforeend', '<span class="stream-cursor"></span>');
-              scrollToBottom();
-            }
-          }
+          else if (msg.type === 'stream_start') { writingEl(); }
+          else if (msg.type === 'stream_token') { var writing = writingEl(); writing._text = (writing._text || '') + msg.content; drawWriting(writing); }
+          // What was being written was not the reply after all (Closedhand went on to do something first).
+          else if (msg.type === 'stream_reset') { if (dropWriting() && _awaitingReply) showTyping(); }
           else if (msg.type === 'stream_end') {
-            var streamEl = document.getElementById('streamingMsg');
-            if (streamEl) streamEl.remove();
-            addMessage(msg.content, 'bot');
+            var wasWriting = dropWriting(), lastBefore = typingEl.previousElementSibling;
+            if (msg.content) addMessage(msg.content, 'bot');
+            // The finished reply settles in where its words were, without arriving a second time.
+            var landed = lastBefore ? lastBefore.nextElementSibling : messagesEl.querySelector('.message');
+            if (wasWriting && landed && landed !== typingEl && landed.classList.contains('bot')) landed.classList.add('settled');
           }
           else if (msg.type === 'activity') {
             receivedRealStatus = true;
@@ -3578,8 +3556,7 @@
       _responseWatchdog = null;
       _awaitingReply = false;
       hideTyping();
-      var streamEl = document.getElementById('streamingMsg');
-      if (streamEl) streamEl.remove();
+      dropWriting();
       try { renderActivityFeed([]); } catch (e) {}
       addMessage("That request seems to have stalled. Please send it again.", 'bot');
     }, 6 * 60 * 1000);
@@ -3925,6 +3902,39 @@
     });
   })();
 
+  // A reply still being written (lib/reply-as-written.js): its words so far,
+  // set out as the finished reply will be, with the brush mark after them.
+  function writingEl() {
+    var el = document.getElementById('streamingMsg');
+    if (el) return el;
+    hideTyping();
+    el = document.createElement('div');
+    el.className = 'message bot writing';
+    el.id = 'streamingMsg';
+    el.innerHTML = '<span class="writing-mark"></span>';
+    messagesEl.insertBefore(el, typingEl);
+    scrollToBottom();
+    return el;
+  }
+  // Drawn once a frame at most, however fast the words come. A follow-on
+  // break shows as a paragraph, and the finished reply's dashes as they will be.
+  function drawWriting(el) {
+    if (el._due) return;
+    el._due = requestAnimationFrame(function () {
+      el._due = 0;
+      var shown = String(el._text || '').replace(/^[ \t]*\[\[next\]\][ \t]*$/gm, '').replace(/\[\[[a-z]*\]?$/, '').replace(/[ \t]*\u2014[ \t]*/g, ' - ');
+      el.innerHTML = '<span class="writing-words">' + formatReply(shown) + '</span><span class="writing-mark"></span>';
+      scrollToBottom();
+    });
+  }
+  function dropWriting() {
+    var el = document.getElementById('streamingMsg');
+    if (!el) return false;
+    if (el._due) cancelAnimationFrame(el._due);
+    el.remove();
+    return true;
+  }
+
   function addMessage(text, role, fileInfo, ts, via) {
     var parts = role === 'bot' && typeof text === 'string' ? followOnParts(text) : [text];
     if (parts.length < 2) { addOneMessage(text, role, fileInfo, ts, text, via); return; }
@@ -4021,7 +4031,10 @@
   }
 
   var _thinkingElapsedInterval = null;
+  // A hide still fading out must not take away what is shown after it.
+  var _typingHide = null;
   function showTyping() {
+    clearTimeout(_typingHide);
     typingEl.classList.add('visible');
     scrollToBottom();
     receivedRealStatus = false;
@@ -4051,9 +4064,10 @@
     // Fade out timeline before removing
     var area = document.getElementById('statusArea');
     var tl = area ? area.querySelector('.timeline') : null;
+    clearTimeout(_typingHide);
     if (tl) {
       tl.classList.add('fade-out');
-      setTimeout(function() {
+      _typingHide = setTimeout(function() {
         typingEl.classList.remove('visible');
         if (area) area.innerHTML = '';
       }, 400);

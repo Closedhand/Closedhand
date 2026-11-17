@@ -171,6 +171,20 @@ function decryptResponse(json, x25519Secret) {
     return { ...c, message: msg };
   }) };
 }
+// One piece of a reply that comes as it is written: NEAR's proxy seals every
+// string a piece carries on its own (a few words of the answer or of its
+// reasoning, a tool's name, a stretch of its arguments).
+function decryptPiece(json, x25519Secret) {
+  const dec = (v) => (typeof v === "string" && v ? open(v, x25519Secret) : v);
+  return { ...json, choices: (json.choices || []).map((c) => {
+    if (!c.delta) return c;
+    const delta = { ...c.delta };
+    for (const f of ["content", "reasoning_content", "reasoning", "refusal"]) if (f in delta) delta[f] = dec(delta[f]);
+    if (Array.isArray(delta.tool_calls)) delta.tool_calls = delta.tool_calls.map((tc) => (tc.function ? { ...tc, function: { ...tc.function,
+      ...("name" in tc.function ? { name: dec(tc.function.name) } : {}), ...("arguments" in tc.function ? { arguments: dec(tc.function.arguments) } : {}) } } : tc));
+    return { ...c, delta };
+  }) };
+}
 
 // --- The proof ------------------------------------------------------------------
 
@@ -548,7 +562,7 @@ function send(st, options, build, onData) {
     });
     req.once("response", (res) => {
       const parts = [];
-      res.on("data", (d) => { parts.push(d); if (onData && res.statusCode >= 200 && res.statusCode < 300) onData(d); });
+      res.on("data", (d) => { parts.push(d); if (onData && res.statusCode >= 200 && res.statusCode < 300) onData(d, sent); });
       res.once("end", () => resolve({ status: res.statusCode, headers: res.headers, raw: Buffer.concat(parts), evidence: st.agent.evidence.get(req.socket), sent }));
       res.once("error", reject);
       res.once("close", () => { if (!res.complete) reject(new Error("the reply was cut short")); });
@@ -571,7 +585,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 function pieces(each) {
   const decoder = new StringDecoder("utf8");
   let rest = "", warned = false;
-  return (bytes) => {
+  return (bytes, sent) => {
     rest += decoder.write(bytes);
     for (let m; (m = /\r?\n\r?\n/.exec(rest));) {
       const event = rest.slice(0, m.index);
@@ -580,7 +594,7 @@ function pieces(each) {
       if (!data || data === "[DONE]") continue;
       let piece;
       try { piece = JSON.parse(data); } catch { continue; }
-      try { each(piece); } catch (e) { if (!warned) console.warn(`[near] a piece was not taken: ${String(e.message).slice(0, 120)}`); warned = true; }
+      try { each(piece, sent); } catch (e) { if (!warned) console.warn(`[near] a piece was not taken: ${String(e.message).slice(0, 120)}`); warned = true; }
     }
   };
 }
@@ -598,16 +612,17 @@ function pieces(each) {
 // (relay below). It goes as it came, only on a connection whose proof names
 // that key, and its reply is returned still encrypted once signed for.
 //
-// onChunk (with sealed, and stream: true in the body): each piece of the reply
-// is handed over, still encrypted, as it arrives, before the signature can be
-// checked, which covers the whole stream and so comes last. What is shown from
-// the pieces is therefore taken back if this rejects; nobody but the holder of
-// the reply key could read them either way.
+// onChunk (with stream: true in the body): each piece of the reply is handed
+// over as it arrives, decrypted here unless sealed, before the signature can
+// be checked, which covers the whole stream and so comes last. What is shown
+// from the pieces is therefore taken back if this rejects, and nothing in them
+// is acted on before it resolves; nobody but the holder of the reply key could
+// read them either way.
 async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal, sealed, onChunk } = {}) {
   if (signal?.aborted) throw signal.reason;
   const st = stateFor(conn, model, deps);
   const auth = { Authorization: "Bearer " + conn.apiKey, "Content-Type": "application/json", Accept: onChunk ? "text/event-stream" : "application/json", "Accept-Encoding": "identity" };
-  let result, streamId = null;
+  let result, streamId = null, unread = null;
   try {
     result = await send(st, { method: "POST", path: st.prefix + endpoint, headers: auth, signal }, (evidence) => {
       const keys = sealed ? null : clientKeys();
@@ -618,7 +633,13 @@ async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal
         "Content-Length": bytes.length, "X-Signing-Algo": "ed25519", "X-Client-Pub-Key": sealed ? sealed.clientKey : keys.publicHex,
         "X-Model-Pub-Key": modelKey.toString("hex"), "X-Encryption-Version": "2", "X-Encrypt-All-Fields": "true", "x-no-aliasing": "true",
       } };
-    }, onChunk && pieces((piece) => { streamId = streamId || piece.id; onChunk(piece); }));
+    }, onChunk && pieces((piece, sent) => {
+      streamId = streamId || piece.id;
+      let mine = piece;
+      // A piece that does not open is no part of the reply: the reply is refused once it ends.
+      if (!sealed) { try { mine = decryptPiece(piece, sent.keys.x25519Secret); } catch (e) { unread = unread || e; return; } }
+      onChunk(mine);
+    }));
   } catch (e) {
     if (signal?.aborted) throw signal.reason;
     // Encrypted to a key the enclave has since replaced: nothing went, and the
@@ -635,9 +656,10 @@ async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal
   }
   let reply;
   try {
+    if (unread) throw new Error("a piece of the reply could not be opened");
     const json = onChunk ? { id: streamId } : JSON.parse(result.raw.toString("utf8"));
     await checkSignature(st, json.id, model, result.sent.bytes, result.raw, result.evidence, signal);
-    reply = sealed ? json : decrypt(json, result.sent.keys.x25519Secret);
+    reply = sealed || onChunk ? json : decrypt(json, result.sent.keys.x25519Secret);
   } catch (e) {
     if (signal?.aborted) throw signal.reason;
     st.agent.proofs.clear();
@@ -647,9 +669,11 @@ async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal
   return { ok: true, status: result.status, headers, json: async () => reply };
 }
 
-// A chat completion, privately.
+// A chat completion, privately. With options.onChunk the reply is asked for as
+// it is written: each piece is handed over decrypted as it arrives, and the
+// caller puts the reply together from them once this resolves.
 function complete(conn, body, options) {
-  return privately(conn, body.model, "/chat/completions", { ...body, stream: false }, encryptRequest, decryptResponse, options);
+  return privately(conn, body.model, "/chat/completions", { ...body, stream: !!options?.onChunk }, encryptRequest, decryptResponse, options);
 }
 
 // A picture from a description, privately. NEAR AI's gateway rebuilds a
