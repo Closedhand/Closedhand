@@ -31,7 +31,9 @@ test('questions only you can read resolve out of noise, starting where the page 
   for (const q of questions) assert.ok(q.length <= 57, 'fits the ring: ' + q);
   // Each letter keeps its width as noise turns to words, so nothing jolts.
   assert.match(home, /\.orb-noise \{ position: absolute;/);
-  assert.match(home, /\.orb-ch\.on \.orb-real \{ opacity: 1; filter: none; transform: none; \}/);
+  // A letter and its noise take turns, each sharp: no blur, and never the two through each other.
+  assert.match(home, /\.orb-real \{ display: inline-block; opacity: 0; transition: opacity \.14s ease; \}/);
+  assert.match(home, /\.orb-ch\.on \.orb-real \{ opacity: 1; transition-delay: \.12s; \}\n\s+\.orb-ch\.on \.orb-noise \{ opacity: 0; transition-delay: 0s; \}/);
   // The icons drift behind the smoke, in a band that keeps clear of the words.
   assert.match(home, /<span class="orb-stage" aria-hidden="true">\s*<span class="orb-drift" id="orbDrift"><\/span>\s*<span class="orb-body">/);
 });

@@ -12,7 +12,7 @@
   if (!P || !P.ready || !window.fetch) { box.hidden = true; return; }
   var byId = function (id) { return document.getElementById(id); };
   var thread = byId('askThread'), form = byId('askForm'), input = byId('askInput'), send = byId('askSend');
-  var tries = byId('askTries'), next = byId('askNext'), note = byId('askNote');
+  var tries = byId('askTries'), slot = byId('askNextSlot'), next = null, note = byId('askNote');
   var handheld = document.documentElement.classList.contains('handheld');
   var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   var NOISE = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -111,50 +111,56 @@
 
   function went() { if (state.turns.length) fetch('/api/ask/went', { method: 'POST' }).catch(function () {}); }
   // Where a conversation leads: Closedhand itself. A computer has the
-  // download just below, so the button points there; a phone can send its
-  // owner the link.
+  // download just below, so the whole piece is the way there; a phone can
+  // send its owner the link.
   var DOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>';
-  function onward() {
-    var b = document.createElement('button');
-    b.type = 'button';
-    if (!handheld) {
-      b.innerHTML = '<span>Download below</span>' + DOWN;
-      b.addEventListener('click', function () {
-        var ways = byId('ways'), dl = byId('macAppLink');
-        if (ways) ways.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
-        if (dl) dl.focus({ preventScroll: true });
-      });
-      return b;
-    }
-    b.textContent = 'Send yourself the link';
-    b.addEventListener('click', function () {
-      went();
-      var here = 'https://closedhand.com/';
-      if (navigator.share) return navigator.share({ title: 'Closedhand', url: here }).catch(function () {});
-      if (navigator.clipboard) navigator.clipboard.writeText(here).then(function () { b.textContent = 'Link copied'; }, function () {});
-    });
-    return b;
+  function down() {
+    var ways = byId('ways'), dl = byId('macAppLink');
+    if (ways) ways.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
+    if (dl) dl.focus({ preventScroll: true });
+  }
+  function sendLink(e) {
+    went();
+    var here = 'https://closedhand.com/', b = e.currentTarget;
+    if (navigator.share) return navigator.share({ title: 'Closedhand', url: here }).catch(function () {});
+    if (navigator.clipboard) navigator.clipboard.writeText(here).then(function () { b.textContent = 'Link copied'; }, function () {});
   }
   function say(lead, words) {
-    next.textContent = '';
-    var line = document.createElement('p');
+    if (next) next.remove();
+    next = document.createElement(handheld ? 'div' : 'button');
+    next.className = 'ask-next';
+    next.id = 'askNext';
+    var line = document.createElement('span');
+    line.className = 'ask-next-words';
     if (lead) { var strong = document.createElement('strong'); strong.textContent = lead; line.appendChild(strong); }
     line.appendChild(document.createTextNode(words));
     next.appendChild(line);
-    next.appendChild(onward());
-    next.hidden = false;
+    if (handheld) {
+      var go = document.createElement('button');
+      go.type = 'button'; go.className = 'ask-next-go'; go.textContent = 'Send yourself the link';
+      go.addEventListener('click', sendLink);
+      next.appendChild(go);
+    } else {
+      next.type = 'button';
+      next.insertAdjacentHTML('beforeend', '<span class="ask-next-go">' + DOWN + '</span>');
+      next.addEventListener('click', down);
+    }
+    slot.appendChild(next);
   }
+  function hush(yes) { if (next) next.hidden = yes; }
   var FREE = 'The first 14 days are free and need no card.';
   function after() {
     if (state.left === 0) return over();
-    say('', 'Generate images, take actions agentically and work with anything you connect.');
+    say('', handheld
+      ? 'On a computer, Closedhand unlocks image generation, agentic actions and anything you connect.'
+      : 'Download Closedhand below to unlock image generation, agentic actions and anything you connect.');
     if (state.left === 1) note.textContent = 'One question left here today.';
   }
   function over() {
     box.classList.add('done');
     tries.hidden = true;
     var lead = state.of === 1 ? 'That’s your question here for today.' : 'That’s your ' + state.of + ' questions here for today.';
-    say(lead, handheld ? 'Closedhand runs on a computer. Carry on there: ' + FREE.charAt(0).toLowerCase() + FREE.slice(1) : 'Carry on in Closedhand. ' + FREE);
+    say(lead, handheld ? 'Closedhand runs on a computer. Carry on there: ' + FREE.charAt(0).toLowerCase() + FREE.slice(1) : 'Download Closedhand below to carry on. ' + FREE);
     note.hidden = true;
   }
 
@@ -235,7 +241,7 @@
     state.busy = true;
     fold();
     input.value = ''; fit(); ready();
-    tries.hidden = true; next.hidden = true;
+    tries.hidden = true; hush(true);
     // A question that got no answer makes way for the next try.
     state.unanswered.forEach(function (el) { if (el.parentNode) thread.removeChild(el); });
     var mine = add('user'), theirs = add('bot');
@@ -277,7 +283,7 @@
       theirs.classList.add('failed');
       theirs.textContent = 'No answer came back just now. Try again in a minute.';
       if (!input.value) { input.value = question; fit(); }
-      if (state.turns.length) next.hidden = false;
+      if (state.turns.length) hush(false);
     }).then(function () { state.busy = false; ready(); });
   }
 

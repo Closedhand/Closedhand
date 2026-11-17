@@ -696,10 +696,13 @@ body.chat-active .mon-area { display:none; }
   .orb-line { font: 500 clamp(.75rem, 6.9cqw, 1.0625rem)/1.24 var(--font-brand); font-variation-settings: 'opsz' 48, 'SOFT' 30; letter-spacing: -0.005em; color: var(--fg); text-wrap: balance; }
   .orb-w { display: inline-block; white-space: nowrap; }
   .orb-ch { position: relative; display: inline-block; }
-  .orb-real { display: inline-block; opacity: 0; filter: blur(.12em); transform: translateY(.06em); transition: opacity .55s cubic-bezier(.22,.61,.36,1), filter .7s cubic-bezier(.22,.61,.36,1), transform .7s cubic-bezier(.22,.61,.36,1); }
-  .orb-noise { position: absolute; left: 50%; top: 0; translate: -50% 0; color: var(--muted); opacity: .6; pointer-events: none; transition: opacity .45s cubic-bezier(.22,.61,.36,1), filter .55s cubic-bezier(.22,.61,.36,1); }
-  .orb-ch.on .orb-real { opacity: 1; filter: none; transform: none; }
-  .orb-ch.on .orb-noise { opacity: 0; filter: blur(.18em); }
+  /* A letter and its noise take turns, each sharp: whichever is leaving
+     goes first and the other follows, so the two never show through each
+     other and nothing blurs. */
+  .orb-real { display: inline-block; opacity: 0; transition: opacity .14s ease; }
+  .orb-noise { position: absolute; left: 50%; top: 0; translate: -50% 0; color: var(--muted); opacity: .6; pointer-events: none; transition: opacity .14s ease .12s; }
+  .orb-ch.on .orb-real { opacity: 1; transition-delay: .12s; }
+  .orb-ch.on .orb-noise { opacity: 0; transition-delay: 0s; }
   @container (max-width: 10rem) {
     .orb-talk { width: 76cqw; }
     .orb-line { font-size: .6875rem; }
@@ -738,30 +741,37 @@ body.chat-active .mon-area { display:none; }
   .ask-send svg { width: .875rem; height: .875rem; fill: currentColor; }
   .ask-send:not(:disabled) { background: rgba(var(--fg-rgb),0.18); border-color: rgba(var(--fg-rgb),0.22); color: var(--fg); cursor: pointer; }
   .ask-send:not(:disabled):hover { background: rgba(var(--fg-rgb),0.22); }
-  .ask-send:focus-visible, .ask-tries button:focus-visible, .ask-next button:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
+  .ask-send:focus-visible, .ask-tries button:focus-visible, button.ask-next:focus-visible, button.ask-next-go:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
   .ask-tries { display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem 1.25rem; margin: .875rem 0 0; align-self: center; width: max-content; max-width: min(56.25rem, 92vw); }
   .ask-tries[hidden] { display: none; }
   .ask-tries button { padding: .125rem 0; background: none; border: none; cursor: pointer; font: 400 .875rem/1.4 var(--font-ui); color: var(--muted); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: rgba(var(--fg-rgb),0.25); }
   .ask-tries button:hover { color: var(--fg); text-decoration-color: var(--accent); }
   .ask-note { margin: .75rem 0 0; font-size: .8125rem; line-height: 1.45; color: rgba(var(--fg-rgb),0.55); text-align: center; text-wrap: balance; }
   .ask-note:empty { display: none; }
-  /* Where the conversation leads: what Closedhand does, and the way to the
-     download, set as one piece under the box, its action the box's own kind of button. */
-  .ask-next { margin: .875rem 0 0; display: flex; align-items: center; gap: 1rem; padding: .5rem .5rem .5rem 1.125rem; border-radius: 1.25rem; border: 1px solid rgba(var(--fg-rgb),0.1); background: rgba(var(--fg-rgb),0.03); text-align: left; }
+  /* Where the conversation leads, as one piece under the box. On a computer
+     the whole of it is the way to the download just below, an arrow at its
+     end; on a phone it says what a computer brings, with a button to send
+     yourself the link. */
+  .ask-next { margin: .875rem 0 0; display: flex; align-items: center; gap: 1rem; width: 100%; padding: .5rem .5rem .5rem 1.125rem; border-radius: 1.25rem; border: 1px solid rgba(var(--fg-rgb),0.1); background: rgba(var(--fg-rgb),0.03); text-align: left; font: inherit; color: inherit; }
   .ask-next[hidden] { display: none; }
-  .ask-next p { flex: 1; min-width: 0; margin: 0; font-size: .9375rem; line-height: 1.45; color: var(--muted); text-wrap: balance; }
+  button.ask-next { cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+  button.ask-next:hover { border-color: rgba(var(--fg-rgb),0.22); background: rgba(var(--fg-rgb),0.05); }
+  .ask-next .ask-next-words { flex: 1; min-width: 0; margin: 0; font-size: .9375rem; line-height: 1.45; color: var(--muted); text-wrap: balance; }
   .ask-next strong { display: block; color: var(--fg); font-weight: 500; }
-  .ask-next button { flex: none; display: flex; align-items: center; gap: .5rem; padding: .625rem 1.125rem; border-radius: .875rem; background: rgba(var(--fg-rgb),0.18); border: 1px solid rgba(var(--fg-rgb),0.22); color: var(--fg); font: 400 .9375rem/1 var(--font-ui); cursor: pointer; transition: background 0.2s; }
-  .ask-next button:hover { background: rgba(var(--fg-rgb),0.22); }
-  .ask-next button svg { width: .875rem; height: .875rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ask-next .ask-next-go { flex: none; display: flex; align-items: center; justify-content: center; gap: .5rem; padding: .625rem 1.125rem; border-radius: .875rem; background: rgba(var(--fg-rgb),0.18); border: 1px solid rgba(var(--fg-rgb),0.22); color: var(--fg); font: 400 .9375rem/1 var(--font-ui); transition: background 0.2s; }
+  button.ask-next .ask-next-go { padding: .625rem; }
+  button.ask-next:hover .ask-next-go, button.ask-next-go:hover { background: rgba(var(--fg-rgb),0.22); }
+  button.ask-next-go { cursor: pointer; }
+  .ask-next svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .ask.done .ask-box, .ask.done .ask-tries { display: none; }
   /* An answer's letters, each under its own noise until it sharpens out. */
   .ask-w { display: inline-block; white-space: nowrap; }
   .ask-ch { position: relative; display: inline-block; }
-  .ask-real { display: inline-block; opacity: 0; filter: blur(.12em); transition: opacity .4s cubic-bezier(.22,.61,.36,1), filter .5s cubic-bezier(.22,.61,.36,1); }
-  .ask-noise { position: absolute; left: 50%; top: 0; translate: -50% 0; color: var(--muted); opacity: .55; pointer-events: none; transition: opacity .35s cubic-bezier(.22,.61,.36,1), filter .35s; }
-  .ask-ch.on .ask-real { opacity: 1; filter: none; }
-  .ask-ch.on .ask-noise { opacity: 0; filter: blur(.18em); }
+  /* As in the ring: a letter and its noise take turns, each sharp. */
+  .ask-real { display: inline-block; opacity: 0; transition: opacity .14s ease; }
+  .ask-noise { position: absolute; left: 50%; top: 0; translate: -50% 0; color: var(--muted); opacity: .55; pointer-events: none; transition: opacity .14s ease .12s; }
+  .ask-ch.on .ask-real { opacity: 1; transition-delay: .12s; }
+  .ask-ch.on .ask-noise { opacity: 0; transition-delay: 0s; }
   @media (max-width: 600px) {
     .ask { margin-bottom: 1.5rem; }
     .ask-box textarea { font-size: 1rem; }
@@ -769,7 +779,7 @@ body.chat-active .mon-area { display:none; }
     .ask-send { padding: .6875rem .8125rem; }
     .ask-tries { flex-direction: column; align-items: center; gap: .375rem; width: auto; }
     .ask-next { flex-direction: column; align-items: stretch; gap: .75rem; padding: .875rem; text-align: center; }
-    .ask-next button { justify-content: center; padding: .75rem 1.125rem; }
+    .ask-next .ask-next-go { padding: .75rem 1.125rem; }
   }
   .first-steps { display: flex; flex-direction: column; gap: .75rem; width: 100%; max-width: 22.5rem; margin: 0 auto; padding: .875rem .875rem .5rem; border-radius: 1rem; background: rgba(var(--deep-rgb),0.72); border: 1px solid rgba(var(--fg-rgb),0.1); opacity: 0; animation: heroIn 0.8s ease forwards 0.8s; }
   .first-steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .625rem; }
@@ -879,7 +889,7 @@ body.chat-active .mon-area { display:none; }
         <button type="button">Is Taiwan its own country?</button>
         <button type="button">Make the case for legalising all drugs.</button>
       </p>
-      <div class="ask-next" id="askNext" hidden></div>
+      <div id="askNextSlot"></div>
       <p class="ask-note" id="askNote"></p>
     </section>
 
