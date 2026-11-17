@@ -97,6 +97,7 @@ const server = https.createServer({ key: KEY, cert: CERT, keepAliveTimeout: 3000
     const send = (status, body) => { const b = Buffer.from(typeof body === "string" ? body : JSON.stringify(body)); res.writeHead(status, { "Content-Type": "application/json", "Content-Length": b.length }); res.end(b); };
     if (url.pathname === "/v1/attestation/report") {
       fake.reports++;
+      if (fake.mode.refuseKey) return send(401, { error: "unauthorized" });
       const nonce = url.searchParams.get("nonce"), m = fake.mode;
       const quotedNonce = m.wrongNonce ? crypto.randomBytes(32).toString("hex") : nonce;
       const fp = m.otherCert ? crypto.randomBytes(32) : SPKI;
@@ -366,6 +367,10 @@ test("a new connection to a proven enclave key reuses its proof for a while, one
 test("a request encrypted elsewhere is passed on as it came, only to a key the proof names, and its reply comes back still encrypted", async () => {
   await ready; reset();
   const c = conn();
+  // A key NEAR has only just made is refused for a few seconds: warm says so, and the next try is a new proof.
+  fake.mode = { refuseKey: true };
+  await assert.rejects(near.warm(c, MODEL_ID), { status: 401 });
+  reset();
   const key = await near.warm(c, MODEL_ID);
   assert.equal(key, MODEL.pub.toString("hex"), "warm gives the proven model enclave's key");
   const theirs = near.clientKeys();

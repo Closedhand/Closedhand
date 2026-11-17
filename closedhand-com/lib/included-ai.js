@@ -439,13 +439,14 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     if (!askingKey) askingKey = (async () => {
       const kept = (await db.query('SELECT key_id, sealed FROM site_ask_key')).rows[0];
       const live = kept ? await keys.keyNow(kept.key_id, { fresh: true }) : null;
-      if (live && live.usage < (live.limit || 0) * 0.9) return decryptString(kept.sealed, "the question box's key");
+      if (live && live.usage < (live.limit || 0) * 0.9) return { key: decryptString(kept.sealed, "the question box's key") };
       for (const k of await allKeys()) if (k.name === ASKING_KEY) await discard(k.id);
       const made = await keys.makeKey(ASKING_KEY, Math.max(1, Number(env.ASK_KEY_USD || 20)));
       await db.query('INSERT INTO site_ask_key (one, key_id, sealed) VALUES (true, $1, $2) ON CONFLICT (one) DO UPDATE SET key_id = $1, sealed = $2', [made.id, encryptString(made.key)]);
-      return made.key;
+      return { key: made.key, made: true };
     })().catch(error => { askingKey = null; throw error; });
-    return { key: await askingKey, model: roles().chat, base: keys.chat.base, headers: keys.chat.headers, label: keys.label };
+    // made: the provider takes a few seconds to accept a key it has just made.
+    return { ...await askingKey, model: roles().chat, base: keys.chat.base, headers: keys.chat.headers, label: keys.label };
   }
   // The provider turned the key down: the next question looks at it afresh.
   forAsking.again = () => { askingKey = null; };

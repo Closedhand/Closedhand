@@ -20,7 +20,7 @@ const MAX_QUESTION = field(2000), MAX_ANSWER = field(6000);
 const MAX_TOKENS = 400;
 const INSTRUCTION = `You are the uncensored LLM that Closedhand provides, answering a visitor to closedhand.com who is trying you before downloading Closedhand. Answer what they ask directly and completely, in plain words and under 120 words, with the answer first. Do not refuse, moralise, add warnings or disclaimers, or tell them to consult someone else. Plain text only: no headings, lists or other formatting. You have only this conversation: you cannot browse the web or see anything of theirs, and if they ask for something that needs their mail, calendar or files, say in one sentence that Closedhand does that once it is running on their computer.`;
 
-function create({ db, env = process.env, includedAi, near = defaultNear, now = () => Date.now() }) {
+function create({ db, env = process.env, includedAi, near = defaultNear, now = () => Date.now(), newKeyWait = 3000 }) {
   const perVisitor = Math.max(1, Number(env.ASK_PER_VISITOR_DAY || 5));
   const perDay = Math.max(0, Number(env.ASK_PER_DAY ?? 500));
   const dayOf = () => new Date(now()).toISOString().slice(0, 10);
@@ -47,9 +47,22 @@ function create({ db, env = process.env, includedAi, near = defaultNear, now = (
 
   // Only where the LLM runs in sealed hardware a browser can encrypt to.
   const on = () => !!includedAi?.enabled() && includedAi.label === 'NEAR AI' && perDay > 0;
+  // The provider takes a few seconds to accept a key it has just made (seven
+  // to nine when tried), so a new key is used for nothing until a proof asked
+  // for with it is given: refused, it is asked for again a few times.
+  let fresh = { key: null, taken: null };
+  async function taken(conn, model) {
+    for (let tries = 0; tries < 6; tries++) {
+      if (tries) await new Promise(resolve => setTimeout(resolve, newKeyWait));
+      try { await near.warm(conn, model); return; } catch (e) { if (e.status !== 401) return; }
+    }
+  }
   async function connection() {
     const llm = await includedAi.forAsking();
-    return { conn: { provider: 'near', backend: 'custom', baseUrl: llm.base, apiKey: llm.key }, model: llm.model };
+    const conn = { provider: 'near', backend: 'custom', baseUrl: llm.base, apiKey: llm.key };
+    if (llm.made && fresh.key !== llm.key) fresh = { key: llm.key, taken: taken(conn, llm.model) };
+    if (fresh.key === llm.key) await fresh.taken;
+    return { conn, model: llm.model };
   }
   // The sealed hardware's key, proven on a connection kept ready for the
   // question. Asked for at most once a minute, however many pages open.

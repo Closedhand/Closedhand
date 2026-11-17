@@ -39,10 +39,14 @@ const ENV = { TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, NEAR_REFRE
 // does next (answer, fail, or have a newer key).
 function hardware() {
   const keys = near.clientKeys();
-  const h = { keys, got: [], warmed: 0, mode: null };
+  const h = { keys, got: [], warmed: 0, mode: null, refusals: 0 };
   h.near = {
     seal: near.seal,
-    warm: async () => { h.warmed++; return keys.publicHex; },
+    warm: async () => {
+      h.warmed++;
+      if (h.refusals-- > 0) throw Object.assign(new Error('the proof request returned HTTP 401'), { status: 401 });
+      return keys.publicHex;
+    },
     relay: async (conn, body, sealed) => {
       if (h.mode === 'down') throw Object.assign(new Error('NEAR AI could not prove its enclave'), { code: 'near_unproven' });
       if (sealed.modelKey !== keys.publicHex) throw Object.assign(new Error('another key'), { status: 409, code: 'near_other_key', key: keys.publicHex });
@@ -59,7 +63,7 @@ async function setup({ env = {}, clock } = {}) {
   await db.query('TRUNCATE site_asks, site_ask_key, near_session');
   const provider = nearAi(), h = hardware();
   const ai = includedAi.create({ db, env: { ...ENV, ...env }, request: provider.request });
-  const ask = asking.create({ db, env: { ...ENV, ...env }, includedAi: ai, near: h.near, ...(clock ? { now: clock } : {}) });
+  const ask = asking.create({ db, env: { ...ENV, ...env }, includedAi: ai, near: h.near, newKeyWait: 1, ...(clock ? { now: clock } : {}) });
   return { ask, ai, provider, h };
 }
 // What the page does with a conversation: every turn encrypted to the key
@@ -202,15 +206,30 @@ test('a question that could not be answered is not counted: a new key at the sea
   assert.ok(ai);
 });
 
+test('a key just made is used for nothing until the provider takes it; a key kept from before is not waited for', async () => {
+  const { ask, provider, h } = await setup();
+  h.refusals = 2;
+  const [key, answered] = await Promise.all([ask.key(), ask.key().then(async k => ask.ask((await fromPage(k, ['Asked as the key was made'])).body, '203.0.113.8'))]);
+  assert.equal(key, h.keys.publicHex, 'the first page gets its key, a little later');
+  assert.equal(answered.status, 200);
+  assert.equal(h.warmed, 4, 'refused twice, taken, then asked for the pages once');
+  // After a restart the key is the one kept: a refusal then is not a new key settling.
+  const later = hardware();
+  later.refusals = 1;
+  const again = asking.create({ db, env: ENV, includedAi: includedAi.create({ db, env: ENV, request: provider.request }), near: later.near, newKeyWait: 1 });
+  await assert.rejects(again.key(), { status: 401 });
+  assert.equal(later.warmed, 1);
+});
+
 test('closedhand.com\'s key for the questions is kept sealed across restarts, and the proven key is asked for once a minute at most', async () => {
   let at = Date.parse('2026-03-03T10:00:00Z');
   const { ask, provider, h } = await setup({ clock: () => at });
   await Promise.all([ask.key(), ask.key(), ask.key()]);
   await ask.key();
-  assert.equal(h.warmed, 1, 'however many pages open');
+  assert.equal(h.warmed, 2, 'once to see the new key taken and once for the pages, however many open');
   at += 61000;
   await ask.key();
-  assert.equal(h.warmed, 2);
+  assert.equal(h.warmed, 3);
   assert.equal(provider.keys.size, 1);
   const [id, made] = [...provider.keys.entries()][0];
   assert.equal(made.name, 'Closedhand questions');
