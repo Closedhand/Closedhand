@@ -17,6 +17,8 @@ const MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated';
 const passKeys = crypto.generateKeyPairSync('ed25519');
 
 const env = {
+  // A month's fair use in round numbers, as plus.js and ahead.js have it.
+  INCLUDED_AI_FAIR_USE_USD: '20',
   BASE_URL: 'https://closedhand.com', SESSION_SECRET: crypto.randomBytes(32).toString('hex'),
   TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, PHONE_ENROLLMENT_ENABLED: '1',
   RELAY_ADDRESS: 'relay.closedhand.ai:443', RELAY_CONTROL_HOST: 'relay.closedhand.ai', RELAY_PIN: crypto.createHash('sha256').update('the relay certificate').digest('base64url'),
