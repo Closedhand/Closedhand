@@ -223,7 +223,9 @@ test('a slow connection shows the still ring, then the film, never the film on b
   }
   assert.ok(home.indexOf("getElementById('orbSmoke')") < home.indexOf('three.min.js'), 'the ring does not wait for the 3D library');
   assert.match(home, /\.orb-film \{ position: absolute; inset: 0; background: center \/ contain no-repeat url\(\/orb\/smoke-poster\.png\); \}/);
-  assert.match(home, /\.orb-film \.orb-smoke \{ opacity: 0; \}\n\s+\.orb-film\.moving \{ background: none; \}\n\s+\.orb-film\.moving \.orb-smoke \{ opacity: 1; \}/);
+  // One or the other in both themes: the light theme's poster rule is the more specific,
+  // so the film's rule names it too (the still ring once stayed behind the film, three times the size).
+  assert.match(home, /\.orb-film \.orb-smoke \{ opacity: 0; \}\n[\s\S]{0,260}?\.orb-film\.moving, html\[data-theme="light"\] \.orb-film\.moving \{ background: none; \}\n\s+\.orb-film\.moving \.orb-smoke \{ opacity: 1; \}/);
   assert.ok(home.indexOf("ringStill.rel = 'preload'") < home.indexOf('<title>'), 'on a phone its picture is asked for in the head');
   assert.match(chat, /\.talk-btn:not\(\.moving\) \{ background: center \/ contain no-repeat url\(\/orb\/smoke-poster\.png\); \}/);
   // Each film keeps its own stamp, so a phone keeps it rather than asking again.

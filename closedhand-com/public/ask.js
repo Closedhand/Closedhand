@@ -209,12 +209,31 @@
     });
   }
 
+  // On a phone the first screen ends with the box and its examples. What
+  // comes next starts below the screen when only a sliver of it would show,
+  // so nothing sits half cut off at the foot; once a question is asked the
+  // page is the conversation's, and the room goes.
+  function fold() {
+    if (!handheld) return;
+    box.style.marginBottom = '';
+    if (state.turns.length || state.busy || box.hidden || !box.offsetHeight) return;
+    var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, after = box.nextElementSibling;
+    while (after && !after.offsetHeight) after = after.nextElementSibling;
+    if (!after) return;
+    var showing = window.innerHeight - (after.getBoundingClientRect().top + window.scrollY);
+    if (showing > 0 && showing < 5 * rem) box.style.marginBottom = ((parseFloat(getComputedStyle(box).marginBottom) + showing) / rem) + 'rem';
+  }
+  fold();
+  window.addEventListener('resize', fold);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fold, function () {});
+
   function ready() { send.disabled = state.busy || !input.value.trim(); }
   function fit() { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; }
   function ask(question) {
     question = String(question || '').trim();
     if (state.busy || !question) return;
     state.busy = true;
+    fold();
     input.value = ''; fit(); ready();
     tries.hidden = true; next.hidden = true;
     // A question that got no answer makes way for the next try.

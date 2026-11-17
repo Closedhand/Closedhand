@@ -662,7 +662,10 @@ body.chat-active .mon-area { display:none; }
   .orb-film { position: absolute; inset: 0; background: center / contain no-repeat url(/orb/smoke-poster.png); }
   html[data-theme="light"] .orb-film { background-image: url(/orb/smoke-light-poster.png); }
   .orb-film .orb-smoke { opacity: 0; }
-  .orb-film.moving { background: none; }
+  /* Named for the light theme too: its poster rule above is the more
+     specific one, and left the still ring in view at its full size, uncontained,
+     behind the film. */
+  .orb-film.moving, html[data-theme="light"] .orb-film.moving { background: none; }
   .orb-film.moving .orb-smoke { opacity: 1; }
   /* The smoke ring: filmed, looping. It plays while on screen and flashes
      when tapped; pressing gives a little, words and light with it. */
@@ -702,8 +705,9 @@ body.chat-active .mon-area { display:none; }
     .orb-line { font-size: .6875rem; }
   }
   /* The icons drift behind the smoke, within a band just taller than the
-     ring, so they never cross the words above and below it. */
-  .orb-drift { position: absolute; left: 50%; top: 50%; width: min(100vw, 26rem); height: calc(var(--orb-size, 13.5rem) * 1.3); translate: -50% -50%; overflow: hidden; pointer-events: none; }
+     ring, so they never cross the words above and below it: no taller than
+     the room the ring is given, as what follows it can start that close. */
+  .orb-drift { position: absolute; left: 50%; top: 50%; width: min(100vw, 26rem); height: calc(var(--orb-size, 13.5rem) + 2 * min(var(--orb-size, 13.5rem) * 0.15, var(--orb-gap, 1.25rem) - .375rem)); translate: -50% -50%; overflow: hidden; pointer-events: none; }
   .orb-icon { position: absolute; left: 50%; top: 50%; width: 1.5rem; height: 1.5rem; margin: -.75rem 0 0 -.75rem; color: var(--muted); opacity: 0; will-change: transform, opacity; }
   .orb-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .orb-said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1775,7 +1779,7 @@ body.chat-active .mon-area { display:none; }
 // A phone that has opened its Closedhand before, signed in or by typing its
 // personal URL on the sign-in page (kept in this browser, only ever an
 // address): the ring opens that exact Closedhand's dashboard and shows its
-// address, and the steps for newcomers go.
+// address, and what is there for newcomers (the steps, the question box) goes.
 (function () {
   if (!document.documentElement.classList.contains('handheld')) return;
   var personal = /^https:\/\/[a-z][a-z0-9-]{1,30}[a-z0-9]\.closedhand\.ai$/;
@@ -1788,6 +1792,9 @@ body.chat-active .mon-area { display:none; }
     address.textContent = url.slice('https://'.length);
     address.hidden = false;
     document.getElementById('firstSteps').style.setProperty('display', 'none', 'important');
+    // The question box is for trying the LLM before having Closedhand, too.
+    var ask = document.getElementById('ask');
+    if (ask) ask.style.setProperty('display', 'none', 'important');
   }
   try { opens(localStorage.getItem('closedhand-personal-url')); } catch (e) { /* not kept in this browser */ }
   fetch('/api/account?brief=1', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (a) { opens(a && a.url); }).catch(function () {});
