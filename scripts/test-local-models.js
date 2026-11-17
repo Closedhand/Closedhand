@@ -592,6 +592,29 @@ test("a picture is checked before it is sent and made again when it misses what 
   assert.deepEqual([got.pic.bytes.toString(), got.seen, got.tries, got.misses], ['pic 2', 'A slim woman in a red swimsuit on a beach', 2, false], 'only the last is sent');
   assert.deepEqual(judgedWith.map((j) => [j.asked, j.description]), [['They said: a curvy woman on a beach', 'a curvy woman on a beach'], ['They said: a curvy woman on a beach', 'a fit woman with a curvy figure in a red swimsuit on a beach']]);
 
+  // A picture that looks pieced together is a miss: the reader is asked
+  // about it, with the description it was made from, and the judge is told so.
+  const lookedFor = [];
+  await im.madeChecked(async () => ({ bytes: Buffer.from('pic'), mime: 'image/png' }), 'a man holding a coffee cup', { look: async (...a) => { lookedFor.push(a[4]); return 'A man; the cup looks pasted on.'; }, judge: async () => ({ matches: true }) });
+  assert.deepEqual(lookedFor, ['a man holding a coffee cup'], 'looked at against the description it was made from');
+  const mi = require.resolve('../lib/model-images'), wasMi = require.cache[mi];
+  let asked = null;
+  require.cache[mi] = { id: mi, filename: mi, loaded: true, exports: { substituteImages: async (msgs) => { asked = msgs[0].content.filter((b) => b.type === 'text').map((b) => b.text).join(' '); return [{ content: [{ type: 'text', text: 'A man; the cup looks pasted on.' }] }]; } } };
+  try {
+    delete require.cache[require.resolve('../lib/image-generation')];
+    const fresh = require('../lib/image-generation');
+    const seenIt = await fresh.madeChecked(async () => ({ bytes: Buffer.from('pic'), mime: 'image/png' }), 'a man holding a coffee cup', { settings: {}, userId: 'u1', judge: async () => ({ matches: true }) });
+    assert.equal(seenIt.seen, 'A man; the cup looks pasted on.');
+    assert.match(asked, /It was made from this description: a man holding a coffee cup/);
+    assert.match(asked, /looks like one natural picture or like things cut out and pasted together/);
+    let system = '';
+    await fresh.judged({ asked: '', description: 'd', seen: 's', userId: 'u1' }, { internal: () => ({ model: 'm', client: { messages: { create: async (r) => { system = r.system; return { content: [] }; } } } }) });
+    assert.match(system, /A picture that looks pieced together does not match, even with everything asked for in it/);
+  } finally {
+    if (wasMi) require.cache[mi] = wasMi; else delete require.cache[mi];
+    delete require.cache[require.resolve('../lib/image-generation')];
+  }
+
   // Three tries at most, then the last goes with the miss said plainly.
   let n = 0;
   const always = await im.madeChecked(async () => ({ bytes: Buffer.from('p' + ++n), mime: 'image/png' }), 'x', { look: async () => 'something else', judge: async () => ({ matches: false, better: 'try again' }) });
