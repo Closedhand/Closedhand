@@ -1882,18 +1882,28 @@
   @keyframes hereSpin { to { transform: rotate(360deg); } }
   .here-wx { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: rgba(var(--fg-rgb),0.5); cursor: pointer; outline: none; }
   /* The day ahead, as a small agenda: today and tomorrow a line each, the
-     day named on the left, each thing after it with its time first. The
-     times are a little brighter, so each thing stands apart without a mark
-     between them; the block is centred as a whole under the weather. */
-  .today-line { flex-basis: 100%; display: grid; grid-template-columns: auto minmax(0, auto); justify-content: center; column-gap: 0.875rem; row-gap: 0.25rem; margin: 0; padding: 0 max(1rem, calc((100% - 42.5rem) / 2)); font-size: 0.8125rem; line-height: 1.5; color: rgba(var(--fg-rgb),0.5); text-align: left; }
+     day named first, each thing after it with its time first. The times are
+     a little brighter, so each thing stands apart without a mark between
+     them. It shares the footer's columns (below) through a subgrid, so its
+     rows line up with the weather's. */
+  .today-line { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 0.25rem; margin: 0; font-size: 0.8125rem; line-height: 1.5; color: rgba(var(--fg-rgb),0.5); text-align: start; }
   .hero-footer .today-line span { font-size: inherit; color: inherit; text-align: inherit; max-width: none; white-space: normal; }
-  .hero-footer .today-line .tl-day { justify-self: end; align-self: start; display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 500; color: rgba(var(--fg-rgb),0.78); white-space: nowrap; }
+  .today-line .tl-icon { justify-self: center; align-self: start; display: inline-flex; padding-top: 0.125rem; }
+  .hero-footer .today-line .tl-day { justify-self: start; align-self: start; font-weight: 500; color: rgba(var(--fg-rgb),0.78); white-space: nowrap; }
   .today-line .tl-items { display: flex; flex-wrap: wrap; column-gap: 1.125rem; row-gap: 0.125rem; }
   .hero-footer .today-line .tl-time { margin-right: 0.3125rem; color: rgba(var(--fg-rgb),0.74); font-variant-numeric: tabular-nums; }
   .today-line .tl-rain { display: inline-flex; vertical-align: -0.125rem; margin-left: 0.3125rem; }
   /* The weather and the day ahead as one block: two centred lines, close
      together, each with its glyph in the same colour. */
-  .hero-footer { row-gap: 0.375rem; }
+  /* One small table, centred as a whole: a column of glyphs (the weather's,
+     and the calendar's beside the first day), the day, then what is on. With
+     the day pushed right and the calendar's mark inside "Today" alone,
+     "Tomorrow" stood out to the left of everything above it. */
+  .hero-footer { display: grid; grid-template-columns: auto auto fit-content(36rem); justify-content: center; align-items: center; column-gap: 0.625rem; row-gap: 0.375rem; }
+  .hero-footer > .here { grid-column: 1 / -1; justify-self: center; }
+  .hero-footer > .here-wx { display: contents; }
+  .here-wx > svg { justify-self: center; }
+  .hero-footer .here-wx > span { grid-column: 2 / -1; justify-self: start; text-align: start; }
   .today-line svg { flex: none; color: rgba(var(--fg-rgb),0.62); }
   .here-wx { cursor: default; }
   /* One quiet sentence at rest, in two parts that show themselves the same
@@ -2412,7 +2422,8 @@
   function load() {
     fetch('/api/here', { cache: 'no-store' }).then(function(r) { return r.ok ? r.json() : null; }).then(render).catch(function() {});
     // Today and tomorrow, at a glance, under the weather: a line a day, the
-    // calendar's mark beside the first. A screen reader hears the sentence.
+    // calendar's mark in the glyph column of the first. A screen reader hears
+    // the sentence.
     fetch('/api/today', { cache: 'no-store' }).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
       var line = document.getElementById('todayLine');
       if (!line) return;
@@ -2422,7 +2433,7 @@
       [['today', 'Today'], ['tomorrow', 'Tomorrow']].forEach(function(day) {
         var on = entries.filter(function(e) { return e.when === day[0]; });
         if (!on.length) return;
-        html += '<span class="tl-day">' + (html ? '' : cal) + day[1] + '</span><span class="tl-items">' + on.map(function(e) {
+        html += '<span class="tl-icon">' + (html ? '' : cal) + '</span><span class="tl-day">' + day[1] + '</span><span class="tl-items">' + on.map(function(e) {
           return '<span class="tl-item"><span class="tl-time">' + esc(e.time) + '</span>' + esc(e.label) + (e.rain ? rain : '') + '</span>';
         }).join('') + '</span>';
       });

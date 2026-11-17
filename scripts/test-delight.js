@@ -61,7 +61,11 @@ test('the line is served behind the login and shown under the weather, on a row 
   assert.match(draw, /'<span class="tl-item"><span class="tl-time">' \+ esc\(e\.time\) \+ '<\/span>' \+ esc\(e\.label\) \+ \(e\.rain \? rain : ''\) \+ '<\/span>'/);
   assert.match(draw, /line\.setAttribute\('aria-label', \(d && d\.text\) \|\| ''\);/);
   assert.match(draw, /data-tip="Rain likely"/, 'rain is a drop, said on hover');
-  assert.match(page, /\.today-line \{ flex-basis: 100%; display: grid; grid-template-columns: auto minmax\(0, auto\); justify-content: center;/);
+  // One table with the weather: a glyph column, the day, then what is on,
+  // every row on the same columns (a subgrid), so no day stands out.
+  assert.match(page, /\.hero-footer \{ display: grid; grid-template-columns: auto auto fit-content\(36rem\); justify-content: center;/);
+  assert.match(page, /\.today-line \{ grid-column: 1 \/ -1; display: grid; grid-template-columns: subgrid;/);
+  assert.match(draw, /'<span class="tl-icon">' \+ \(html \? '' : cal\) \+ '<\/span><span class="tl-day">' \+ day\[1\] \+ '<\/span>/, 'the calendar in its own column, every day after it');
 });
 
 test('an ignored planted instruction is always mentioned in the reply', () => {
