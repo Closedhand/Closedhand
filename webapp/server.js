@@ -6398,7 +6398,7 @@ app.get("/api/notes", async (req, res) => {
             const parsed = JSON.parse(val);
             if (parsed && typeof parsed === "object" && parsed.value !== undefined) {
               val = parsed.value;
-              meta = { created: parsed.created, lastAccessed: parsed.lastAccessed, accessCount: parsed.accessCount || 0, source: parsed.source || null };
+              meta = { created: parsed.created, lastAccessed: parsed.lastAccessed, accessCount: parsed.accessCount || 0, source: parsed.source || null, from: typeof parsed.from === "string" ? parsed.from.slice(0, 160) : null };
             }
           } catch (e) {}
         }

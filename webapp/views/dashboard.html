@@ -9384,7 +9384,8 @@
       var CAT = { profile: 'About you', preference: 'Preference', person: 'Person', business: 'Business or project', topic: 'Other' };
       var kind = (note.category === 'profile' && /^profile[-_]/.test(key)) ? key.replace(/^profile[-_]/, '').replace(/[-_]+/g, ' ') : '';
       var title = kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : (note.subject || (note.value || '').split(/[.;]/)[0].slice(0, 60) || key);
-      var who = note.source === 'chat' ? 'Pinned by Closedhand from a conversation' : note.source === 'setup scan' ? 'Read from your mail by the setup scan' : note.source === 'you' ? 'Added by you' : 'Pinned earlier';
+      // A fact Closedhand found in what is connected names the item.
+      var who = note.from ? 'Pinned by Closedhand from ' + note.from : note.source === 'chat' ? 'Pinned by Closedhand from a conversation' : note.source === 'setup scan' ? 'Read from your mail by the setup scan' : note.source === 'you' ? 'Added by you' : 'Pinned earlier';
       var when = note.created ? new Date(note.created).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
       showPanelMode('fact');
       document.getElementById('brain-panel-edit').hidden = false;

@@ -24,8 +24,8 @@ test('facts read as grouped sentences with the key as a handle, never as JSON', 
 
 const read = (f) => require("node:fs").readFileSync(require("node:path").join(__dirname, "..", f), "utf8");
 
-// Pinned Facts follow what the person says to everyone, not only to
-// Closedhand (lib/facts-follow.js): told a clinic their partner was
+// Pinned Facts follow everything the person has connected, not only what
+// they tell Closedhand (lib/facts-follow.js): told a clinic their partner was
 // expecting, Closedhand, which reads that chat, still had only what was said
 // to it. Invented people and words only.
 function followHarness(facts) {
@@ -39,11 +39,13 @@ function followHarness(facts) {
 }
 const NOW = Date.parse("2026-12-01T09:00:00Z");
 const words = [
-  { n: 1, at: NOW - 3600000, where: "WhatsApp to Clinica Sorriso", text: "Sorry to move it at short notice, my wife Ana is pregnant and has had complications, so I need to stay home." },
-  { n: 2, at: NOW - 1800000, where: "WhatsApp to Dana Fixture", text: "See you at 7!" },
+  { n: 1, at: NOW - 3600000, where: "WhatsApp to Clinica Sorriso", own: true, text: "Sorry to move it at short notice, my wife Ana is pregnant and has had complications, so I need to stay home." },
+  { n: 2, at: NOW - 1800000, where: "an email from Example Freight Payroll", own: false, text: "Your payslip for November 2026. Employee: Robin Fixture. Employer: Example Freight Ltd." },
 ];
+const CURSOR = { at: new Date(NOW - 1800000).toISOString(), id: "m-2" };
+const items = (list = words, cursor = CURSOR) => async () => ({ items: list, cursor });
 
-test("what the person wrote to anyone becomes a Pinned Fact only on their own words, written through pin_fact", async () => {
+test("what comes in from any connection becomes a Pinned Fact only on the item's own words, written through pin_fact", async () => {
   const facts = { "family-partner": { value: "Robin's wife is Ana Fixture.", category: "person", subject: "Ana Fixture", source: "chat" } };
   const { mod, restore } = followHarness(facts);
   try {
@@ -51,48 +53,117 @@ test("what the person wrote to anyone becomes a Pinned Fact only on their own wo
     const pinned = [];
     const judge = async (u, w, prose, name) => { shown = { w, prose, name }; return [
       { key: "[family-partner]", category: "person", subject: "Ana Fixture", adds: "She is expecting their first child.", replaces: "", n: 1, quote: "my wife Ana is pregnant" },
-      { key: "work-employer", category: "business", subject: "Example Freight", adds: "Robin works for Example Freight.", replaces: "", n: 2, quote: "I work at Example Freight" },
+      { key: "work-employer", category: "business", subject: "Example Freight", adds: "Robin works for Example Freight Ltd.", replaces: "", n: 2, quote: "Employer: Example Freight Ltd." },
+      { key: "work-boss", category: "person", subject: "Dana Fixture", adds: "Dana Fixture is Robin's manager.", replaces: "", n: 2, quote: "Dana is your manager" },
       { key: "_pulse_last", category: "topic", subject: "x", adds: "Something long enough here.", replaces: "", n: 1, quote: "my wife Ana is pregnant" },
     ]; };
-    const r = await mod.review("u1", { now: NOW, words: async () => words, judge, pin: async (f) => { pinned.push(f); } });
+    const r = await mod.review("u1", { now: NOW, items: items(), judge, confirm: async () => true, pin: async (f) => { pinned.push(f); } });
     assert.equal(shown.name, "Robin");
     assert.match(shown.prose, /\[family-partner\]/, "the facts it may rewrite, by key");
-    assert.deepEqual(pinned.map((f) => f.key), ["family-partner"], "on the person's own words only, once a note however many readings found it; a key of Closedhand's own is never written");
-    assert.deepEqual(mod.readRecord({ "_facts-follow": JSON.stringify({ looked: "2026-11-30T00:00:00Z", since: "2026-11-30T00:00:00Z" }) }), { v: 2 }, "a look by older rules is read again");
+    assert.deepEqual(pinned.map((f) => f.key), ["family-partner", "work-employer"], "on the words of the item each names, the person's own or a record from whoever would know; once a note however many readings found it; a key of Closedhand's own is never written; words not in the item are never a fact");
+    assert.deepEqual(mod.readRecord({ "_facts-follow": JSON.stringify({ v: 2, looked: "2026-11-30T00:00:00Z", since: "2026-11-30T00:00:00Z" }) }), { v: 3 }, "a look by older rules reads everything again");
     assert.equal(pinned[0].from, "your WhatsApp to Clinica Sorriso, Tue 1 Dec");
+    assert.deepEqual([pinned[1].from, pinned[1].own], ["an email from Example Freight Payroll, Tue 1 Dec", false]);
+    assert.match(shown.w.map((m) => m.where).join(" | "), /Clinica Sorriso \| an email from Example Freight Payroll/, "everything that came in, the person's words among it");
     assert.equal(pinned[0].value, "Robin's wife is Ana Fixture. She is expecting their first child.", "added to what the note said, nothing lost");
     assert.equal(r.read, 2);
-    assert.equal(mod.readRecord(facts).since, new Date(NOW - 1800000).toISOString(), "the next look reads only what came after");
+    assert.deepEqual(mod.readRecord(facts).cursor, CURSOR, "the next look reads only what came after");
     // A second note about the same person goes into the one there is.
-    const again = await mod.review("u1", { now: NOW + 7200000, words: async () => [{ ...words[0], n: 1, at: NOW + 3600000 }], judge: async () => [{ key: "family-baby", category: "person", subject: "Ana Fixture (Ana), Robin's wife", adds: "Ana Fixture is expecting a baby.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const again = await mod.review("u1", { now: NOW + 7200000, items: items([{ ...words[0], n: 1, at: NOW + 3600000 }]), judge: async () => [{ key: "family-baby", category: "person", subject: "Ana Fixture (Ana), Robin's wife", adds: "Ana Fixture is expecting a baby.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.deepEqual([again.pinned[0].key, again.pinned[0].subject], ["family-partner", "Ana Fixture"], "one note per subject, under its own name");
-    const sum = await mod.review("u1", { now: NOW + 9000000, words: async () => [{ ...words[0], n: 1, at: NOW + 8000000 }], judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Ana Fixture is expecting a baby, due in 2027.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const sum = await mod.review("u1", { now: NOW + 9000000, items: items([{ ...words[0], n: 1, at: NOW + 8000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Ana Fixture is expecting a baby, due in 2027.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.deepEqual(sum.pinned, [], "a year nobody wrote is not a fact");
-    const dated = await mod.review("u1", { now: NOW + 11000000, words: async () => [{ ...words[0], n: 1, at: NOW + 10000000 }], judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const dated = await mod.review("u1", { now: NOW + 11000000, items: items([{ ...words[0], n: 1, at: NOW + 10000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.equal(dated.pinned.length, 1, "the year they wrote it in is theirs");
     facts["family-partner"].value = "Robin's wife is Ana Fixture. She lives in Lisbon. She was expecting their first child as of December 2026.";
-    const same = await mod.review("u1", { now: NOW + 13000000, words: async () => [{ ...words[0], n: 1, at: NOW + 12000000 }], judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const same = await mod.review("u1", { now: NOW + 13000000, items: items([{ ...words[0], n: 1, at: NOW + 12000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She was expecting their first child as of December 2026.", replaces: "", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.deepEqual(same.pinned, [], "a note with nothing new is left as it was");
-    const moved = await mod.review("u1", { now: NOW + 15000000, words: async () => [{ ...words[0], n: 1, at: NOW + 14000000 }], judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She lives in Porto.", replaces: "She lives in Lisbon.", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
+    const moved = await mod.review("u1", { now: NOW + 15000000, items: items([{ ...words[0], n: 1, at: NOW + 14000000 }]), judge: async () => [{ key: "family-partner", category: "person", subject: "Ana Fixture", adds: "She lives in Porto.", replaces: "She lives in Lisbon.", n: 1, quote: "my wife Ana is pregnant" }], pin: async (f) => { pinned.push(f); } });
     assert.equal(moved.pinned[0].value, "Robin's wife is Ana Fixture. She lives in Porto. She was expecting their first child as of December 2026.", "only the sentence their words make untrue is replaced");
+    // Which note a fact goes in is code's to say. About the person
+    // themselves: one note for each part of their life, whatever note the
+    // LLM named; about anyone else, only a note about that same one.
+    facts["health-procedure"] = { value: "Robin had a knee operation in 2025.", category: "person", subject: "Robin Fixture" };
+    const routed = await mod.review("u1", { now: NOW + 17000000, pin: async () => {}, items: items([{ ...words[1], n: 1, at: NOW + 16000000, text: "Your payslip for November 2026. Employee: Robin Fixture, robin@freight.example. Employer: Example Freight Ltd." }]), confirm: async () => true, judge: async () => [
+      { key: "[health-procedure]", category: "person", subject: "Robin Fixture", adds: "Robin's work email is robin@freight.example.", replaces: "", n: 1, quote: "robin@freight.example", topic: "Work contact" },
+      { key: "[family-partner]", category: "business", subject: "Example Freight", adds: "Example Freight Ltd employs Robin.", replaces: "", n: 1, quote: "Employer: Example Freight Ltd.", topic: "" },
+      { key: "profile-home", category: "profile", subject: "Robin", adds: "Robin lives at Harbour Row.", replaces: "", n: 1, quote: "Employer: Example Freight Ltd.", topic: "" },
+    ] });
+    assert.deepEqual(routed.pinned.map((f) => [f.key, f.category]), [["profile-work-contact", "profile"], ["business-example-freight", "business"]],
+      "the work address in a note on work, not the one on their health; the company in a note of its own, not the partner's; a fact about them with no part of life named is not filed");
+    // Anything but their own words is checked once more beside its item.
+    const asked = [];
+    const checked = await mod.review("u1", { now: NOW + 19000000, pin: async () => {}, items: items([{ ...words[1], n: 1, at: NOW + 18000000, text: "Dana Fixture will view the flat on Robin's behalf on Saturday." }, { ...words[0], n: 2, at: NOW + 18000001, text: "Ana and I are moving to Porto for good next spring." }]), judge: async () => [
+      { key: "person-dana", category: "person", subject: "Dana Fixture", adds: "Dana Fixture views flats on Robin's behalf.", replaces: "", n: 1, quote: "will view the flat on Robin's behalf" },
+      { key: "family-partner", category: "person", subject: "Ana Fixture", adds: "Ana and Robin are moving to Porto for good.", replaces: "", n: 2, quote: "moving to Porto for good" },
+    ], confirm: async (u, held, item) => { asked.push([held.key, item.text]); return false; } });
+    assert.deepEqual(checked.pinned.map((f) => f.key), ["family-partner"], "someone else's words turned down on the second check are not pinned; their own words need no second check");
+    assert.deepEqual(asked, [["person-dana", "Dana Fixture will view the flat on Robin's behalf on Saturday."]], "the finding is checked beside its own item");
   } finally { restore(); }
 });
 
-test("facts follow at most once an hour, skip the person's chats with Closedhand, and are kept through pin_fact", async () => {
+test("facts follow at most once an hour, and are kept through pin_fact", async () => {
   const facts = {};
   const { mod, restore } = followHarness(facts);
   try {
     let read = 0;
-    const deps = { words: async () => { read++; return []; } };
+    const deps = { items: async () => { read++; return { items: [], cursor: {} }; } };
     await mod.review("u1", deps);
     await mod.review("u1", deps);
     assert.equal(read, 1, "once an hour");
   } finally { restore(); }
   const src = read("lib/facts-follow.js");
-  assert.match(src, /if \(!d\.text \|\| closedhand\.has\(String\(d\.chat\)\)\) continue;/, "their chat with Closedhand is not 'what they wrote to others'");
-  assert.match(src, /\.eq\("data->>sender", "me"\)/, "their side of each chat");
   assert.match(src, /require\("\.\/tools\/handlers"\)\.handleInternalTool\("pin_fact", \{ key: held\.key, value: held\.value, category: held\.category, subject: held\.subject, _userId: userId \}\);/, "one note per subject, as pin_fact keeps it");
-  assert.match(src, /if \(isNew\) kept\.source = "own words"; kept\.from = held\.from;/, "and says where it came from");
+  assert.match(src, /kept\.source = held\.own \? "own words" : "connected"; kept\.from = held\.from;/, "and says where it came from");
+  assert.match(read("webapp/views/dashboard.html"), /note\.from \? 'Pinned by Closedhand from ' \+ note\.from/, "which the fact's panel names");
+});
+
+// Everything connected is read, a share at a time, from where the last look
+// stopped: the whole store first, then what is new. Bulk mail, drafts,
+// sign-in codes and the person's chats with Closedhand are passed over.
+test("a look reads every connection's items in the order they reached Closedhand, and the next goes on from there", async () => {
+  const rows = [
+    { source: "gmail", type: "email", external_id: "e1", created_at: "2026-11-01T08:00:00.120Z", received_at: "2026-10-30T09:00:00.000Z", data: { from: "Payroll <pay@freight.example>", subject: "Your payslip", body: "Employer: Example Freight Ltd.", labels: ["INBOX"] } },
+    { source: "gmail", type: "email", external_id: "e2", created_at: "2026-11-01T08:00:00.120Z", received_at: "2026-10-30T10:00:00.000Z", data: { from: "Deals <deals@shop.example>", subject: "50% off", body: "Big sale", labels: ["INBOX", "CATEGORY_PROMOTIONS"] } },
+    { source: "gmail", type: "email", external_id: "e3", created_at: "2026-11-01T08:00:00.121Z", received_at: "2026-10-30T11:00:00.000Z", data: { to: "Ana <ana@home.example>", subject: "Dinner", body: "I'll be home by 7", labels: ["SENT"] } },
+    { source: "whatsapp_linked", type: "message", external_id: "w1", created_at: "2026-11-01T08:00:01.000Z", received_at: "2026-10-31T12:00:00.000Z", data: { chat: "bot-chat", chat_name: "Closedhand", sender: "me", text: "remind me tomorrow" } },
+    { source: "mcp:notes-1", type: "page", external_id: "p1", created_at: "2026-11-01T08:00:02.000Z", received_at: "2026-10-31T13:00:00.000Z", data: { title: "Allotment", content: "Plot 14 at Harbour Lane allotments, rented since 2019." } },
+  ];
+  const queries = [];
+  const builder = (table) => {
+    const f = { table, gte: null, lt: null, gt: null, eq: {} };
+    const q = { select() { return q; }, eq(k, v) { f.eq[k] = v; return q; }, gte(k, v) { f.gte = v; return q; }, lt(k, v) { f.lt = v; return q; }, gt(k, v) { f.gt = v; return q; }, order() { return q; }, limit() { return q; },
+      then(ok, bad) {
+        queries.push(f);
+        if (table === "chat_links") return Promise.resolve({ data: [{ platform_user_id: "bot-chat" }], error: null }).then(ok, bad);
+        const t = (r) => Date.parse(r.created_at);
+        const data = rows.filter((r) => (!f.gte || t(r) >= Date.parse(f.gte)) && (!f.lt || t(r) < Date.parse(f.lt)) && (!f.gt || r.external_id > f.gt));
+        return Promise.resolve({ data, error: null }).then(ok, bad);
+      } };
+    return q;
+  };
+  const dbPath = require.resolve("../lib/db");
+  const saved = require.cache[dbPath];
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { supabase: { from: builder } } };
+  const mPath = require.resolve("../lib/facts-follow");
+  delete require.cache[mPath];
+  try {
+    const { newItems } = require("../lib/facts-follow");
+    const first = await newItems("u1", {});
+    assert.deepEqual(first.items.map((m) => [m.where, m.own]), [["an email from Payroll", false], ["email to Ana", true], ["a page", false]],
+      "mail, the person's own mail and any connection's items; not a promotion, nor their chat with Closedhand");
+    assert.match(first.items[2].text, /Plot 14 at Harbour Lane allotments/);
+    assert.deepEqual(first.cursor, { at: "2026-11-01T08:00:02.000Z", id: "p1" });
+    const next = await newItems("u1", first.cursor);
+    assert.deepEqual(next.items, [], "the next look goes on after where this one stopped");
+    // Two items that reached Closedhand in one millisecond: the look that
+    // stopped between them goes on with the second.
+    const between = await newItems("u1", { at: "2026-11-01T08:00:00.120Z", id: "e1" });
+    assert.deepEqual(between.items.map((m) => m.where), ["email to Ana", "a page"]);
+  } finally {
+    if (saved) require.cache[dbPath] = saved; else delete require.cache[dbPath];
+    delete require.cache[mPath];
+  }
 });
 
 // Thinning Pinned Facts at 150: the LLM was handed every key in the store,
