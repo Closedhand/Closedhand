@@ -68,7 +68,7 @@ function connection(ip) {
 }
 
 // A paid month's fair use, in one place: the misuse watch had its own, 15.
-const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 20);
+const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 25);
 
 function create({ db, env = process.env, request = fetch, notices = null }) {
   const keys = require('./included-ai-near').create({ db, env, request, notices });

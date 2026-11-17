@@ -350,7 +350,7 @@ test('this month\'s spend, apart: the maintainer\'s own keys closedhand.com did 
 // never stopped by the sweep or a subscription ending.
 const thisMonth = () => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); };
 test('a month of fair use is 20 unless set', () => {
-  assert.equal(create({ db: database(), env: env({ INCLUDED_AI_FAIR_USE_USD: '' }) }).fairUse, 20);
+  assert.equal(create({ db: database(), env: env({ INCLUDED_AI_FAIR_USE_USD: '' }) }).fairUse, 25);
 });
 
 test('the maintainer\'s account gets a month of fair use, never free days, never stopped, and claiming again carries on', quiet(async () => {
