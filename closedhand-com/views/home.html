@@ -764,6 +764,15 @@ body.chat-active .mon-area { display:none; }
   button.ask-next-go { cursor: pointer; }
   .ask-next svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .ask.done .ask-box, .ask.done .ask-tries { display: none; }
+  /* The questions are used up: the piece takes the box's place and its look,
+     so it reads as where the conversation now goes, and the download card
+     below answers with a glow passing over it once. */
+  .ask.done .ask-next { margin-top: 1rem; padding: .875rem .875rem .875rem 1.375rem; background: rgba(var(--raised-rgb),0.75); border: 1.5px solid rgba(var(--accent-strong-rgb),0.45); box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.12), 0 0 3.125rem rgba(var(--accent-strong-rgb),0.06); }
+  .ask.done .ask-next .ask-next-words { font-size: 1rem; }
+  .ask.done .ask-next strong { font-size: 1.125rem; margin-bottom: .125rem; }
+  /* Beside the card's own entrance, which keeps it in view: a ring leaves its edge and fades. */
+  .ways.called { animation: heroIn 0.8s ease forwards 0.7s, waysCalled 1.5s ease-out; }
+  @keyframes waysCalled { 0% { outline: 2px solid rgba(var(--accent-strong-rgb),0.6); outline-offset: 0; } 100% { outline: 2px solid rgba(var(--accent-strong-rgb),0); outline-offset: 1rem; } }
   /* An answer's letters, each under its own noise until it sharpens out. */
   .ask-w { display: inline-block; white-space: nowrap; }
   .ask-ch { position: relative; display: inline-block; }

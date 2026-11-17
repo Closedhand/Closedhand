@@ -118,6 +118,7 @@
     var ways = byId('ways'), dl = byId('macAppLink');
     if (ways) ways.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
     if (dl) dl.focus({ preventScroll: true });
+    call();
   }
   function sendLink(e) {
     went();
@@ -150,18 +151,32 @@
   function hush(yes) { if (next) next.hidden = yes; }
   var FREE = 'The first 14 days are free and need no card.';
   function after() {
-    if (state.left === 0) return over();
+    if (state.left === 0) return over(true);
     say('', handheld
       ? 'On a computer, Closedhand unlocks image generation, agentic actions and anything you connect.'
       : 'Download Closedhand below to unlock image generation, agentic actions and anything you connect.');
     if (state.left === 1) note.textContent = 'One question left here today.';
   }
-  function over() {
+  // asked: the questions ran out just now, as an answer came, so the piece
+  // is brought into view with the download under it; a page that opens with
+  // none left stays where it is.
+  function over(asked) {
     box.classList.add('done');
     tries.hidden = true;
     var lead = state.of === 1 ? 'That’s your question here for today.' : 'That’s your ' + state.of + ' questions here for today.';
     say(lead, handheld ? 'Closedhand runs on a computer. Carry on there: ' + FREE.charAt(0).toLowerCase() + FREE.slice(1) : 'Download Closedhand below to carry on. ' + FREE);
     note.hidden = true;
+    call();
+    if (asked) next.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
+  }
+  // The download card shows itself: a glow passes over it once, when the
+  // questions run out and whenever the way to it is taken.
+  function call() {
+    var ways = byId('ways');
+    if (!ways || still) return;
+    ways.classList.remove('called');
+    void ways.offsetWidth;
+    ways.classList.add('called');
   }
 
   // The answer's events as they arrive (lib/ask.js): each piece is opened
@@ -198,6 +213,12 @@
   }
   function sent(turns, hear, again) {
     return hello().then(function () {
+      // closedhand.com takes a conversation only so long (a day's questions and
+      // their answers), and a page left open keeps its own for longer than
+      // that: over a night, or while the site restarts. The latest of it goes,
+      // starting at a question; without this every question after that was
+      // turned away and the page could only say no answer came back.
+      turns = turns.slice(-(Math.max(1, state.of) * 2 - 1));
       var mine = P.keys();
       return Promise.all(turns.map(function (t) { return P.seal(t.text, state.key); })).then(function (sealed) {
         return fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -274,11 +295,11 @@
       state.told = true;
       after();
       // A long answer starts under its question, at the top of the screen.
-      if (form.getBoundingClientRect().bottom > window.innerHeight) mine.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+      if (!box.classList.contains('done') && form.getBoundingClientRect().bottom > window.innerHeight) mine.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
     }).catch(function (e) {
       clearInterval(theirs.churn);
       if (out) out.stop();
-      if (e.limit) { thread.removeChild(mine); thread.removeChild(theirs); state.left = 0; return over(); }
+      if (e.limit) { thread.removeChild(mine); thread.removeChild(theirs); state.left = 0; return over(true); }
       state.unanswered = [mine, theirs];
       theirs.classList.add('failed');
       theirs.textContent = 'No answer came back just now. Try again in a minute.';

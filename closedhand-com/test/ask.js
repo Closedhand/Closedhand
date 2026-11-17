@@ -385,6 +385,12 @@ test('the page: the box and its script are on the home page, and what it says is
   // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot: the download unlocks it.
   assert.match(asking.INSTRUCTION, /it generates images, takes actions for them and works with their mail, calendar, files and whatever else they connect/);
   assert.match(asking.INSTRUCTION, /never say that Closedhand cannot do it: say in one sentence that downloading Closedhand, below on this page, unlocks it/);
+  // A page left open over a night or a restart holds more conversation than closedhand.com takes:
+  // it sends the latest of it, never a request that can only be turned away.
+  assert.match(script, /turns = turns\.slice\(-\(Math\.max\(1, state\.of\) \* 2 - 1\)\);/);
+  // Used up, the piece takes the box's place and the download card shows itself.
+  assert.match(home, /\.ask\.done \.ask-next \{[^}]*border: 1\.5px solid rgba\(var\(--accent-strong-rgb\),0\.45\)/);
+  assert.match(script, /note\.hidden = true;\n    call\(\);\n    if \(asked\) next\.scrollIntoView/);
   // Letters and their noise take turns, each sharp: nothing blurs, in the box or the ring.
   assert.doesNotMatch(home, /\.(ask|orb)-(real|noise|ch)[^{]*\{[^}]*blur/);
   // The LLM goes by its name, with "uncensored" beside it.
