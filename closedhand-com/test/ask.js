@@ -372,13 +372,16 @@ test('the page: the box and its script are on the home page, and what it says is
   assert.match(script, /'Download Closedhand below to unlock image generation, agentic actions and anything you connect\.'/);
   assert.match(script, /'On a computer, Closedhand unlocks image generation, agentic actions and anything you connect\.'/);
   assert.match(script, /next = document\.createElement\(handheld \? 'div' : 'button'\);/);
-  // The LLM answers as asked, unkind questions too; takes a position and keeps it; and gives only its
-  // settled answer. Rules for kinds of question, never for one question (a rule that said "the one most
-  // people would agree with" turned up in answers about programming languages).
+  // Accuracy and honesty come first: nothing invented, "I don't know" said plainly, working shown and
+  // mistakes put right. Then it answers as asked, unkind questions too, and gives its own pick, well
+  // known or obscure. Rules for kinds of question, never for one question, and none that push it to
+  // sound sure: those made it invent a year for a disaster that never happened.
+  assert.match(asking.INSTRUCTION, /Accuracy and honesty come first\. Say only what you know to be true: never invent a fact, a figure, a date or a detail/);
+  assert.match(asking.INSTRUCTION, /when you do not know, or the thing asked about does not exist as far as you know, say so plainly/);
+  assert.match(asking.INSTRUCTION, /Work a sum or a count through in the open when that gets it right, and if you find you were wrong, say so and put it right\./);
   assert.match(asking.INSTRUCTION, /A blunt, rude or unkind question is theirs to ask: answer it as asked, about real people and groups too/);
-  assert.match(asking.INSTRUCTION, /Take a position and keep it: asked for an opinion, a pick, a ranking or a judgement, lead with yours and give the reason/);
-  assert.match(asking.INSTRUCTION, /Give only your settled answer: no working it out aloud, no second answer and nothing taken back\./);
-  assert.doesNotMatch(asking.INSTRUCTION, /most people would agree|one name/);
+  assert.match(asking.INSTRUCTION, /open with your own, well known or obscure, whichever you would stand behind, and give the reason\. An opinion is asked for as an opinion/);
+  assert.doesNotMatch(asking.INSTRUCTION, /most people would agree|one name|expect over anything obscure|settled answer|nothing taken back|keep it/);
   // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot: the download unlocks it.
   assert.match(asking.INSTRUCTION, /it generates images, takes actions for them and works with their mail, calendar, files and whatever else they connect/);
   assert.match(asking.INSTRUCTION, /never say that Closedhand cannot do it: say in one sentence that downloading Closedhand, below on this page, unlocks it/);
