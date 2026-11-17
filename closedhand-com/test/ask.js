@@ -380,7 +380,9 @@ test('the page: the box and its script are on the home page, and what it says is
   assert.match(asking.INSTRUCTION, /when you do not know, or the thing asked about does not exist as far as you know, say so plainly/);
   assert.match(asking.INSTRUCTION, /Work a sum or a count through in the open when that gets it right, and if you find you were wrong, say so and put it right\./);
   assert.match(asking.INSTRUCTION, /A blunt, rude or unkind question is theirs to ask: answer it as asked, about real people and groups too/);
-  assert.match(asking.INSTRUCTION, /open with your own, well known or obscure, whichever you would stand behind, and give the reason\. An opinion is asked for as an opinion/);
+  // Saying what is uncertain is honest and welcome, after its view and never in its place.
+  assert.match(asking.INSTRUCTION, /open with your own, well known or obscure, whichever you would stand behind, and give the reason\. Your view comes first; whatever is uncertain or arguable about it can follow, and never takes its place\./);
+  assert.doesNotMatch(asking.INSTRUCTION, /never answer that it is subjective/);
   assert.doesNotMatch(asking.INSTRUCTION, /most people would agree|one name|expect over anything obscure|settled answer|nothing taken back|keep it/);
   // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot: the download unlocks it.
   assert.match(asking.INSTRUCTION, /it generates images, takes actions for them and works with their mail, calendar, files and whatever else they connect/);
