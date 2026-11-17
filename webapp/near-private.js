@@ -569,22 +569,33 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // response whose json() is the decrypted, verified reply; rejects with a plain
 // sentence when the proof or the reply's signature fails, the check that
 // failed beside it (reason) for the log and the maintainer.
-async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal } = {}) {
+//
+// sealed: the request was encrypted elsewhere, to a model enclave's key that
+// warm gave out and for a reply key only its sender holds ({ modelKey,
+// clientKey }, hex): closedhand.com's page does this in a visitor's browser
+// (relay below). It goes as it came, only on a connection whose proof names
+// that key, and its reply is returned still encrypted once signed for.
+async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal, sealed } = {}) {
   if (signal?.aborted) throw signal.reason;
   const st = stateFor(conn, model, deps);
   const auth = { Authorization: "Bearer " + conn.apiKey, "Content-Type": "application/json", Accept: "application/json", "Accept-Encoding": "identity" };
   let result;
   try {
     result = await send(st, { method: "POST", path: st.prefix + endpoint, headers: auth, signal }, (evidence) => {
-      const keys = clientKeys();
-      const bytes = Buffer.from(JSON.stringify(encrypt(body, evidence.modelKey)), "utf8");
+      const keys = sealed ? null : clientKeys();
+      const modelKey = sealed ? evidence.models.map((m) => m.publicKey).find((k) => k.toString("hex") === sealed.modelKey) : evidence.modelKey;
+      if (!modelKey) throw Object.assign(new Error("encrypted to a key this connection's proof does not name"), { provenKey: evidence.modelKey.toString("hex") });
+      const bytes = Buffer.from(JSON.stringify(sealed ? body : encrypt(body, modelKey)), "utf8");
       return { bytes, keys, headers: {
-        "Content-Length": bytes.length, "X-Signing-Algo": "ed25519", "X-Client-Pub-Key": keys.publicHex,
-        "X-Model-Pub-Key": evidence.modelKey.toString("hex"), "X-Encryption-Version": "2", "X-Encrypt-All-Fields": "true", "x-no-aliasing": "true",
+        "Content-Length": bytes.length, "X-Signing-Algo": "ed25519", "X-Client-Pub-Key": sealed ? sealed.clientKey : keys.publicHex,
+        "X-Model-Pub-Key": modelKey.toString("hex"), "X-Encryption-Version": "2", "X-Encrypt-All-Fields": "true", "x-no-aliasing": "true",
       } };
     });
   } catch (e) {
     if (signal?.aborted) throw signal.reason;
+    // Encrypted to a key the enclave has since replaced: nothing went, and the
+    // sender is given the proven key to encrypt to again.
+    if (e.provenKey) throw Object.assign(new Error(e.message), { status: 409, code: "near_other_key", key: e.provenKey });
     st.agent.proofs.clear();
     console.warn(`[near] not sent: ${String(e.message).slice(0, 200)}`);
     throw Object.assign(new Error(UNPROVEN), { status: 503, code: "near_unproven", reason: String(e.message).slice(0, 200) });
@@ -598,7 +609,7 @@ async function privately(conn, model, endpoint, body, encrypt, decrypt, { signal
   try {
     const json = JSON.parse(result.raw.toString("utf8"));
     await checkSignature(st, json.id, model, result.sent.bytes, result.raw, result.evidence, signal);
-    reply = decrypt(json, result.sent.keys.x25519Secret);
+    reply = sealed ? json : decrypt(json, result.sent.keys.x25519Secret);
   } catch (e) {
     if (signal?.aborted) throw signal.reason;
     st.agent.proofs.clear();
@@ -622,11 +633,19 @@ function image(conn, { model, prompt, n = 1, size }, options) {
   return privately(conn, model, "/images/generations", { model, prompt, n, size, response_format: "b64_json" }, encryptImageRequest, decryptImageResponse, options);
 }
 
+// A chat completion whose messages were encrypted elsewhere (privately above,
+// sealed), passed on as it came. Its reply's fields stay encrypted.
+function relay(conn, body, sealed, options) {
+  return privately(conn, body.model, "/chat/completions", { ...body, stream: false }, null, null, { ...options, sealed });
+}
+
 // A connection opened and proven ahead of a request, so a reply does not wait
 // for the proof: nothing goes but the proof and a request for the model list.
+// Returns the model enclave's key from that proof, hex.
 async function warm(conn, model) {
   const st = stateFor(conn, model, deps);
-  await send(st, { method: "GET", path: st.prefix + "/models", headers: { Authorization: "Bearer " + conn.apiKey, Accept: "application/json", "Accept-Encoding": "identity" } });
+  const res = await send(st, { method: "GET", path: st.prefix + "/models", headers: { Authorization: "Bearer " + conn.apiKey, Accept: "application/json", "Accept-Encoding": "identity" } });
+  return res.evidence.modelKey.toString("hex");
 }
 
 // The reply's signature, over the exact bytes sent and received, by the
@@ -707,4 +726,4 @@ function isNear(conn) {
   try { return new URL(conn?.baseUrl).hostname === "cloud-api.near.ai"; } catch { return false; }
 }
 
-module.exports = { isNear, complete, image, warm, provenModels, useDeps, verifyQuoteDefault, hchacha20, xchachaSeal, xchachaOpen, edToX25519, clientKeys, seal, open, encryptRequest, decryptResponse, replayRtmr3, checkReport, checkEvidence, checkDeployments, ACCEPTED_TCB };
+module.exports = { isNear, complete, relay, image, warm, provenModels, useDeps, verifyQuoteDefault, hchacha20, xchachaSeal, xchachaOpen, edToX25519, clientKeys, seal, open, encryptRequest, decryptResponse, replayRtmr3, checkReport, checkEvidence, checkDeployments, ACCEPTED_TCB };

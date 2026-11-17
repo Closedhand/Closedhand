@@ -130,7 +130,13 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   Copy may say nobody in between can read them, the relay included; the relay still sees which
   personal URL is asked for and from which internet address, so never say nothing passes
   through anyone. Mail to Closedhand's own email address, if turned on, passes through
-  closedhand.com sealed to the computer's key: name it wherever "never" is said in full. Wherever the
+  closedhand.com sealed to the computer's key: name it wherever "never" is said in full. A
+  question asked in the box on closedhand.com's home page (`closedhand-com/lib/ask.js`) passes
+  through closedhand.com too, encrypted in the visitor's browser to the TEE's key, so closedhand.com
+  can't read the question or its answer: copy says "encrypted in your browser", never that
+  nothing passes through, and names it wherever "never" is said in full too. Only the Privacy page
+  says that the page doing the encrypting comes from closedhand.com. `closedhand-com/test/ask.js`
+  checks. Wherever the
   account is named, the copy says what it keeps, the email, in those words: "stores your email
   and nothing else" is right, a bare "keeps nothing" is not; for an account number, "stores no
   email". The privacy page carries the full list (the sign-in's ID and the URL's routing details). Signing in to take a personal URL is "claim", never

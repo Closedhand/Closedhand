@@ -1,0 +1,273 @@
+// The home page's question box (lib/ask.js, public/ask.js, public/ask-private.js)
+// against a real Postgres, in a database of its own. The provider is a
+// stand-in, and so is the sealed hardware: it really opens what the page
+// encrypts and seals its answer to the page's key. Nothing leaves this machine.
+// Run: DATABASE_URL=postgres://... node --test closedhand-com/test/ask.js
+const { test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { Pool } = require('pg');
+process.env.TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString('base64');
+const { migrate } = require('../lib/db');
+const near = require('../lib/near-private');
+const page = require('../public/ask-private.js');
+const asking = require('../lib/ask');
+const includedAi = require('../lib/included-ai');
+const { nearAi, SIGN_IN, BROWSER } = require('./near-ai');
+
+const NAME = 'closedhand_ask_test';
+let admin, db;
+before(async () => {
+  admin = new Pool({ connectionString: process.env.DATABASE_URL });
+  await admin.query(`DROP DATABASE IF EXISTS ${NAME}`);
+  await admin.query(`CREATE DATABASE ${NAME}`);
+  const url = new URL(process.env.DATABASE_URL);
+  url.pathname = '/' + NAME;
+  db = new Pool({ connectionString: url.toString() });
+  await migrate(db);
+});
+after(async () => {
+  await db?.end();
+  await admin?.query(`DROP DATABASE IF EXISTS ${NAME}`);
+  await admin?.end();
+});
+
+const ENV = { TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER };
+// The sealed hardware: a key of its own, everything it was sent, and what it
+// does next (answer, fail, or have a newer key).
+function hardware() {
+  const keys = near.clientKeys();
+  const h = { keys, got: [], warmed: 0, mode: null };
+  h.near = {
+    seal: near.seal,
+    warm: async () => { h.warmed++; return keys.publicHex; },
+    relay: async (conn, body, sealed) => {
+      if (h.mode === 'down') throw Object.assign(new Error('NEAR AI could not prove its enclave'), { code: 'near_unproven' });
+      if (sealed.modelKey !== keys.publicHex) throw Object.assign(new Error('another key'), { status: 409, code: 'near_other_key', key: keys.publicHex });
+      if (h.mode === 'refused') return { ok: false, status: 402, json: async () => ({ error: 'spent' }) };
+      h.got.push({ conn, body, sealed, opened: body.messages.map(m => ({ role: m.role, text: near.open(m.content, keys.x25519Secret) })) });
+      const said = h.got.at(-1).opened.at(-1).text;
+      return { ok: true, status: 200, json: async () => ({ id: 'chatcmpl-1', choices: [{ message: { role: 'assistant', content: near.seal('Answer to: ' + said, Buffer.from(sealed.clientKey, 'hex')) } }] }) };
+    },
+  };
+  return h;
+}
+async function setup({ env = {}, clock } = {}) {
+  // A fresh stand-in provider each time, so the sign-in kept for the last one goes too.
+  await db.query('TRUNCATE site_asks, site_ask_key, near_session');
+  const provider = nearAi(), h = hardware();
+  const ai = includedAi.create({ db, env: { ...ENV, ...env }, request: provider.request });
+  const ask = asking.create({ db, env: { ...ENV, ...env }, includedAi: ai, near: h.near, ...(clock ? { now: clock } : {}) });
+  return { ask, ai, provider, h };
+}
+// What the page does with a conversation: every turn encrypted to the key
+// closedhand.com gave it, and a key of its own for the answer.
+async function fromPage(key, turns) {
+  const mine = page.keys();
+  const messages = [];
+  for (const [i, text] of turns.entries()) messages.push({ role: i % 2 ? 'assistant' : 'user', content: await page.seal(text, key) });
+  return { mine, body: { key, client: mine.publicHex, messages } };
+}
+const today = async () => (await db.query('SELECT asks, askers, capped, went FROM site_asks')).rows[0] || { asks: 0, askers: 0, capped: 0, went: 0 };
+
+test("the page's encryption is the one every Closedhand uses: each part matches Node's, and a field opens only for its key", async () => {
+  for (let n = 0; n < 12; n++) {
+    const key = crypto.randomBytes(32), nonce = crypto.randomBytes(24), plain = crypto.randomBytes(n * 41);
+    assert.deepEqual(Buffer.from(page.xchachaSeal(key, nonce, plain)), near.xchachaSeal(key, nonce, plain), 'XChaCha20-Poly1305');
+    assert.deepEqual(Buffer.from(page.xchachaOpen(key, nonce, near.xchachaSeal(key, nonce, plain))), plain);
+    assert.deepEqual(Buffer.from(page.hchacha20(key, nonce.subarray(0, 16))), near.hchacha20(key, nonce.subarray(0, 16)), 'HChaCha20');
+    const a = crypto.generateKeyPairSync('x25519'), b = crypto.generateKeyPairSync('x25519');
+    const secret = Buffer.from(a.privateKey.export({ format: 'jwk' }).d, 'base64url'), other = Buffer.from(b.publicKey.export({ format: 'jwk' }).x, 'base64url');
+    assert.deepEqual(Buffer.from(page.x25519(secret, other)), crypto.diffieHellman({ privateKey: a.privateKey, publicKey: b.publicKey }), 'X25519');
+    const ed = Buffer.from(near.clientKeys().publicHex, 'hex');
+    assert.deepEqual(Buffer.from(page.edToX25519(ed)), near.edToX25519(ed), 'an Ed25519 key to its X25519 one');
+  }
+  const tampered = near.xchachaSeal(Buffer.alloc(32, 1), Buffer.alloc(24, 2), Buffer.from('as sent'));
+  tampered[0] ^= 1;
+  assert.throws(() => page.xchachaOpen(Buffer.alloc(32, 1), Buffer.alloc(24, 2), tampered), /not what was sent/);
+
+  // The page seals, the sealed hardware opens; the hardware seals, the page opens.
+  const enclave = near.clientKeys();
+  const question = 'What did the council decide about Harbour Row? Café, naïve, 東京.';
+  assert.equal(near.open(await page.seal(question, enclave.publicHex), enclave.x25519Secret), question);
+  const mine = page.keys();
+  assert.match(mine.publicHex, /^[0-9a-f]{64}$/);
+  const answer = near.seal('Only the page that asked reads this.', Buffer.from(mine.publicHex, 'hex'));
+  assert.equal(await page.open(answer, mine.secret), 'Only the page that asked reads this.');
+  await assert.rejects(page.open(answer, page.keys().secret), /not what was sent/);
+});
+
+test('a question goes to the sealed hardware encrypted, with closedhand.com\'s instruction beside it, and its answer comes back for the page alone', async () => {
+  const { ask, h } = await setup();
+  const key = await ask.key();
+  assert.equal(key, h.keys.publicHex, 'the page is given the proven key');
+  const question = 'Is the Fixture Street bridge safe to cross?';
+  const { mine, body } = await fromPage(key, [question]);
+  const out = await ask.ask(body, '203.0.113.7');
+  assert.equal(out.status, 200);
+  assert.equal(out.body.left, 4);
+  assert.match(out.body.content, /^[0-9a-f]+$/, 'closedhand.com hands back ciphertext');
+  assert.equal(await page.open(out.body.content, mine.secret), 'Answer to: ' + question);
+
+  const sent = h.got[0];
+  assert.doesNotMatch(JSON.stringify(sent.body), /Fixture Street|uncensored LLM/, 'nothing readable in what closedhand.com carried');
+  assert.deepEqual(sent.opened.map(m => m.role), ['system', 'user']);
+  assert.equal(sent.opened[0].text, asking.INSTRUCTION, 'its own instruction, encrypted to the same key');
+  assert.equal(sent.opened[1].text, question);
+  assert.equal(sent.body.max_tokens, asking.MAX_TOKENS);
+  assert.equal(sent.body.model, 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated');
+  assert.deepEqual(sent.sealed, { modelKey: key, clientKey: mine.publicHex }, 'the answer is for the page\'s key, never one of closedhand.com\'s');
+  assert.match(sent.conn.apiKey, /^sk-/, 'with closedhand.com\'s own key at the provider');
+
+  // A follow-up carries the conversation so far, each turn encrypted afresh.
+  const next = await fromPage(key, [question, 'Answer to: ' + question, 'And at night?']);
+  assert.equal((await ask.ask(next.body, '203.0.113.7')).status, 200);
+  assert.deepEqual(h.got[1].opened.map(m => m.role), ['system', 'user', 'assistant', 'user']);
+  assert.deepEqual(await today(), { asks: 2, askers: 1, capped: 0, went: 0 }, 'only the day\'s totals are kept');
+  const kept = JSON.stringify((await db.query('SELECT * FROM site_asks')).rows);
+  assert.doesNotMatch(kept, /203\.0\.113|Fixture/, 'no address and no words');
+});
+
+test('a visitor has a few questions a day; others still have theirs, and the day has a total for everyone', async () => {
+  let at = Date.parse('2026-03-03T10:00:00Z');
+  const { ask, h } = await setup({ env: { ASK_PER_VISITOR_DAY: '2', ASK_PER_DAY: '3' }, clock: () => at });
+  const key = await ask.key();
+  const one = async ip => ask.ask((await fromPage(key, ['A question from a fixture'])).body, ip);
+  assert.equal((await one('203.0.113.1')).body.left, 1);
+  assert.equal((await one('203.0.113.1')).body.left, 0);
+  const third = await one('203.0.113.1');
+  assert.deepEqual([third.status, third.body.error, third.body.left], [429, 'limit', 0]);
+  assert.equal(h.got.length, 2, 'the third never went');
+  assert.equal(ask.left('203.0.113.1'), 0);
+  assert.equal(ask.left('203.0.113.2'), 2, 'someone else has their own');
+  assert.equal((await one('203.0.113.2')).status, 200);
+  const full = await one('203.0.113.2');
+  assert.deepEqual([full.status, full.body.error], [503, 'busy'], 'the day\'s total for everyone is reached');
+  assert.equal(h.got.length, 3);
+  assert.deepEqual(await today(), { asks: 3, askers: 2, capped: 1, went: 0 });
+
+  // The next day both start again.
+  at += 24 * 3600 * 1000;
+  assert.equal(ask.left('203.0.113.1'), 2);
+  assert.equal((await one('203.0.113.1')).status, 200);
+});
+
+test('a request that is not a short encrypted conversation is turned away before anything is sent', async () => {
+  const { ask, h } = await setup();
+  const key = await ask.key(), good = (await fromPage(key, ['A question'])).body;
+  const bad = [
+    { ...good, messages: [{ role: 'user', content: 'in plain words' }] },
+    { ...good, messages: [{ role: 'system', content: good.messages[0].content }] },
+    { ...good, messages: [...good.messages, { role: 'user', content: good.messages[0].content }] },
+    { ...good, messages: [{ role: 'user', content: 'ab'.repeat(5000) }] },
+    { ...good, messages: Array.from({ length: 11 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: good.messages[0].content })) },
+    { ...good, messages: [] },
+    { ...good, key: 'not a key' },
+    { ...good, client: undefined },
+    { ...good, messages: [{ ...good.messages[0], tool_calls: [] }, { role: 'assistant', content: good.messages[0].content }] },
+    null,
+  ];
+  for (const body of bad) assert.equal((await ask.ask(body, '203.0.113.9')).status, 400);
+  assert.equal(h.got.length, 0);
+  assert.equal(ask.left('203.0.113.9'), 5, 'and costs the visitor nothing');
+  // Only the role and the encrypted words of each turn are passed on.
+  await ask.ask({ ...good, messages: [{ ...good.messages[0], name: 'x', tool_calls: [{ id: 'y' }] }], tools: [{}], model: 'another', max_tokens: 99999 }, '203.0.113.9');
+  assert.deepEqual(Object.keys(h.got[0].body).sort(), ['chat_template_kwargs', 'max_tokens', 'messages', 'model']);
+  assert.deepEqual(Object.keys(h.got[0].body.messages[1]), ['role', 'content']);
+  assert.equal(h.got[0].body.max_tokens, asking.MAX_TOKENS);
+});
+
+test('a question that could not be answered is not counted: a new key at the sealed hardware, a failed proof, a provider that refuses', async () => {
+  const { ask, ai, provider, h } = await setup();
+  const key = await ask.key();
+  const stale = await fromPage(near.clientKeys().publicHex, ['Encrypted to a key since replaced']);
+  const other = await ask.ask(stale.body, '203.0.113.3');
+  assert.deepEqual([other.status, other.body.key], [409, h.keys.publicHex], 'the page is given the proven key to encrypt to again');
+  h.mode = 'down';
+  const down = await ask.ask((await fromPage(key, ['While it is down'])).body, '203.0.113.3');
+  assert.deepEqual([down.status, down.body.error], [503, 'busy']);
+  h.mode = 'refused';
+  const before = [...provider.keys.keys()];
+  assert.equal((await ask.ask((await fromPage(key, ['While its key is spent'])).body, '203.0.113.3')).status, 503);
+  assert.equal(ask.left('203.0.113.3'), 5);
+  assert.deepEqual(await today(), { asks: 0, askers: 0, capped: 0, went: 0 });
+  // A key the provider turned down is looked at afresh: nearly spent, it is replaced.
+  provider.keys.get(before[0]).usage = 19.5;
+  h.mode = null;
+  assert.equal((await ask.ask((await fromPage(key, ['After'])).body, '203.0.113.3')).status, 200);
+  assert.deepEqual([...provider.keys.values()].map(k => k.name), ['Closedhand questions']);
+  assert.notEqual([...provider.keys.keys()][0], before[0], 'a new key, the spent one deleted');
+  assert.ok(ai);
+});
+
+test('closedhand.com\'s key for the questions is kept sealed across restarts, and the proven key is asked for once a minute at most', async () => {
+  let at = Date.parse('2026-03-03T10:00:00Z');
+  const { ask, provider, h } = await setup({ clock: () => at });
+  await Promise.all([ask.key(), ask.key(), ask.key()]);
+  await ask.key();
+  assert.equal(h.warmed, 1, 'however many pages open');
+  at += 61000;
+  await ask.key();
+  assert.equal(h.warmed, 2);
+  assert.equal(provider.keys.size, 1);
+  const [id, made] = [...provider.keys.entries()][0];
+  assert.equal(made.name, 'Closedhand questions');
+  assert.equal(made.limit, 20);
+  const row = (await db.query('SELECT key_id, sealed FROM site_ask_key')).rows[0];
+  assert.equal(row.key_id, id);
+  assert.ok(!row.sealed.includes(made.key), 'never in the clear');
+
+  // A restart: the same key, none made or deleted.
+  const again = includedAi.create({ db, env: ENV, request: provider.request });
+  assert.equal((await again.forAsking()).key, made.key);
+  assert.deepEqual([...provider.keys.keys()], [id]);
+});
+
+test('with no uncensored LLM to offer, or a day\'s total of none, the box is off', async () => {
+  const none = asking.create({ db, env: ENV, includedAi: includedAi.create({ db, env: { TOKEN_ENCRYPTION_KEY: ENV.TOKEN_ENCRYPTION_KEY }, request: nearAi().request }), near: hardware().near });
+  assert.equal(none.on(), false);
+  assert.deepEqual((await none.ask({}, '203.0.113.4')).body, { error: 'off' });
+  const { ask } = await setup({ env: { ASK_PER_DAY: '0' } });
+  assert.equal(ask.on(), false);
+});
+
+test('the routes: the key and what is left, an answer, and going on to the download counted once for someone who asked', async () => {
+  const { ask } = await setup();
+  const app = require('express')();
+  app.use(require('express').json());
+  ask.register(app);
+  const server = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const at = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const went = () => fetch(at + '/api/ask/went', { method: 'POST' }).then(r => r.json());
+    await went();
+    assert.equal((await today()).went, 0, 'someone who never asked is not counted');
+    const hello = await (await fetch(at + '/api/ask')).json();
+    assert.deepEqual([hello.left, hello.of, hello.name], [5, 5, 'DeepSeek V4.1 Flash Abliterated']);
+    const { mine, body } = await fromPage(hello.key, ['Asked over the wire']);
+    const res = await fetch(at + '/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(await page.open((await res.json()).content, mine.secret), 'Answer to: Asked over the wire');
+    assert.equal((await (await fetch(at + '/api/ask')).json()).left, 4);
+    await went(); await went();
+    assert.equal((await today()).went, 1);
+    assert.deepEqual((await ask.days()).map(d => [d.asks, d.askers, d.went]), [[1, 1, 1]]);
+  } finally { server.close(); }
+});
+
+test('the page: the box and its script are on the home page, and what it says is true of what it does', () => {
+  const home = fs.readFileSync(path.join(__dirname, '..', 'views', 'home.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'ask.js'), 'utf8');
+  assert.match(home, /<script src="\/ask-private\.js" defer><\/script><script src="\/ask\.js" defer><\/script>/);
+  assert.match(home, /id="askInput"[^>]*maxlength="500"/);
+  // Nothing of the conversation is kept by the page, and it only talks to closedhand.com's two routes.
+  assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|indexedDB/);
+  assert.deepEqual([...new Set(script.match(/fetch\('[^']+'/g))].sort(), ["fetch('/api/ask'", "fetch('/api/ask/went'"]);
+  // Each example is one the LLM can answer with nothing of the person's.
+  const tries = [...home.matchAll(/<button type="button">([^<]+)<\/button>/g)].map(m => m[1]).filter(t => /\?|\.$/.test(t));
+  assert.ok(tries.length >= 2 && tries.every(t => !/\bmy\b|\bme\b/i.test(t)), 'no example needs their mail, calendar or files');
+  // The LLM goes by its name, with "uncensored" beside it.
+  assert.match(script, /state\.name \+ ', the uncensored LLM Closedhand provides'/);
+});

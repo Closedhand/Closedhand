@@ -52,6 +52,7 @@
 const crypto = require('crypto');
 const { isMaintainer } = require('./maintainer');
 const { monthIn, fairUseMonth } = require('./months');
+const { encryptString, decryptString } = require('./crypto-tokens');
 
 const cents = n => Math.round(n * 100) / 100;
 
@@ -403,7 +404,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   // maintainer's own use with keys closedhand.com did not make (not Managed
   // Models at all), the maintainer's own Managed Models (their accounts' keys
   // and closedhand.com's own), and everyone else's.
-  const MADE = /^Closedhand (?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|insights)$/;
+  const MADE = /^Closedhand (?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|insights|questions)$/;
   async function spendSplit(ownerIds = [], now = new Date()) {
     const [total, all, held] = await Promise.all([spentThisMonth(now), allKeys(),
       ownerIds.length ? db.query('SELECT key_id FROM included_ai_keys WHERE owner_id = ANY($1::uuid[])', [ownerIds]) : { rows: [] }]);
@@ -426,6 +427,28 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     })().catch(error => { operatorKey = null; throw error; });
     return { key: await operatorKey, model: roles().chat, base: keys.chat.base, headers: keys.chat.headers, label: keys.label };
   }
+
+  // closedhand.com's key for the home page's question box (lib/ask.js). What
+  // it may spend is held by the day's count of questions there; its own limit
+  // only stands behind that. Kept sealed across restarts (site_ask_key), and
+  // made again once nearly spent or gone.
+  const ASKING_KEY = 'Closedhand questions';
+  let askingKey = null;
+  async function forAsking() {
+    if (!enabled()) return null;
+    if (!askingKey) askingKey = (async () => {
+      const kept = (await db.query('SELECT key_id, sealed FROM site_ask_key')).rows[0];
+      const live = kept ? await keys.keyNow(kept.key_id, { fresh: true }) : null;
+      if (live && live.usage < (live.limit || 0) * 0.9) return decryptString(kept.sealed, "the question box's key");
+      for (const k of await allKeys()) if (k.name === ASKING_KEY) await discard(k.id);
+      const made = await keys.makeKey(ASKING_KEY, Math.max(1, Number(env.ASK_KEY_USD || 20)));
+      await db.query('INSERT INTO site_ask_key (one, key_id, sealed) VALUES (true, $1, $2) ON CONFLICT (one) DO UPDATE SET key_id = $1, sealed = $2', [made.id, encryptString(made.key)]);
+      return made.key;
+    })().catch(error => { askingKey = null; throw error; });
+    return { key: await askingKey, model: roles().chat, base: keys.chat.base, headers: keys.chat.headers, label: keys.label };
+  }
+  // The provider turned the key down: the next question looks at it afresh.
+  forAsking.again = () => { askingKey = null; };
 
   // Which provider and models do which job: the person's computer uses these
   // as given. Pictures are read by the vision language model on that computer.
@@ -460,7 +483,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
+  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
 module.exports = { create, connection, fairUseUsd };

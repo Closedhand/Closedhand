@@ -15,7 +15,7 @@ const GITHUB_TTL = 15 * 60000;
 // The workflows on main whose last run the page shows.
 const WORKFLOWS = { checks: 'Checks', mac: 'Build desktop app', images: 'Build self-host images' };
 
-function register(app, { db, sessions, render, env = process.env, request = fetch, includedAi = null, backup = null }) {
+function register(app, { db, sessions, render, env = process.env, request = fetch, includedAi = null, backup = null, ask = null }) {
   const operators = new Set(String(env.OPERATOR_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
   const limit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
   const misuse = require('./misuse').create({ db, env, includedAi, request });
@@ -247,6 +247,8 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
     // Paid ahead in crypto this month, everyone else's.
     const crypto = await one(`SELECT count(*)::int AS payments, coalesce(sum(amount_cents), 0)::int AS cents FROM ahead_payments
       WHERE paid_at >= date_trunc('month', now() at time zone 'UTC') AND NOT (owner_id = ANY($1::uuid[]))`, [mine]);
+    // Questions asked from the home page's box, by day (lib/ask.js).
+    const asks = ask ? await ask.days(7).catch(() => []) : [];
     const [near, h, github] = await Promise.all([fromNear(mine), healthOf(mine), githubCounts()]);
     const managed = { ...firstMonths, plus, ahead, you: { ...firstMonths.you, plus: plusYou }, ...near };
     const urlsOut = { ...urls, limit };
@@ -265,6 +267,7 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
       github,
       messages,
       notices,
+      asks,
       health: h,
       money: { cards: h.cards, crypto: { payments: crypto.payments, usd: crypto.cents / 100 } },
       needs: needsOf({ managed, near: h.near, bugs, messages: messages.length, backup: h.backup, crypto: h.crypto, cards: h.cards, github, urls: urlsOut }),

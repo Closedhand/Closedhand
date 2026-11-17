@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-  <script src="/theme.js"></script><script src="/account-nav.js" defer></script><script src="/needs-field.js" defer></script><script src="/message-us.js" defer></script>
+  <script src="/theme.js"></script><script src="/account-nav.js" defer></script><script src="/needs-field.js" defer></script><script src="/message-us.js" defer></script><script src="/ask-private.js" defer></script><script src="/ask.js" defer></script>
 <script src="/handheld.js"></script>
 <script>
   // On a phone or tablet the still smoke ring is the first thing in view:
@@ -714,6 +714,51 @@ body.chat-active .mon-area { display:none; }
      does: no link and no label. */
   .orb-open:not([href]) { cursor: default; }
   .orb-open:not([href]) .orb-label { display: none; }
+  /* A question for the uncensored LLM before downloading anything
+     (public/ask.js). It looks like the web chat it leads to: the same box,
+     the same messages; an answer forms out of noise as the ring's lines do. */
+  .ask { width: 100%; max-width: 40rem; margin: 0 auto 1.75rem; display: flex; flex-direction: column; opacity: 0; animation: heroIn 0.8s ease forwards 0.6s; }
+  .ask[hidden] { display: none; }
+  .ask-thread { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .ask-thread:not(:empty) { margin-bottom: .75rem; }
+  .ask-msg { scroll-margin-top: 1.25rem; padding: .6875rem 1rem; font-size: 1rem; line-height: 1.6; text-align: left; overflow-wrap: anywhere; margin-bottom: .5rem; animation: heroIn 0.25s cubic-bezier(0.16,1,0.3,1); }
+  .ask-msg.user { align-self: flex-end; max-width: 80%; white-space: pre-wrap; background: rgba(var(--accent-strong-rgb),0.1); border: 1px solid rgba(var(--accent-strong-rgb),0.15); border-radius: .875rem .875rem .25rem .875rem; }
+  .ask-msg.bot { align-self: flex-start; max-width: 100%; background: rgba(var(--fg-rgb),0.03); border: 1px solid rgba(var(--fg-rgb),0.06); border-radius: .875rem .875rem .875rem .25rem; }
+  .ask-msg.bot.failed { color: var(--muted); }
+  .ask-by { display: block; margin-top: .5rem; font-size: .78125rem; line-height: 1.4; color: var(--muted); }
+  .ask-box { display: flex; align-items: flex-end; gap: .5rem; padding: .4375rem .4375rem .4375rem 1.125rem; border-radius: 1.25rem; background: rgba(var(--raised-rgb),0.75); border: 1.5px solid rgba(var(--accent-strong-rgb),0.3); box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 3.125rem rgba(var(--accent-strong-rgb),0.04); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
+  .ask-box:focus-within { border-color: rgba(var(--accent-strong-rgb),0.45); box-shadow: 0 0 1.875rem rgba(var(--accent-strong-rgb),0.12), 0 0 3.75rem rgba(var(--accent-strong-rgb),0.06); }
+  .ask-box textarea { flex: 1; min-width: 0; display: block; align-self: center; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 300 1.0625rem/1.5 var(--font-ui); padding: .4375rem 0; max-height: 9rem; overscroll-behavior: contain; }
+  .ask-box textarea::placeholder { color: rgba(var(--fg-rgb),0.5); }
+  .ask-send { flex: none; display: flex; align-items: center; gap: .5rem; padding: .625rem 1.125rem; border-radius: .875rem; background: rgba(var(--fg-rgb),0.08); border: 1px solid rgba(var(--fg-rgb),0.12); color: rgba(var(--fg-rgb),0.5); font: 400 .9375rem/1 var(--font-ui); cursor: default; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+  .ask-send svg { width: .875rem; height: .875rem; fill: currentColor; }
+  .ask-send:not(:disabled) { background: rgba(var(--fg-rgb),0.18); border-color: rgba(var(--fg-rgb),0.22); color: var(--fg); cursor: pointer; }
+  .ask-send:not(:disabled):hover { background: rgba(var(--fg-rgb),0.22); }
+  .ask-send:focus-visible, .ask-tries button:focus-visible, .ask-next a:focus-visible, .ask-next button:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
+  .ask-tries { display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem 1.25rem; margin: .875rem 0 0; align-self: center; width: max-content; max-width: min(56.25rem, 92vw); }
+  .ask-tries[hidden] { display: none; }
+  .ask-tries button { padding: .125rem 0; background: none; border: none; cursor: pointer; font: 400 .875rem/1.4 var(--font-ui); color: var(--muted); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: rgba(var(--fg-rgb),0.25); }
+  .ask-tries button:hover { color: var(--fg); text-decoration-color: var(--accent); }
+  .ask-note { margin: .75rem 0 0; font-size: .8125rem; line-height: 1.45; color: rgba(var(--fg-rgb),0.55); text-align: center; text-wrap: balance; }
+  .ask-next { margin: .875rem 0 0; font-size: .9375rem; line-height: 1.5; color: var(--muted); text-align: center; text-wrap: balance; }
+  .ask-next[hidden] { display: none; }
+  .ask-next strong { display: block; color: var(--fg); font-weight: 500; }
+  .ask-next a, .ask-next button { padding: 0; background: none; border: none; cursor: pointer; font: inherit; color: var(--fg); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: var(--accent); }
+  .ask.done .ask-box, .ask.done .ask-tries { display: none; }
+  /* An answer's letters, each under its own noise until it sharpens out. */
+  .ask-w { display: inline-block; white-space: nowrap; }
+  .ask-ch { position: relative; display: inline-block; }
+  .ask-real { display: inline-block; opacity: 0; filter: blur(.12em); transition: opacity .4s cubic-bezier(.22,.61,.36,1), filter .5s cubic-bezier(.22,.61,.36,1); }
+  .ask-noise { position: absolute; left: 50%; top: 0; translate: -50% 0; color: var(--muted); opacity: .55; pointer-events: none; transition: opacity .35s cubic-bezier(.22,.61,.36,1), filter .35s; }
+  .ask-ch.on .ask-real { opacity: 1; filter: none; }
+  .ask-ch.on .ask-noise { opacity: 0; filter: blur(.18em); }
+  @media (max-width: 600px) {
+    .ask { margin-bottom: 1.5rem; }
+    .ask-box textarea { font-size: 1rem; }
+    .ask-send .ask-send-label { display: none; }
+    .ask-send { padding: .6875rem .8125rem; }
+    .ask-tries { flex-direction: column; align-items: center; gap: .375rem; width: auto; }
+  }
   .first-steps { display: flex; flex-direction: column; gap: .75rem; width: 100%; max-width: 22.5rem; margin: 0 auto; padding: .875rem .875rem .5rem; border-radius: 1rem; background: rgba(var(--deep-rgb),0.72); border: 1px solid rgba(var(--fg-rgb),0.1); opacity: 0; animation: heroIn 0.8s ease forwards 0.8s; }
   .first-steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .625rem; }
   .first-steps-lead { margin: 0 0 .25rem; text-align: center; font-size: .84375rem; line-height: 1.4; color: var(--muted); }
@@ -807,6 +852,25 @@ body.chat-active .mon-area { display:none; }
     </a>
 
     <p class="orb-said handheld-only">Closedhand will do what other assistants refuse to, and answer what they won’t. Nobody but you can read what you ask or what comes back.</p>
+    <!-- A question for the uncensored LLM before downloading anything
+         (public/ask.js). The browser encrypts it to the sealed hardware the
+         LLM runs in, so closedhand.com carries it without being able to read
+         it (lib/ask.js). -->
+    <section class="ask" id="ask" aria-label="Ask the uncensored LLM">
+      <ol class="ask-thread" id="askThread" aria-live="polite"></ol>
+      <form class="ask-box" id="askForm">
+        <textarea id="askInput" rows="1" maxlength="500" placeholder="Ask what other assistants refuse to answer" aria-label="Your question" enterkeyhint="send" autocomplete="off"></textarea>
+        <button type="submit" class="ask-send" id="askSend" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span class="ask-send-label">Send</span></button>
+      </form>
+      <p class="ask-tries" id="askTries">
+        <button type="button">What really happened in Tiananmen Square?</button>
+        <button type="button">Is Taiwan its own country?</button>
+        <button type="button">Make the case for legalising all drugs.</button>
+      </p>
+      <p class="ask-next" id="askNext" hidden></p>
+      <p class="ask-note" id="askNote">Encrypted in your browser, so closedhand.com can’t read what you ask or what comes back.</p>
+    </section>
+
     <!-- A phone can't run Closedhand: it lives on a computer, and this phone
          opens it. Two steps say the order; nothing here looks like a
          download. The link is for people who have done the first step. -->

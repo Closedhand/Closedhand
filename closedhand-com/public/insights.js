@@ -162,6 +162,12 @@
       tile({ label: 'Mac app', value: latest ? latest.version : 'n/a', sub: latest ? `Released ${day(latest.at)}, ${n(latest.downloads)} downloads of it.` : "GitHub didn't answer" }),
       tile({ label: 'Bug reports this week', value: n(d.bugs.week), sub: d.bugs.open ? `${n(d.bugs.open)} open, listed below` : 'None open' }),
     );
+    // The home page's question box, over the last 7 days: how many visitors
+    // asked, and how many of them went on to the download.
+    const asks = d.asks || [], sum = k => asks.reduce((t, a) => t + (a[k] || 0), 0), askers = sum('askers');
+    if (askers) $('more').append(tile({ label: 'Asked on the home page', value: n(askers), chip: asks[0] && asks[0].askers ? `${n(asks[0].askers)} today` : '',
+      bar: meter(sum('went'), askers, 'tone-a'),
+      sub: `${n(sum('asks'))} ${sum('asks') === 1 ? 'question' : 'questions'} in 7 days. ${n(sum('went'))} went on to the download, ${n(sum('capped'))} used all their questions.` }));
     $('tiles').append(
       tile({ label: 'Closedhand email', value: n(d.email.accounts), you: d.email.you && d.email.you.accounts ? n(d.email.you.accounts) : '',
         sub: `${d.email.accounts === 1 ? 'address' : 'addresses'} on, ${n(d.email.sent)} sent and ${n(d.email.received)} received this month` +

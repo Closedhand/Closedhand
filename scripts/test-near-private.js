@@ -361,6 +361,34 @@ test("a new connection to a proven enclave key reuses its proof for a while, one
   } finally { near.useDeps({ ca: CERT, verifyQuote, attestGpu: async () => gpuVerdict, fetchPublished, signatureWaitMs: 5 }); }
 });
 
+// closedhand.com's home page encrypts a visitor's question in their browser
+// and closedhand.com only carries it (closedhand-com/lib/ask.js).
+test("a request encrypted elsewhere is passed on as it came, only to a key the proof names, and its reply comes back still encrypted", async () => {
+  await ready; reset();
+  const c = conn();
+  const key = await near.warm(c, MODEL_ID);
+  assert.equal(key, MODEL.pub.toString("hex"), "warm gives the proven model enclave's key");
+  const theirs = near.clientKeys();
+  const body = { model: MODEL_ID, max_tokens: 50, messages: [{ role: "user", content: near.seal("what the carrier never reads", Buffer.from(key, "hex")) }] };
+  const json = await (await near.relay(c, body, { modelKey: key, clientKey: theirs.publicHex })).json();
+  assert.equal(fake.reports, 1, "on the connection warm proved");
+  assert.deepEqual(JSON.parse(fake.posts[0].raw), { ...body, stream: false }, "sent as it came");
+  assert.equal(fake.posts[0].headers["x-client-pub-key"], theirs.publicHex, "the reply is for the key of whoever encrypted");
+  assert.equal(fake.posts[0].headers["x-model-pub-key"], key);
+  assert.match(json.choices[0].message.content, /^[0-9a-f]+$/, "the reply is still encrypted");
+  assert.equal(near.open(json.choices[0].message.content, theirs.x25519Secret), "Echo: what the carrier never reads");
+
+  // Encrypted to a key the proof does not name: nothing goes, and the proven key is given.
+  const stale = STRANGER.pub.toString("hex");
+  await assert.rejects(near.relay(c, body, { modelKey: stale, clientKey: theirs.publicHex }), (e) => e.code === "near_other_key" && e.status === 409 && e.key === key);
+  assert.equal(fake.posts.length, 1, "nothing was sent");
+  assert.equal((await (await near.relay(c, body, { modelKey: key, clientKey: theirs.publicHex })).json()).id, "chatcmpl-2", "and the proof still stands");
+
+  // A reply that is not signed for is not passed back.
+  reset({ badSignature: true });
+  await assert.rejects(near.relay(conn(), body, { modelKey: key, clientKey: theirs.publicHex }), (e) => e.code === "near_unsigned");
+});
+
 test("a connection that stalls, in its handshake or its proof, is given up in time instead of waiting for good", async () => {
   await ready; reset();
   const net = require("node:net");

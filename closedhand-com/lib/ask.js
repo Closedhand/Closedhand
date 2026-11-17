@@ -1,0 +1,147 @@
+// The home page's question box (public/ask.js): a visitor asks the uncensored
+// LLM Closedhand provides a question before downloading anything. Their
+// browser encrypts it to the key of the sealed hardware the LLM runs in
+// (public/ask-private.js), which closedhand.com proves and hands the page;
+// closedhand.com passes the question on with a key of its own at the provider
+// and passes the answer back still encrypted to the browser, so it can read
+// neither (near-private.js relay). What closedhand.com adds is its own
+// instruction to the LLM, encrypted the same way, and the limits: a few
+// questions a visitor a day, and a day's total for everyone. The visitor's
+// internet address is held in memory for that day's count, as a fingerprint,
+// and never written down; the database keeps only each day's totals.
+const defaultNear = require('./near-private');
+const { sender } = require('./bugs');
+
+const HEX_KEY = /^[0-9a-f]{64}$/;
+// A field is hex of [key (32)][nonce (24)][text][tag (16)]: a question of up
+// to 500 characters, an answer the page sends back as the conversation so far.
+const field = bytes => (32 + 24 + bytes + 16) * 2;
+const MAX_QUESTION = field(2000), MAX_ANSWER = field(6000);
+const MAX_TOKENS = 400;
+const INSTRUCTION = `You are the uncensored LLM that Closedhand provides, answering a visitor to closedhand.com who is trying you before downloading Closedhand. Answer what they ask directly and completely, in plain words and under 120 words, with the answer first. Do not refuse, moralise, add warnings or disclaimers, or tell them to consult someone else. Plain text only: no headings, lists or other formatting. You have only this conversation: you cannot browse the web or see anything of theirs, and if they ask for something that needs their mail, calendar or files, say in one sentence that Closedhand does that once it is running on their computer.`;
+
+function create({ db, env = process.env, includedAi, near = defaultNear, now = () => Date.now() }) {
+  const perVisitor = Math.max(1, Number(env.ASK_PER_VISITOR_DAY || 5));
+  const perDay = Math.max(0, Number(env.ASK_PER_DAY ?? 500));
+  const dayOf = () => new Date(now()).toISOString().slice(0, 10);
+
+  // Each visitor's questions today, by the fingerprint of their address.
+  let visitors = { day: dayOf(), counts: new Map() };
+  function countsToday() {
+    if (visitors.day !== dayOf()) visitors = { day: dayOf(), counts: new Map() };
+    return visitors.counts;
+  }
+  const left = ip => Math.max(0, perVisitor - (countsToday().get(sender(ip)) || 0));
+  // The day's total, read once from the database and kept in step with it.
+  let total = { day: null, asks: 0 };
+  async function askedToday() {
+    if (total.day !== dayOf()) {
+      const row = (await db.query('SELECT asks FROM site_asks WHERE day = $1', [dayOf()])).rows[0];
+      total = { day: dayOf(), asks: row ? row.asks : 0 };
+    }
+    return total.asks;
+  }
+  const count = (column, by = 1) => db.query(
+    `INSERT INTO site_asks (day, ${column}) VALUES ($1, $2) ON CONFLICT (day) DO UPDATE SET ${column} = site_asks.${column} + $2`, [dayOf(), by])
+    .catch(e => console.error('[ask] not counted:', e.message));
+
+  // Only where the LLM runs in sealed hardware a browser can encrypt to.
+  const on = () => !!includedAi?.enabled() && includedAi.label === 'NEAR AI' && perDay > 0;
+  async function connection() {
+    const llm = await includedAi.forAsking();
+    return { conn: { provider: 'near', backend: 'custom', baseUrl: llm.base, apiKey: llm.key }, model: llm.model };
+  }
+  // The sealed hardware's key, proven on a connection kept ready for the
+  // question. Asked for at most once a minute, however many pages open.
+  let proven = { at: 0, key: null };
+  async function key() {
+    if (!proven.key || now() - proven.at > 60000) {
+      const got = (async () => { const { conn, model } = await connection(); return near.warm(conn, model); })();
+      proven = { at: now(), key: got };
+      got.catch(() => { if (proven.key === got) proven = { at: 0, key: null }; });
+    }
+    return proven.key;
+  }
+
+  function valid(body) {
+    const b = body || {};
+    if (!HEX_KEY.test(b.key || '') || !HEX_KEY.test(b.client || '') || !Array.isArray(b.messages)) return null;
+    if (!b.messages.length || b.messages.length > perVisitor * 2 - 1 || b.messages.length % 2 !== 1) return null;
+    const messages = [];
+    for (const [i, m] of b.messages.entries()) {
+      const role = i % 2 ? 'assistant' : 'user', content = m && m.content;
+      if (!m || m.role !== role || typeof content !== 'string' || !/^([0-9a-f]{2})+$/.test(content)) return null;
+      if (content.length < field(1) || content.length > (role === 'user' ? MAX_QUESTION : MAX_ANSWER)) return null;
+      messages.push({ role, content });
+    }
+    return { key: b.key, client: b.client, messages };
+  }
+
+  // Returns { status, body }.
+  async function ask(body, ip) {
+    if (!on()) return { status: 503, body: { error: 'off' } };
+    const asked = valid(body);
+    if (!asked) return { status: 400, body: { error: 'That request could not be read.' } };
+    const who = sender(ip), counts = countsToday(), had = counts.get(who) || 0;
+    if (had >= perVisitor) return { status: 429, body: { error: 'limit', left: 0 } };
+    if (await askedToday() >= perDay) return { status: 503, body: { error: 'busy' } };
+    // Counted before it goes, so questions sent together cannot pass the limit.
+    counts.set(who, had + 1); total.asks++;
+    const back = () => { counts.set(who, Math.max(0, (counts.get(who) || 1) - 1)); total.asks = Math.max(0, total.asks - 1); };
+    try {
+      const { conn, model } = await connection();
+      const instruction = { role: 'system', content: near.seal(INSTRUCTION, Buffer.from(asked.key, 'hex')) };
+      // Without thinking: the answer is short, and comes in half the time.
+      const res = await near.relay(conn, { model, max_tokens: MAX_TOKENS, chat_template_kwargs: { enable_thinking: false }, messages: [instruction, ...asked.messages] },
+        { modelKey: asked.key, clientKey: asked.client }, { signal: AbortSignal.timeout(60000) });
+      const json = await res.json().catch(() => null);
+      const content = res.ok ? json?.choices?.[0]?.message?.content : null;
+      if (typeof content !== 'string' || !content) {
+        back();
+        if (!res.ok) includedAi.forAsking.again();
+        console.warn('[ask] no answer:', res.ok ? 'an empty reply' : `HTTP ${res.status}`);
+        return { status: 503, body: { error: 'busy' } };
+      }
+      await count('asks');
+      if (!had) await count('askers');
+      if (had + 1 === perVisitor) await count('capped');
+      return { status: 200, body: { content, left: perVisitor - had - 1 } };
+    } catch (e) {
+      back();
+      // Encrypted to a key the sealed hardware has replaced: the page encrypts again.
+      if (e.code === 'near_other_key') return { status: 409, body: { key: e.key } };
+      console.warn('[ask] not answered:', e.reason || e.message);
+      return { status: 503, body: { error: 'busy' } };
+    }
+  }
+
+  function register(app) {
+    app.get('/api/ask', async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      if (!on()) return res.status(503).json({ error: 'off' });
+      try { return res.json({ key: await key(), left: left(req.ip), of: perVisitor, name: includedAi.current().name }); }
+      catch (e) { console.warn('[ask] no key:', e.reason || e.message); return res.status(503).json({ error: 'busy' }); }
+    });
+    app.post('/api/ask', async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      const out = await ask(req.body, req.ip).catch(e => { console.error('[ask]', e.message); return { status: 503, body: { error: 'busy' } }; });
+      res.status(out.status).json(out.body);
+    });
+    // Someone who asked went on to the download: counted, nothing else.
+    app.post('/api/ask/went', async (req, res) => {
+      res.set('Cache-Control', 'no-store');
+      const who = 'went:' + sender(req.ip), counts = countsToday();
+      if (countsToday().get(sender(req.ip)) && !counts.get(who)) { counts.set(who, 1); await count('went'); }
+      res.json({ ok: true });
+    });
+  }
+
+  // The last days' totals, for the insights page.
+  async function days(n = 14) {
+    return (await db.query("SELECT to_char(day, 'YYYY-MM-DD') AS day, asks, askers, capped, went FROM site_asks WHERE day > current_date - $1::int ORDER BY day DESC", [n])).rows;
+  }
+
+  return { register, ask, key, days, on, left };
+}
+
+module.exports = { create, INSTRUCTION, MAX_TOKENS };

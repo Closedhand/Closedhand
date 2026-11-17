@@ -89,6 +89,8 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   app.use('/api/bug-intake', express.json({ limit: '8mb' }));
   app.use('/api/assistant-mail-relay/outbox', express.json({ limit: '8mb' }));
   app.use('/jobs/relay-seen', express.json({ limit: '1mb' }));
+  // A question from the home page carries its conversation so far, encrypted.
+  app.use('/api/ask', express.json({ limit: '128kb' }));
   app.use(express.json({ limit: '32kb' }));
   app.use(express.static(PUBLIC, {
     index: false,
@@ -148,7 +150,9 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
   const messages = require('./lib/messages').create({ db, notices });
   messages.register(app);
-  require('./lib/insights').register(app, { db, sessions, render, env, request, includedAi, backup });
+  const ask = require('./lib/ask').create({ db, env, includedAi });
+  ask.register(app);
+  require('./lib/insights').register(app, { db, sessions, render, env, request, includedAi, backup, ask });
 
   // The assistant email relay and the worker that moves its mail through
   // Amazon SES (lib/assistant-mail-*.js). A worker that cannot start leaves
