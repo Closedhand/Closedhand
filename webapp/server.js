@@ -4828,11 +4828,6 @@ app.post("/api/automations", async (req, res) => {
     const members = teamMembers(req.body.members);
     if (members.error) return res.status(400).json({ error: members.error });
 
-    // Rules travel in the instructions as a list, as the dashboard writes them.
-    let fullPrompt = task_prompt;
-    const rules = String(req.body.quality_check || "").split("\n").map((r) => r.replace(/^\s*[-*]\s*/, "").trim()).filter(Boolean);
-    if (rules.length) fullPrompt += "\n\nRULES (check the result follows every one of these before sending it, and fix it if not):\n" + rules.map((r) => "- " + r).join("\n");
-
     const { data, error } = await supabase
       .from("automations")
       .insert({
@@ -4843,7 +4838,7 @@ app.post("/api/automations", async (req, res) => {
         trigger_human_schedule: trigger_human_schedule || null,
         trigger_event_source: trigger_event_source || null,
         trigger_event_condition: trigger_event_condition || null,
-        task_prompt: fullPrompt, task_model: ["fast", "default", "strong"].includes(task_model) ? task_model : "default",
+        task_prompt, task_model: ["fast", "default", "strong"].includes(task_model) ? task_model : "default",
         task_tools: task_tools || [], task_use_cloud: task_use_cloud || false,
         task_max_duration: 900,
         output_destinations: output_destinations || ["chat_platforms", "dashboard"],

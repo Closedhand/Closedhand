@@ -62,9 +62,9 @@ test("tasks handed over in chat: going or waiting, and a finished one only until
 test("the Agents tab holds Closedhand working for you: what is working now, the routines, what finished; what it made is on Pages", () => {
   assert.match(dashboard, /<button class="tab" data-tab="agents" onclick="switchTab\('agents'\)">Agents<\/button>/);
   const agents = dashboard.slice(dashboard.indexOf('id="tab-agents"'), dashboard.indexOf('id="tab-upcoming"'));
-  assert.match(agents, /<div class="agents-head list-head"><div class="mc-section-label">Tasks<\/div><button type="button" class="goals-new" onclick="openNewAgent\(\)">\+ New agent<\/button><\/div>[\s\S]*<div class="agents-head list-head"><div class="mc-section-label">Routines<\/div><\/div>/, "two lists, + New agent on the first");
+  assert.match(agents, /<div class="agents-head list-head"><div class="mc-section-label">Tasks<\/div><div class="list-adds"><button type="button" class="goals-new" onclick="openNewAgent\(\)">\+ New agent<\/button><button type="button" class="goals-new" onclick="openNewTeam\(\)">\+ New team<\/button><\/div><\/div>[\s\S]*<div class="agents-head list-head"><div class="mc-section-label">Routines<\/div><\/div>/, "two lists, + New agent on the first");
   assert.equal((agents.match(/class="mc-section-label"/g) || []).length, 2, "Tasks and Routines, nothing else: waiting is a task's state and a team is who does the work");
-  assert.doesNotMatch(agents, /Done lately|Kept here|Waiting to start|>Teams<|New team/);
+  assert.doesNotMatch(agents, /Done lately|Kept here|Waiting to start|>Teams</);
   assert.doesNotMatch(dashboard, /\+ New routine/, "a routine is made from New agent too");
   assert.doesNotMatch(agents, />Resources<|id="files-section"|id="datasets-section"|skills-library|<svg/, "no Resources, and no sleeping figure: the templates say what to do");
   assert.doesNotMatch(dashboard, /id="files-section"|function loadFiles/, "no list of files on Pages: what Closedhand makes is a page");
@@ -169,7 +169,11 @@ test("templates are routines that repeat, shown only for what is connected; effo
   const t = dashboard.indexOf("    var WORKER_TEMPLATES = {"), u = dashboard.indexOf("\n    };\n", t) + 7;
   const ctx = { window: {} };
   vm.runInNewContext(dashboard.slice(t, u) + dashboard.slice(a, b) + "\nthis.shown = shownTemplates;", ctx);
-  assert.equal(ctx.shown().join(" "), "morning-briefing smart-morning weekly-review inbox-triage competitor-monitor");
+  assert.equal(ctx.shown().join(" "), "morning-briefing weekly-review competitor-monitor");
+  // What Closedhand already does on its own is no starting point: Pulse tells
+  // the person when mail or the day needs them, and lib/paying-for.js watches
+  // renewals.
+  assert.doesNotMatch(dashboard, /'smart-morning'|'inbox-triage'|Subscriptions renewing|quality_check/);
   ctx.window._connectionsCache = [{ service: "shopify" }];
   assert.ok(ctx.shown().includes("shopify-sales"), "Shopify sales once Shopify is connected");
   assert.doesNotMatch(dashboard, /'research-analyst'|'data-cruncher'|Research a topic|Work through data/, "a one-off job is asked for in chat");

@@ -310,7 +310,8 @@ test("the form makes a team for any kind, and a routine that is a team says so",
   assert.match(dash, /members: members,\n/, "a routine saves its agents");
   assert.match(dash, /\(Array\.isArray\(a\.members\) \? a\.members : \[\]\)\.forEach\(function \(m\) \{ addTeamAgent\(m\.name, m\.part, m\.acts\); \}\);/, "and opens with them");
   assert.match(dash, /drawInto\('auto-saved-list', repeating\.map\(renderAutomationCard\)\.join\(''\)\);/, "a team is a routine's card like any other, under Routines");
-  assert.doesNotMatch(dash, /openNewTeam|\+ New team<\/button>/, "a team is who does the work: + New agent makes one");
+  assert.match(dash, /onclick="openNewAgent\(\)">\+ New agent<\/button><button type="button" class="goals-new" onclick="openNewTeam\(\)">\+ New team<\/button>/, "a team is made as plainly as one agent, beside it");
+  assert.match(dash, /function openNewTeam\(\) \{ openCreateAutomationModal\('team'\); \}/);
   assert.match(dash, /\(team && r\.live \? teamLines\(r, team, true\) : ''\)/, "a routine's run going has a line per agent");
   assert.match(read("lib/agent-team.js"), /Do not describe the team or how the work went \(who found what, that the parts agree\) unless a part did not finish or two disagree\./);
 });

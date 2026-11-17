@@ -1361,6 +1361,7 @@
        it has one, so every heading and button sits on one line. */
     .agents-head.list-head { align-items: center; min-height: 2.25rem; margin: 2rem 0 0.75rem; }
     .agents-head.list-head .mc-section-label { flex: 1; margin: 0; }
+    .list-adds { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
     #tab-agents .goals-intro { margin-bottom: 0; }
 
     /* Looks things up only, unless ticked: what acting means is on its i,
@@ -1777,9 +1778,9 @@
           <!-- Tasks: one-off jobs, one card each that changes as it goes:
                waiting to start, working (who is on it, one agent or a team),
                gone once its answer is in its chat; one whose answer may not
-               have reached it stays, with the answer. + New agent starts one,
-               or a routine, one agent or a team. -->
-          <div class="agents-head list-head"><div class="mc-section-label">Tasks</div><button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button></div>
+               have reached it stays, with the answer. + New agent and + New
+               team start one, or a routine, done by one agent or by several. -->
+          <div class="agents-head list-head"><div class="mc-section-label">Tasks</div><div class="list-adds"><button type="button" class="goals-new" onclick="openNewAgent()">+ New agent</button><button type="button" class="goals-new" onclick="openNewTeam()">+ New team</button></div></div>
           <p class="section-desc" id="auto-active-desc" hidden>What Closedhand is working on now.</p>
           <p class="section-desc" id="auto-active-empty">Nothing right now. Anything long you ask for in chat shows here while Closedhand works on it.</p>
           <div id="auto-active-list"></div>
@@ -1792,7 +1793,7 @@
           <p id="auto-saved-error" class="section-desc" role="status" hidden>Could not load your routines. Please try again shortly.</p>
           <!-- With no routines yet: real routines to start from, only for what is connected -->
           <div id="auto-empty" style="display:none;">
-            <p class="section-desc">Start from one of these, or make your own with + New agent.</p>
+            <p class="section-desc">Ready-made routines to start from.</p>
             <div class="agent-tpl-grid" id="agent-tpl-grid"></div>
           </div>
         </div>
@@ -6626,61 +6627,38 @@
     var WORKER_TEMPLATES = {
       'morning-briefing': {
         name: 'Morning briefing',
-        about: "Your day's calendar, the weather, urgent mail and the news, every morning.",
-        prompt: "Check my Google Calendar for today's events, check the weather for my location, scan my inbox for urgent emails from the last 12 hours, and check major news headlines. Compile a concise morning briefing. Format: Calendar first (time, event name), then weather, then top 3 urgent emails (sender, subject, one-line summary), then 3 news headlines relevant to my interests (check my Context Brain for context on what I care about). Keep it under 300 words.",
+        about: "Your day's calendar, the weather, mail that needs you and the news, every morning.",
+        prompt: "Check my calendar for today, the weather where I am, mail from the last 12 hours that needs me, and the main news headlines. Put them in a short morning briefing: my calendar first (time and what), then the weather, then the mail that needs me (who, the subject and one line), then three headlines.",
         trigger: 'scheduled',
         cron: '0 8 * * *',
         humanSchedule: 'Every morning at 8am',
-        model: 'default',
-        quality_check: "Must include today's calendar events, weather, and at least 3 email summaries"
-      },
-      'smart-morning': {
-        name: 'Weekday heads-up',
-        about: 'On workdays, checks your calendar and the weather, and messages you only when something needs you.',
-        prompt: "Check my calendar for today and the weather where I am. Only message me if there is something worth knowing about, like a packed schedule, clashing meetings, or bad weather. If nothing interesting, skip it.",
-        trigger: 'scheduled',
-        cron: '0 7 * * 1-5',
-        humanSchedule: 'Weekday mornings at 7am',
-        model: 'fast',
-        quality_check: 'Must check both calendar and weather'
+        model: 'default'
       },
       'weekly-review': {
         name: 'Weekly review',
         about: "What your week held, what's coming and what still needs you, every Friday.",
-        prompt: "Look at my calendar and emails from the past week. Give me a short summary of what I was busy with, any threads I might need to follow up on, and what is coming up next week. Save it to my Context Brain so I can look back on it later.",
+        prompt: "Look back over my calendar and mail from the past week and ahead to next week. Give me a short note: what the week held, the threads I still need to follow up, and what's coming next week.",
         trigger: 'scheduled',
         cron: '0 17 * * 5',
         humanSchedule: 'Every Friday at 5pm',
-        model: 'default',
-        quality_check: 'Must cover both calendar and email from the past week'
+        model: 'default'
       },
       'competitor-monitor': {
         name: 'Competitor watch',
-        about: "Checks competitors' websites and news for price or feature changes.",
-        prompt: "Search the web for [REPLACE WITH: your competitor names]. Check their websites, pricing pages, and recent news. Compare with what you know about my business from Context Brain. Flag any changes in pricing, new features, or strategic moves. Save findings to Context Brain.",
+        about: "What your competitors changed on their websites, in their prices and in the news.",
+        prompt: "Check the websites, prices and recent news of my competitors and tell me what changed since last week: new prices, new products or features, and anything else they're doing. If you don't know who my competitors are yet, ask me first.",
         trigger: 'scheduled',
         cron: '0 9 * * 1',
         humanSchedule: 'Every Monday at 9am',
-        model: 'default',
-        quality_check: 'Must check at least 3 competitor sources and note any changes'
-      },
-      'inbox-triage': {
-        name: 'Inbox sort',
-        about: 'Sorts new mail by how urgent it is and drafts replies to the urgent ones.',
-        prompt: "Scan my inbox for new emails from the last 3 hours. Categorise each as: urgent (needs reply today), important (needs reply this week), informational (FYI only), or ignorable. For urgent ones, draft a suggested reply. Summarise the rest in bullet points.",
-        trigger: 'scheduled',
-        cron: '0 */3 * * *',
-        humanSchedule: 'Every 3 hours',
-        model: 'fast',
-        quality_check: 'Must categorise every email and draft replies for urgent ones'
+        model: 'default'
       },
       // Starter teams: routines with agents of their own, put together by
       // Closedhand into one note. Each opens the form filled in, so every
       // agent's part is seen and can be changed before it runs.
       'money-check': {
         name: 'Monday money check',
-        about: 'What went out, renewals coming and bills due, put together into one note.',
-        prompt: "Give me a short note on my money this week: what went out, any subscription renewing in the next two weeks, and any bill due this month. Flag anything unusual.",
+        about: 'What went out last week and the bills due this month, put together into one note.',
+        prompt: "Give me a short note on my money this week: what went out and any bill due this month. Flag anything unusual.",
         trigger: 'scheduled',
         cron: '0 9 * * 1',
         humanSchedule: 'Every Monday at 9am',
@@ -6688,7 +6666,6 @@
         model: 'default',
         members: [
           { name: 'Bank', part: 'What went in and out of my accounts in the last seven days, and anything unusual.' },
-          { name: 'Subscriptions', part: 'Subscriptions renewing in the next two weeks, from my bank and my mail.' },
           { name: 'Bills', part: "Bills due this month that aren't paid yet, from my mail and my bank." }
         ]
       },
@@ -6725,21 +6702,21 @@
       'shopify-sales': {
         name: 'Shopify sales',
         about: "The day's revenue, orders and top products from your shop.",
-        prompt: "Pull today's Shopify sales data. Show total revenue, number of orders, top 3 products by revenue, and compare to the same day last week. If revenue is down more than 20%, flag it. Keep it concise, numbers first.",
+        prompt: "Pull today's Shopify sales: total revenue, the number of orders and the top 3 products by revenue, compared with the same day last week. If revenue is down more than 20%, flag it. Keep it short, numbers first.",
         trigger: 'scheduled',
         cron: '0 18 * * *',
         humanSchedule: 'Every day at 6pm',
         needs: 'shopify',
-        model: 'default',
-        quality_check: 'Must include total revenue, order count, and top products'
+        model: 'default'
       }
     };
+
 
     // The templates as cards in the empty Routines list and as choices in the
     // new-routine form, both drawn from WORKER_TEMPLATES: one name each. Only
     // routines that repeat, and one that needs a connection only once it is
     // connected.
-    var TEMPLATE_ORDER = ['morning-briefing', 'smart-morning', 'money-check', 'meeting-prep', 'weekly-review', 'inbox-sweep', 'inbox-triage', 'competitor-monitor', 'shopify-sales'];
+    var TEMPLATE_ORDER = ['morning-briefing', 'money-check', 'meeting-prep', 'weekly-review', 'inbox-sweep', 'competitor-monitor', 'shopify-sales'];
     function shownTemplates() {
       var connected = (window._connectionsCache || []).map(function (c) { return String(c.service || '').replace(/_extra_.*$/, ''); });
       // A template needs one connection, or any one of several (either bank).
@@ -6762,12 +6739,12 @@
       applyAgentTemplate(templateId);
     }
 
-    // A starting point: its words in the box (a rule it carries as a sentence
-    // of them) and its plan, ready to change or start.
+    // A starting point: its words in the box and its plan, ready to change
+    // or start.
     function applyAgentTemplate(templateId) {
       var t = WORKER_TEMPLATES[templateId];
       if (!t) return;
-      document.getElementById('auto-prompt-input').value = t.prompt + (t.quality_check ? '\n\n' + t.quality_check.replace(/\.?$/, '.') : '');
+      document.getElementById('auto-prompt-input').value = t.prompt;
       document.getElementById('auto-name-input').value = t.name;
       document.getElementById('auto-team').innerHTML = '';
       (t.members || []).forEach(function (m) { addTeamAgent(m.name, m.part); });
@@ -8306,6 +8283,8 @@
     }
     // + New agent: one agent, or a team (Add an agent in its window).
     function openNewAgent() { openCreateAutomationModal('agent'); }
+    // A team from the start: what it should do, then its agents.
+    function openNewTeam() { openCreateAutomationModal('team'); }
 
     function closeCreateAutomationModal() {
       document.getElementById('auto-create-modal').classList.remove('visible');
