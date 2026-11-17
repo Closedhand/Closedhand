@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
   <script src="/theme.js"></script><script src="/account-nav.js" defer></script><script src="/needs-field.js" defer></script><script src="/message-us.js" defer></script>
 <script src="/handheld.js"></script>
+<script>
+  // On a phone or tablet the still smoke ring is the first thing in view:
+  // its picture is asked for here, before the page below is read.
+  if (document.documentElement.classList.contains('handheld')) {
+    var ringStill = document.createElement('link');
+    ringStill.rel = 'preload'; ringStill.as = 'image'; ringStill.fetchPriority = 'high';
+    ringStill.href = document.documentElement.getAttribute('data-theme') === 'light' ? '/orb/smoke-light-poster.png' : '/orb/smoke-poster.png';
+    document.head.appendChild(ringStill);
+  }
+</script>
 <title>Closedhand</title>
 <meta name="description" content="Uncensored personal AI, with no company in between. Your data and conversations can be read by nobody but you. Your Closedhand assistant is open source and runs on a computer you control, with an LLM in a TEE (trusted execution environment).">
 <meta property="og:type" content="website">
@@ -261,7 +271,8 @@ body.chat-active .input-box { backdrop-filter: none; }
     
     .input-box-wrap:focus-within { transform: none; }
     .hero-recent-float { right: .875rem; bottom: .875rem; padding: .5rem .75rem; font-size: .71875rem; }
-    .hero-heading-sub { line-height: 1.45; margin-bottom: 1.875rem; max-width: 92vw; }
+    /* Two even lines under the heading, not one from edge to edge. */
+    .hero-heading-sub { line-height: 1.45; margin-bottom: 1.875rem; max-width: min(92vw, 15rem); }
 
     .input-box-wrap { max-width: 100%; }
     .input-textarea-wrap { padding: 1rem 1rem .5rem; }
@@ -639,12 +650,20 @@ body.chat-active .mon-area { display:none; }
     }
   }
   html.handheld .hero-heading-sub { margin-bottom: calc(var(--orb-gap) - var(--orb-size) * 0.116); }
-  .orb-open { display: flex; flex-direction: column; align-items: center; margin: 0 auto var(--orb-gap, 1.25rem); text-decoration: none; -webkit-tap-highlight-color: transparent; opacity: 0; animation: heroIn 0.8s ease forwards 0.6s; }
+  .orb-open { display: flex; flex-direction: column; align-items: center; margin: 0 auto var(--orb-gap, 1.25rem); text-decoration: none; -webkit-tap-highlight-color: transparent; opacity: 0; animation: heroIn 0.5s ease forwards 0.1s; }
   .orb-stage { position: relative; width: var(--orb-size, 13.5rem); height: var(--orb-size, 13.5rem); display: grid; place-items: center; }
   /* The light theme plays its own film, toned for cream when it was made
      (smoke-light.*, tools/ring-video); a filter here darkened it a second
      time and made the ring heavy. */
-  .orb-film { position: absolute; inset: 0; }
+  /* The still ring is in view from the first frame, so a phone shows it
+     while the film is still on its way (it showed nothing for seconds), and
+     the film takes its place once it moves. One or the other, never both:
+     the smoke is see-through, and the two together read twice as thick. */
+  .orb-film { position: absolute; inset: 0; background: center / contain no-repeat url(/orb/smoke-poster.png); }
+  html[data-theme="light"] .orb-film { background-image: url(/orb/smoke-light-poster.png); }
+  .orb-film .orb-smoke { opacity: 0; }
+  .orb-film.moving { background: none; }
+  .orb-film.moving .orb-smoke { opacity: 1; }
   /* The smoke ring: filmed, looping. It plays while on screen and flashes
      when tapped; pressing gives a little, words and light with it. */
   .orb-smoke { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: transparent; pointer-events: none; }
@@ -963,10 +982,10 @@ body.chat-active .mon-area { display:none; }
     var light = document.documentElement.getAttribute('data-theme') === 'light';
     var of = function (kind) { return smoke.dataset[kind + (light ? 'Light' : '')]; };
     var src = wanted = of(hevc ? 'mov' : 'webm'), poster = new Image();
+    smoke.parentNode.classList.remove('moving');
     poster.fetchPriority = 'high';
     poster.onload = poster.onerror = function () {
       if (wanted !== src) return;
-      smoke.poster = poster.src;
       smoke.preload = 'auto';
       smoke.src = src;
       sync();
@@ -978,7 +997,7 @@ body.chat-active .mon-area { display:none; }
     clearTimeout(again);
     if (tries < 6) again = setTimeout(reload, 2000 * Math.pow(2, tries++));
   });
-  smoke.addEventListener('playing', function () { tries = 0; });
+  smoke.addEventListener('playing', function () { tries = 0; smoke.parentNode.classList.add('moving'); });
   window.addEventListener('online', function () { if (smoke.error) { tries = 0; reload(); } });
   film();
   document.documentElement.addEventListener('themechange', function () { film(); sync(); });

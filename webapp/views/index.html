@@ -1039,6 +1039,12 @@
        with the voice too (--level). */
     .talk-btn { position: relative; width: var(--talk-size, 13.5rem); height: var(--talk-size, 13.5rem); padding: 0; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease; }
     .talk-smoke { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    /* The still ring is in view from the first frame, and the film takes its
+       place once it moves: one or the other, as the smoke is see-through and
+       the two together read twice as thick (closedhand.com's ring the same). */
+    .talk-btn:not(.moving) { background: center / contain no-repeat url(/orb/smoke-poster.png); }
+    html[data-theme="light"] .talk-btn:not(.moving) { background-image: url(/orb/smoke-light-poster.png); }
+    .talk-btn:not(.moving) .talk-smoke { opacity: 0; }
     .talk-btn:is(.recording, .busy, .speaking) .talk-smoke { opacity: 0.14; transform: scale(0.9); }
     .talk-core { position: absolute; left: 50%; top: 50%; width: 60%; height: 60%; translate: -50% -50%; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(var(--accent-rgb),0.30), rgba(var(--accent-rgb),0.08) 45%, transparent 70%); animation: talkBreathe 6s ease-in-out infinite; transition: filter 0.3s ease; }
     /* The fist in the theme's own ink, cut out by its picture: no filter, as
@@ -3172,10 +3178,10 @@
       var light = document.documentElement.getAttribute('data-theme') === 'light';
       var of = function (kind) { return smoke.dataset[kind + (light ? 'Light' : '')]; };
       var src = wanted = of(hevc ? 'mov' : 'webm'), poster = new Image();
+      smoke.parentNode.classList.remove('moving');
       poster.fetchPriority = 'high';
       poster.onload = poster.onerror = function () {
         if (wanted !== src) return;
-        smoke.poster = poster.src;
         smoke.preload = 'auto';
         smoke.src = src;
         sync();
@@ -3187,7 +3193,7 @@
       clearTimeout(again);
       if (tries < 6) again = setTimeout(reload, 2000 * Math.pow(2, tries++));
     });
-    smoke.addEventListener('playing', function () { tries = 0; });
+    smoke.addEventListener('playing', function () { tries = 0; smoke.parentNode.classList.add('moving'); });
     window.addEventListener('online', function () { if (smoke.error) { tries = 0; reload(); } });
     film();
     document.documentElement.addEventListener('themechange', function () { film(); sync(); });

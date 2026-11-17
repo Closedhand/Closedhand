@@ -211,11 +211,21 @@ test('a slow connection shows the still ring, then the film, never the film on b
     assert.match(page, /var hevc = smoke\.canPlayType\('video\/quicktime; codecs="hvc1"'\) !== ''/);
     assert.match(page, /var src = wanted = of\(hevc \? 'mov' : 'webm'\), poster = new Image\(\);/, 'one film, the one the browser shows clear');
     assert.doesNotMatch(page, /createElement\('source'\)/, 'no second film to fall through to');
-    assert.match(page, /poster\.onload = poster\.onerror = function \(\) \{\n\s+if \(wanted !== src\) return;\n\s+smoke\.poster = poster\.src;/, 'the still ring first');
+    assert.match(page, /poster\.onload = poster\.onerror = function \(\) \{\n\s+if \(wanted !== src\) return;\n\s+smoke\.preload = 'auto';/, 'the still ring first, then the film');
+    // The still ring is drawn from the first frame, not once the film has its
+    // picture: a phone showed nothing for seconds. The film takes its place
+    // once it moves, never on top of it.
+    assert.doesNotMatch(page, /smoke\.poster = /);
+    assert.match(page, /smoke\.addEventListener\('playing', function \(\) \{ tries = 0; smoke\.parentNode\.classList\.add\('moving'\); \}\);/);
+    assert.match(page, /smoke\.parentNode\.classList\.remove\('moving'\);/, 'a change of theme shows the still ring until the new film moves');
     assert.match(page, /if \(tries < 6\) again = setTimeout\(reload, 2000 \* Math\.pow\(2, tries\+\+\)\);/, 'a film that fails is asked for again');
     assert.match(page, /window\.addEventListener\('online', function \(\) \{ if \(smoke\.error\) \{ tries = 0; reload\(\); \} \}\);/);
   }
   assert.ok(home.indexOf("getElementById('orbSmoke')") < home.indexOf('three.min.js'), 'the ring does not wait for the 3D library');
+  assert.match(home, /\.orb-film \{ position: absolute; inset: 0; background: center \/ contain no-repeat url\(\/orb\/smoke-poster\.png\); \}/);
+  assert.match(home, /\.orb-film \.orb-smoke \{ opacity: 0; \}\n\s+\.orb-film\.moving \{ background: none; \}\n\s+\.orb-film\.moving \.orb-smoke \{ opacity: 1; \}/);
+  assert.ok(home.indexOf("ringStill.rel = 'preload'") < home.indexOf('<title>'), 'on a phone its picture is asked for in the head');
+  assert.match(chat, /\.talk-btn:not\(\.moving\) \{ background: center \/ contain no-repeat url\(\/orb\/smoke-poster\.png\); \}/);
   // Each film keeps its own stamp, so a phone keeps it rather than asking again.
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'closedhand-com/server.js'), 'utf8'), /\(\?:href\|src\|data-\[a-z-\]\+\)="/);
 });
