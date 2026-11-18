@@ -615,6 +615,9 @@ test("a back-and-forth carries on in its project without the emoji, while the pe
   const asks = yes.asked.length;
   assert.equal(await yes.projects.fileTurn("u1", "/bug the chart is wrong"), null, "a command is never a follow-up");
   assert.equal(yes.asked.length, asks, "and nothing is asked about it");
+  await yes.projects.said("u1", move(), "📦 The movers can come at 9 or 11. Which suits?");
+  assert.equal(await yes.projects.fileTurn("u1", '[replying to Closedhand\'s message: "shop.example.com needs you signed in before I can carry on."]\nI\'m signed in on it'), null, "a reply to a message outside the project answers that message");
+  assert.equal(yes.asked.length, asks, "and is not put to the follow-up check");
 
   const no = loadProjects([move()], '{"carries_on":false}');
   await no.projects.warm("u1");
