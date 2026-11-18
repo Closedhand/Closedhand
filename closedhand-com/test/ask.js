@@ -416,6 +416,8 @@ test('the questions to try drift past in one line, scrolled not slid, held for a
   assert.doesNotMatch(home, /tries-drift|\.ask-tries-track \{[^}]*animation/);
   assert.match(home, /\.ask-tries \{[^}]*overflow-x: auto;/);
   assert.match(script, /tries\.scrollLeft = pos;/);
+  assert.match(script, /In a new order each visit, so no question always comes first\./);
+  assert.ok(script.indexOf('Math.random()') < script.indexOf("copy.setAttribute('aria-hidden'"), 'shuffled before the copies are made, so the loop still matches');
   assert.match(script, /prefers-reduced-motion: reduce/, 'still for reduced motion');
   for (const held of ["'pointerenter', hold", "'focusin', hold", "'touchstart', hold"]) assert.ok(script.includes(held), 'held: ' + held);
   assert.match(script, /copy\.setAttribute\('aria-hidden', 'true'\); copy\.tabIndex = -1;/, 'the copies that close the loop are hidden from screen readers and the keyboard');

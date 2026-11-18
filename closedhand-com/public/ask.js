@@ -317,6 +317,12 @@
   // drift comes round without a jump, the copies hidden from screen readers
   // and the keyboard, and any of them asks its question.
   var track = tries.querySelector('.ask-tries-track');
+  // In a new order each visit, so no question always comes first.
+  if (track) {
+    var order = Array.prototype.slice.call(track.children);
+    for (var i = order.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), swap = order[i]; order[i] = order[j]; order[j] = swap; }
+    order.forEach(function (b) { track.appendChild(b); });
+  }
   if (track) Array.prototype.forEach.call(track.querySelectorAll('button'), function (b) {
     var copy = b.cloneNode(true); copy.setAttribute('aria-hidden', 'true'); copy.tabIndex = -1; track.appendChild(copy);
   });
