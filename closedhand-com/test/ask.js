@@ -384,9 +384,11 @@ test('the page: the box and its script are on the home page, and what it says is
   assert.match(asking.INSTRUCTION, /open with your own, well known or obscure, whichever you would stand behind, and give the reason\. Your view comes first; whatever is uncertain or arguable about it can follow, and never takes its place\./);
   assert.doesNotMatch(asking.INSTRUCTION, /never answer that it is subjective/);
   assert.doesNotMatch(asking.INSTRUCTION, /most people would agree|one name|expect over anything obscure|settled answer|nothing taken back|keep it/);
-  // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot: the download unlocks it.
+  // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot, and gives a
+  // taste from here before the download that does it for real: answers that opened on "I can't see your inbox"
+  // and stopped there were a dead end.
   assert.match(asking.INSTRUCTION, /it generates images, takes actions for them and works with their mail, calendar, files and whatever else they connect/);
-  assert.match(asking.INSTRUCTION, /never say that Closedhand cannot do it: say in one sentence that downloading Closedhand, below on this page, unlocks it/);
+  assert.match(asking.INSTRUCTION, /never say that Closedhand cannot do it, and never open with what you cannot do: first give what you can from here, such as how it would go about it or a taste of the answer, without pretending to know anything of theirs, then say in one sentence that downloading Closedhand, below on this page, does it for real/);
   // And only then: an answer it can give here carries no line about downloading.
   assert.match(asking.INSTRUCTION, /Say that only then: a question you can answer here gets its answer alone, with no mention of downloading\.$/);
   // A page left open over a night or a restart holds more conversation than closedhand.com takes:
