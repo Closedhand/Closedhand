@@ -47,7 +47,7 @@
 # Every file is drawn the way the original is: the same canvas, colour and
 # placement, the app icon on the same dark gradient, the circle mark in the
 # same ring, the favicon the same colour-following mask.
-import math, os, shutil, subprocess, sys, base64, re, tempfile
+import base64, hashlib, math, os, re, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MARKS = os.path.join(ROOT, "brand", "marks")
@@ -441,6 +441,9 @@ def build_og():
                         "--window-size=1200,627", "--virtual-time-budget=8000", f"--screenshot={dest}",
                         "file://" + os.path.join(tmp, "og.html")], capture_output=True, check=True)
         print(f"brand/marks/{mark}/closedhand-com/public/og.png")
+    # What was drawn, so a change to the page that is never drawn fails a test.
+    with open(os.path.join(ROOT, "brand/og.built"), "w") as f:
+        f.write(hashlib.sha256(open(os.path.join(ROOT, "brand/og.html"), "rb").read()).hexdigest() + "\n")
     use(open(ACTIVE).read().strip() if os.path.exists(ACTIVE) else "original")
 
 

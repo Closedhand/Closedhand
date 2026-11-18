@@ -845,7 +845,7 @@ test('link previews, the favicon and HTTPS-only are in place', async () => {
   const html = await home.text();
   for (const tag of ['og:title', 'og:description', 'og:image', 'og:url']) assert.match(html, new RegExp(`property="${tag}" content="[^"]+"`), tag);
   assert.match(html, /name="twitter:card" content="summary_large_image"/);
-  for (const page of ['/ethos', '/architecture', '/pcl']) assert.match(await (await fetch(base + page)).text(), /property="og:image" content="https:\/\/closedhand\.com\/og\.png"/, page);
+  for (const page of ['/ethos', '/architecture', '/pcl']) assert.match(await (await fetch(base + page)).text(), /property="og:image" content="https:\/\/closedhand\.com\/og\.png\?v=[0-9a-f]+"/, page + ', its address changing with the image');
   const og = await fetch(base + '/og.png');
   assert.equal(og.status, 200);
   assert.equal(og.headers.get('content-type'), 'image/png');

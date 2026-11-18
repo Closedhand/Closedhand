@@ -28,6 +28,16 @@ test("the files in place are the active mark, exactly", () => {
   assert.equal(art(read("install.sh").toString()), art(read(`brand/marks/${active}/install-art.txt`).toString()), "the installer draws the active mark");
 });
 
+test("the link preview says what the home page says, drawn from its page as it is now", () => {
+  const text = (html, cls) => (html.match(new RegExp(`class="${cls}"[^>]*>([^<]*)<`)) || [])[1];
+  const home = read("closedhand-com/views/home.html").toString(), og = read("brand/og.html").toString();
+  const lines = [...og.matchAll(/<div class="heading"><div>([^<]*)<\/div><div>([^<]*)<\/div><\/div>/g)][0] || [];
+  assert.deepEqual([lines[1], lines[2], text(og, "sub")], [text(home, "hero-heading-first"), text(home, "hero-heading-more"), text(home, "hero-heading-sub ch-lede")],
+    "brand/og.html has the home page's heading and the line under it");
+  assert.equal(read("brand/og.built").toString().trim(), require("node:crypto").createHash("sha256").update(read("brand/og.html")).digest("hex"),
+    "og.png was drawn from brand/og.html as it is: run python3 scripts/brand.py build-og");
+});
+
 test("the brand folder stays out of the bot image", () => {
   assert.match(read(".dockerignore").toString(), /^brand$/m);
 });
