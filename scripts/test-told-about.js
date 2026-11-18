@@ -256,3 +256,54 @@ test("each turn reads what it made as it is now: sent, replied to, moved, gone, 
   assert.match(read("migrations/090_made_items.sql"), /user_id uuid NOT NULL/);
   assert.match(read("migrations/090_made_items.sql"), /PRIMARY KEY \(user_id, kind, ref\)/);
 });
+
+// What a chat has said since an item from it was told (lib/chat-since.js):
+// asked "what did she say?" after a nudge, the chat answered from her earlier
+// message while her replies, already saved, were never read. Invented people.
+function chatDb(rows) {
+  const query = () => {
+    const f = [];
+    const q = {
+      select() { return q; },
+      eq(k, v) { f.push((r) => (k === "data->>chat" ? r.data.chat : r[k]) === v); return q; },
+      in(k, vs) { f.push((r) => vs.includes(r[k])); return q; },
+      gt(k, v) { f.push((r) => r[k] > v); return q; },
+      order() { return q; },
+      limit() { return q; },
+      then(ok, bad) {
+        const data = rows.filter((r) => f.every((p) => p(r))).sort((a, b) => a.received_at.localeCompare(b.received_at))
+          .map((r) => ({ ...r, chat: r.data.chat, chat_name: r.data.chat_name }));
+        return Promise.resolve({ data }).then(ok, bad);
+      },
+    };
+    return q;
+  };
+  return { from: () => query() };
+}
+const waRow = (id, at, sender, text) => ({ user_id: "u1", source: "whatsapp", type: "message", external_id: id, received_at: at,
+  data: { chat: "447700900111@s.whatsapp.net", chat_name: "Morgan Fixture", sender, text, date: at } });
+
+test("a turn after a nudge about a chat sees what that chat has said since, and only that chat", async () => {
+  const since = require("../lib/chat-since");
+  const db = chatDb([
+    waRow("wa-1", "2026-11-18T10:38:00.000Z", "Morgan Fixture", "looks really quiet around there"),
+    waRow("wa-2", "2026-11-18T11:30:00.000Z", "me", "Being near family matters more to me"),
+    waRow("wa-3", "2026-11-18T12:05:00.000Z", "Morgan Fixture", "OK, I see your point about family"),
+    waRow("wa-4", "2026-11-18T12:08:00.000Z", "Morgan Fixture", "Let's look at the house on Saturday"),
+    { user_id: "u1", source: "whatsapp", type: "message", external_id: "wa-9", received_at: "2026-11-18T12:09:00.000Z", data: { chat: "other@s.whatsapp.net", chat_name: "Someone Else", sender: "Someone Else", text: "unrelated" } },
+  ]);
+  const nudgeAbout = { role: "assistant", content: "Morgan asked what's near the house; your case is still unanswered.",
+    about: [{ source: "whatsapp", id: "wa-1", text: "Message in Morgan Fixture …" }, { source: "whatsapp", id: "wa-2", text: "Message in Morgan Fixture …" }] };
+  const shown = await since.forConversation("u1", [nudgeAbout, { role: "user", content: "I did answer. What did she say?" }], null, { supabase: db });
+  assert.match(shown, /^SINCE THEN, in the chats those items are from/);
+  assert.match(shown, /I see your point about family[\s\S]*Saturday/, "both newer messages, oldest first");
+  assert.doesNotMatch(shown, /looks really quiet|Being near family|unrelated/, "nothing already told, and no other chat");
+  assert.equal(await since.forConversation("u1", [{ role: "assistant", content: "Hello" }], null, { supabase: db }), "", "nothing told, nothing added");
+  assert.equal(await since.forRows("u1", [waRow("wa-4", "2026-11-18T12:08:00.000Z", "Morgan Fixture", "x")], null, { supabase: db }), "", "nothing newer, nothing added");
+});
+
+test("the turn and a nudge's check both read what the chats said since", () => {
+  assert.match(read("lib/engine.js"), /require\("\.\/chat-since"\)\.forConversation\(userId, conversation/);
+  assert.match(read("lib/pulse.js"), /const sinceLook = await require\("\.\/chat-since"\)\.forRows\(userId, \[\.\.\.cited\]/);
+  assert.match(read("lib/pulse.js"), /const evidence = \[citedItems\.join\("\\n"\), sinceLook,/);
+});
