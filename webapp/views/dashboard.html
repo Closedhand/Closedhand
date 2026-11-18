@@ -1551,6 +1551,7 @@
 </head>
 <body class="dashboard-page">
 <script src="/flight-time.js"></script>
+<script src="/upcoming-icons.js"></script>
 <script>
   // The dashboard is a slide-over on the homepage, loaded in an iframe. Every
   // OAuth redirect lands on /dashboard top-level, which renders that same
@@ -6060,24 +6061,18 @@
 
     // Everything under Upcoming in the app's one line style.
     var lineIcon = function (d) { return '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>'; };
-    var UPCOMING_ICON = {
-      flight: lineIcon('M2 16l20-6-2-3-7 2-6-6-2 1 4 7-5 1-2-2-2 1z'),
-      train: lineIcon('M7 3h10a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2zM5 10h14M9 21l1.5-4M15 21l-1.5-4'),
-      hotel: lineIcon('M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3M7 12.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z'),
-      event: lineIcon('M4 6h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4zM14 6v12'),
-      restaurant: lineIcon('M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 0-3 3-3 6s1 4 3 4v8'),
-      car: lineIcon('M4 16l1.5-5a2 2 0 0 1 2-1.5h9a2 2 0 0 1 2 1.5L20 16v3h-3M4 16v3h3M4 16h16M7.5 13.5h.01M16.5 13.5h.01'),
-      ferry: lineIcon('M3 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0M5 15l1-5h12l1 5M12 4v6'),
-      bus: lineIcon('M6 3h12a2 2 0 0 1 2 2v12H4V5a2 2 0 0 1 2-2zM4 11h16M7 20v-3M17 20v-3M7.5 14h.01M16.5 14h.01'),
-      appointment: lineIcon('M4 5h16v15H4zM4 10h16M8 3v4M16 3v4'),
-      other: lineIcon('M9 4h6v3H9zM7 5.5H5.5V21h13V5.5H17M9 12h6M9 16h4'),
+    // What kind of thing it is (a flight, a train, a table) is drawn from the
+    // one set the web chat's day ahead uses too (upcoming-icons.js).
+    var UPCOMING_ICON = {};
+    Object.keys(window.UpcomingIcons).forEach(function (kind) { UPCOMING_ICON[kind] = lineIcon(window.UpcomingIcons[kind]); });
+    Object.assign(UPCOMING_ICON, {
       reminder: lineIcon('M20 13a8 8 0 1 1-16 0 8 8 0 0 1 16 0zM12 9v4l2.5 2M5 4L3 6M19 4l2 2'),
       goal: lineIcon('M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 12h.01'),
       done: lineIcon('M5 12.5l4.5 4.5L19 7.5'),
       checkout: lineIcon('M14 4H6v16h8M10 12h10M17 9l3 3-3 3'),
       clash: lineIcon('M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'),
       x: lineIcon('M7 7l10 10M17 7L7 17'),
-    };
+    });
     function fmtBookingTime(iso, tz) {
       if (!iso) return '';
       var d = new Date(iso); if (isNaN(d)) return '';

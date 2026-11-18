@@ -3282,15 +3282,18 @@ app.get("/api/today", async (req, res) => {
     const { data: prof } = await supabase.from("profiles").select("settings").eq("id", userId).maybeSingle();
     const loc = prof?.settings?.location || {};
     const tz = phoneZone.zoneOf(loc) || "UTC";
-    const now = Date.now(), until = new Date(now + 2 * 86400000).toISOString(), from = new Date(now - 3600000).toISOString();
+    // From a day back: a booking with no time of its own is kept at midnight
+    // where it happens, and what is over today still says which of those
+    // are over with it (today-line.js drops the rest that is over).
+    const now = Date.now(), until = new Date(now + 2 * 86400000).toISOString(), from = new Date(now - 26 * 3600000).toISOString();
     const [events, bookings, flights] = await Promise.all([
-      supabase.from("data_cache").select("summary:data->>summary, all_day:data->>all_day, received_at").eq("user_id", userId).eq("type", "event").gte("received_at", from).lte("received_at", until).limit(30),
-      supabase.from("bookings").select("kind, title, starts_at, status").eq("user_id", userId).gte("starts_at", from).lte("starts_at", until),
+      supabase.from("data_cache").select("summary:data->>summary, all_day:data->>all_day, received_at").eq("user_id", userId).eq("type", "event").gte("received_at", from).lte("received_at", until).order("received_at", { ascending: true }).limit(60),
+      supabase.from("bookings").select("kind, title, starts_at, status, timezone, details").eq("user_id", userId).gte("starts_at", from).lte("starts_at", until),
       supabase.from("facts").select("key, value").eq("user_id", userId).like("key", "flight-%"),
     ]);
     const items = [];
     for (const e of events.data || []) if (e.summary && String(e.all_day) !== "true") items.push({ at: Date.parse(e.received_at), raw: e.summary, kind: "event" });
-    for (const b of bookings.data || []) if (b.status !== "cancelled") items.push({ at: Date.parse(b.starts_at), raw: b.title, kind: "booking", type: b.kind });
+    for (const b of bookings.data || []) if (b.status !== "cancelled") items.push({ at: Date.parse(b.starts_at), raw: b.title, kind: "booking", type: b.kind, zone: b.timezone, timeUnknown: !!b.details?.time_unknown, allDay: !!b.details?.all_day });
     for (const f of flights.data || []) {
       try {
         let v = f.value; if (typeof v === "string") v = JSON.parse(v); if (v && typeof v.value === "string") v = JSON.parse(v.value);

@@ -145,3 +145,25 @@ test('a reading that calls a timed booking all day never hides its time', () => 
   const card = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'webapp/views/dashboard.html'), 'utf8');
   assert.match(card, /var when = det\.time_unknown \|\| \(det\.all_day && at === '00:00'\) \? '' : at;/, 'and a card shows any time that is not midnight');
 });
+
+test('a ticket one company sells and another runs is one booking: the day-only email and the timed one, under two provider names', () => {
+  // The operator's email gave the train's day and its reference; the agency's gave the time. Kept apart, the train showed twice.
+  const operator = { id: 'o1', kind: 'train', provider: 'Fixture Rail', reference: 'FXR77K2', title: "Northgate to Miller's Wharf", starts_at: '2026-06-11T00:00:00+01:00', timezone: 'Europe/London', source_email_id: 'mailE', updated_at: '2026-06-01T09:00:00Z', details: { time_unknown: true, seat: 'Coach C, 14' } };
+  const back = { ...operator, id: 'o2', reference: 'FXR77K3', title: "Miller's Wharf to Northgate", starts_at: '2026-06-12T00:00:00+01:00' };
+  const agency = { id: 'a1', kind: 'train', provider: 'Example Tickets', reference: null, title: 'Northgate to Millers Wharf', starts_at: '2026-06-11T09:55:00+01:00', ends_at: '2026-06-11T12:46:00+01:00', timezone: 'Europe/London', source_email_id: 'mailF', updated_at: '2026-06-05T09:00:00Z', details: {} };
+  assert.ok(sameBooking(operator, agency), 'the one of its kind and name that day, whoever sold it');
+  assert.equal(sameBooking(back, agency), false, 'the journey back is another day and another name');
+  assert.equal(sameBooking(operator, { ...agency, title: 'Northgate to Harbour Point' }), false, 'another journey that day is another booking');
+  assert.equal(sameBooking(operator, { ...agency, kind: 'bus' }), false);
+  assert.equal(sameBooking({ ...operator, starts_at: '2026-06-11T08:00:00+01:00', details: {} }, agency), false, 'two with their own times from two companies stay two');
+  const plan = mergePlan([operator, back, agency]);
+  assert.deepEqual(plan.drop, ['o1'], 'the one with its time stays');
+  assert.equal(plan.keep[0].id, 'a1');
+  assert.equal(plan.keep[0].patch.reference, 'FXR77K2', 'and gains the reference');
+  assert.equal(plan.keep[0].patch.details.seat, 'Coach C, 14');
+  assert.equal(plan.keep[0].patch.details.time_unknown, undefined);
+  // Read again later, the operator's email lands on that row and keeps its time.
+  const kept = { ...agency, reference: 'FXR77K2' };
+  assert.equal(findMatch({ ...operator, id: undefined }, [kept, back]).id, 'a1');
+  assert.equal(mergeInto({ ...operator, id: undefined }, kept).starts_at, '2026-06-11T09:55:00+01:00');
+});

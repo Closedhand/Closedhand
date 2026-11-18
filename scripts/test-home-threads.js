@@ -14,7 +14,7 @@ test('the home page box carries on Chat, or the project that is open; Main chat 
   assert.doesNotMatch(page, /heroContinuing|_homeContinue|Start fresh|drawEarlierMessages/, 'no "Continuing" line or quiet-hours carry-on');
   assert.doesNotMatch(page, /Pick up where you left off|hero-recent|hero-chip/, 'no drawer, pill or chips: the box carries on Chat');
   assert.match(page, /var chat = Number\(data\.chat\.message_count\) > 0;/, 'Main chat only once there is a conversation to go back to');
-  assert.match(page, /\(chat \? 'or pick up' : 'or pick up a project'\)/, 'the conversations, under the box');
+  assert.ok(page.includes(`'<span class="hero-projects-label">or pick up' + (chat ? '' : '<span class="hp-what"> a project</span>') + '</span>'`), 'the conversations, under the box');
   assert.match(page, /data-chat="1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"\/><\/svg>Main chat<\/button>/, 'Main chat first, by the Chat tab\'s own icon');
   assert.match(page, /var projects = \(data\.projects \|\| \[\]\)\.slice\(\)\.sort\(/, 'most recent first');
   assert.match(page, /openConversation\(b\.hasAttribute\('data-chat'\) \? null : b\.getAttribute\('data-conv'\)\);/, 'Main chat opens the conversation in full, as typing would, sending nothing');
@@ -23,6 +23,32 @@ test('the home page box carries on Chat, or the project that is open; Main chat 
   assert.match(conv, /if \(!asked\.length && conversation\.filter\(m => m\.role === "user"\)\.length < 3\) return;/);
   const ws = fs.readFileSync(path.join(root, 'lib', 'web-chat-ws.js'), 'utf8');
   assert.match(ws, /const project = typeof msg\.project === "string" && \/\^\[0-9a-f-\]\{36\}\$\/i\.test\(msg\.project\) \? msg\.project : null;/);
+});
+
+test('on a phone the projects sit behind one "Projects" beside Main chat, which lists them along the bottom', () => {
+  const page = fs.readFileSync(path.join(root, 'webapp', 'views', 'index.html'), 'utf8');
+  assert.match(page, /\(projects\.length \? '<button type="button" class="hero-project hero-projects-open" id="heroProjectsOpen" aria-haspopup="menu" aria-expanded="false" aria-controls="projectsSheet"><svg [^']*<\/svg>Projects<\/button>' : ''\)/);
+  // A desk names them in the row; a phone shows the one button.
+  assert.match(page, /\n  \.hero-projects-open \{ display: none; \}\n  @media \(max-width: 600px\) \{/);
+  assert.match(page, /#heroProjects \.hp-what, #heroProjects \.hero-project\[data-conv\], #heroProjects \.hero-project\[data-all\] \{ display: none; \}/);
+  // Words and logos stand as they are under the box: no outline round Main chat, Projects or a chat app's logo.
+  assert.doesNotMatch(page.slice(page.indexOf('  .hero-projects-open { display: none; }'), page.indexOf('@property --compose-sweep')), /border:/);
+  assert.match(page, /\.continue-on \.send-via a\.via-icon, \.continue-on \.send-via a\.via-icon:hover \{[^}]*border: 0; border-radius: 50%; background: none;/);
+  assert.match(page, /<div class="mon-context-menu projects-sheet" id="projectsSheet" role="menu" aria-label="Projects" hidden><\/div>/, 'the same menu the computer at the top opens');
+  assert.match(page, /if \(b\.hasAttribute\('data-all'\)\) openDashSlide\('#projects'\); else openConversation\(b\.getAttribute\('data-conv'\)\);/, 'a name opens its conversation');
+  // An iPhone sends no click for a tap on plain text, so a sheet closes on the touch itself.
+  assert.match(page, /window\.closeOnOutside = function\(sheetId, openerId, close\) \{\n    document\.addEventListener\('pointerdown', function\(e\) \{/);
+  assert.match(page, /window\.closeOnOutside\('projectsSheet', 'heroProjectsOpen', closeProjects\);/);
+  assert.match(page, /window\.closeOnOutside\('deviceSheet', 'deviceToggle', closeDeviceSheet\);/);
+  assert.ok(page.indexOf('window.closeOnOutside = function') < page.indexOf("window.closeOnOutside('projectsSheet'") && page.indexOf('window.closeOnOutside = function') < page.indexOf("window.closeOnOutside('deviceSheet'"), 'made before either sheet asks for it, however slowly the page arrives');
+});
+
+test('the count at the top says what is running', () => {
+  const page = fs.readFileSync(path.join(root, 'webapp', 'views', 'index.html'), 'utf8');
+  assert.match(page, /var tasks = data\.active \+ \(data\.active === 1 \? ' task' : ' tasks'\);\n\s+countEl\.innerHTML = tasks \+ '<span class="agents-working-more"> running<\/span>';/);
+  assert.doesNotMatch(page, /<\/span> active\n/, '"1 active" did not say one what');
+  assert.match(page, /<button type="button" class="agents-working" id="agentIndicator" hidden onclick="openDashSlide\('#agents'\)"><span class="agent-live-dot" aria-hidden="true"><\/span><span id="agentCount"><\/span><\/button>/, "the chat's own live dot, and it opens Agents");
+  assert.match(page, /@media \(max-width: 389px\) \{ \.agents-working-more \{ display: none; \} \}/, 'the narrowest phones keep the fist');
 });
 
 test("a project's conversation and its card on the dashboard lead to each other", () => {

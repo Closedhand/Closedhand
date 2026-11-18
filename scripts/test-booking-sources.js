@@ -124,7 +124,8 @@ test("Upcoming reads everything connected, and a booking from a chat says where 
   const dash = read("webapp/views/dashboard.html");
   assert.match(dash, />Nothing coming up\. Reminders and bookings from everything you've connected show here\.</);
   assert.doesNotMatch(dash, /from your mail show here/);
-  assert.match(dash, /appointment: lineIcon\('M4 5h16v15H4zM4 10h16M8 3v4M16 3v4'\),/, "an appointment drawn as a calendar, in the app's line style");
+  assert.match(read('webapp/public/upcoming-icons.js'), /appointment: 'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4',/, 'an appointment drawn as a calendar, in the app\'s line style');
+  assert.match(dash, /UPCOMING_ICON\[kind\] = lineIcon\(window\.UpcomingIcons\[kind\]\);/, 'from the one set the web chat draws too');
   assert.match(dash, /docs: sourceDocsHtml\(b\.source_mail\), from: chatSourceHtml\(det\.from_chat\),/);
   // Said in words, not a button: there is no way to open one chat from here.
   const chat = dash.slice(dash.indexOf("    function chatSourceHtml(c) {"), dash.indexOf("    // The email a booking came from"));

@@ -1099,11 +1099,14 @@
     .send-btn { width: 2.5rem; min-width: 2.5rem; height: 2.5rem; padding: 0; border-radius: 50%; justify-content: center; }
     .send-btn svg { margin: 0; }
     .send-btn .send-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    .continue-on { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.625rem; font-size: 0.8125rem; color: rgba(var(--fg-rgb),0.55); }
+    .continue-on { display: flex; align-items: center; justify-content: center; gap: 0.25rem; font-size: 0.8125rem; color: rgba(var(--fg-rgb),0.55); }
     .continue-on:not(:has(.via-icon:not([hidden]))) { display: none; }
-    .continue-on .send-via { gap: 0.625rem; }
-    .continue-on .send-via a { width: 2.25rem; height: 2.25rem; border-radius: 1.125rem; background: transparent; border-color: rgba(var(--fg-rgb),0.12); }
-    .continue-on .send-via img { width: 1.0625rem; height: 1.0625rem; }
+    /* Under the box each logo stands as it is: it is known on sight, and a
+       ring drawn round it said nothing more. The room round it is for a
+       thumb. In the box on a desk it keeps the tile of the controls beside it. */
+    .continue-on .send-via { gap: 0; }
+    .continue-on .send-via a.via-icon, .continue-on .send-via a.via-icon:hover { width: 2.75rem; height: 2.75rem; border: 0; border-radius: 50%; background: none; transform: none; }
+    .continue-on .send-via img { width: 1.5rem; height: 1.5rem; opacity: 0.9; }
   }
   .attach-plus { display: none; }
   /* Conversations to pick up, under the box: the chat with Closedhand by the
@@ -1119,6 +1122,20 @@
   .hero-project:hover::after, .hero-project:focus-visible::after { clip-path: inset(0 0 0 0); }
   .hero-project:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.1875rem; border-radius: 0.25rem; }
   @media (prefers-reduced-motion: reduce) { .hero-project::after { transition: none; } }
+  /* A phone: Main chat and one "Projects", which opens the projects as a
+     list along the bottom (#projectsSheet). Words with their icon, as on a
+     desk, and no outline round them: the room round each is for a thumb.
+     No brush under them either, where nothing hovers; the words darken
+     under the thumb. */
+  .hero-projects-open { display: none; }
+  @media (max-width: 600px) {
+    #heroProjects { align-items: center; margin-top: 0.375rem; }
+    #heroProjects .hp-what, #heroProjects .hero-project[data-conv], #heroProjects .hero-project[data-all] { display: none; }
+    #heroProjects .hero-project { display: inline-flex; align-items: center; padding: 0.75rem 0.25rem; transition: color 0.15s ease; }
+    #heroProjects .hero-project::after { display: none; }
+    #heroProjects .hero-project svg { margin-right: 0.375rem; vertical-align: 0; }
+    #heroProjects .hero-project:active, #heroProjects .hero-project[aria-expanded="true"] { color: var(--fg); }
+  }
   @property --compose-sweep { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
   @keyframes composeSweep { 0% { --compose-sweep: -40deg; opacity: 0; } 12% { opacity: 1; } 85% { opacity: 1; } 100% { --compose-sweep: 330deg; opacity: 0; } }
   @keyframes talkBreathe { 0%, 100% { opacity: 0.65; scale: 0.94; } 50% { opacity: 1; scale: 1.05; } }
@@ -1855,6 +1872,19 @@
     .mon-context-menu button { min-height:3rem; font-size:0.9375rem; }
     .mon-context-menu.device-sheet { width:auto; }
   }
+  /* The projects, from "Projects" under the phone home's box: the same menu,
+     a name a row with its emoji, a long name on two lines. Solid, as it
+     lies over the whole foot of the page and the words under it showed
+     through its names. */
+  .mon-context-menu.projects-sheet { width:18rem; max-height:min(70vh, 30rem); overflow-y:auto; padding:0.375rem 0; background:var(--raised); }
+  .projects-sheet .sheet-title { margin:0; padding:0.5rem 0.875rem 0.375rem; color:var(--fg); font-size:0.875rem; font-weight:600; }
+  .projects-sheet button { align-items:flex-start; line-height:1.35; color:rgba(var(--fg-rgb),0.85); }
+  .projects-sheet .ps-emoji { flex:none; width:1.375rem; text-align:center; }
+  .projects-sheet .ps-name { min-width:0; overflow-wrap:anywhere; }
+  @media (max-width:768px) {
+    .mon-context-menu.projects-sheet { width:auto; padding:0.375rem; }
+    .projects-sheet button { align-items:center; border-radius:0.5rem; }
+  }
 
   /* A quiet aside below the chat controls, with room to breathe. */
   #heroSection .hero-footer {
@@ -1915,6 +1945,41 @@
   .here-wx svg { color: rgba(var(--fg-rgb),0.62); overflow: visible; }
   .hero-footer span.here-wx { font-size: 0.8125rem; color: rgba(var(--fg-rgb),0.5); }
   .hero-footer .here span, .hero-footer .here-wx span { font-size: inherit; color: inherit; }
+  /* A phone: the weather and the day ahead are one card under the greeting.
+     The weather first, its temperature in full ink; then a row a thing: its
+     picture, its time, what it is, a drop when rain is likely. Today's come
+     first and need no name; tomorrow's follow under "Tomorrow". As loose
+     lines under the heading the days read as a paragraph, off centre and
+     ragged where a second thing wrapped. The card is there to hold those rows
+     together: with nothing on, the weather is one plain line under the
+     greeting, with no outline round it. */
+  .tl-pic { display: none; }
+  @media (max-width: 600px) {
+    body:not(.chat-active) #heroSection > .hero-footer { display: flex; flex-direction: column; align-items: stretch; gap: 0; width: fit-content; max-width: 100%; margin: 0.25rem auto 0; padding: 0; }
+    body:not(.chat-active) #heroSection > .hero-footer:has(> .today-line:not([hidden])) { width: 100%; max-width: 24rem; margin-top: 0.75rem; padding: 0 1rem; border: 1px solid rgba(var(--fg-rgb),0.08); border-radius: 1.125rem; background: rgba(var(--raised-rgb),0.55); }
+    body:not(.chat-active) #heroSection > .hero-footer:not(:has(> :not([hidden]))) { display: none; }
+    #heroSection > .hero-footer > .here { align-self: center; padding: 0.625rem 0.25rem; }
+    #heroSection > .hero-footer:has(> .today-line:not([hidden])) > .here { align-self: flex-start; padding-left: 0; }
+    #heroSection > .hero-footer > .here-wx { display: flex; align-items: center; gap: 0.625rem; padding: 0.5625rem 0; font-size: 0.875rem; line-height: 1.4; color: rgba(var(--fg-rgb),0.62); }
+    #heroSection > .hero-footer > .here-wx > svg { flex: none; width: 1.25rem; height: 1.25rem; }
+    #heroSection > .hero-footer > .here-wx > span { min-width: 0; text-align: start; white-space: normal; }
+    #heroSection .here-wx .wx-temp { font-weight: 600; color: rgba(var(--fg-rgb),0.9); line-height: 1.4; }
+    #heroSection > .hero-footer > .today-line { display: block; padding: 0.25rem 0 0.375rem; font-size: 0.875rem; line-height: 1.4; color: rgba(var(--fg-rgb),0.78); }
+    #heroSection > .hero-footer > :not([hidden]) ~ .today-line { border-top: 1px solid rgba(var(--fg-rgb),0.07); }
+    #heroSection .today-line .tl-icon { display: none; }
+    #heroSection .today-line .tl-day { display: block; margin: 0.375rem 0 0; font-size: 0.75rem; font-weight: 600; color: rgba(var(--fg-rgb),0.5); }
+    #heroSection .today-line .tl-day.tl-today { display: none; }
+    #heroSection .today-line .tl-items { display: flex; flex-direction: column; }
+    #heroSection .today-line .tl-item { display: grid; grid-template-columns: 1.125rem 2.75rem minmax(0, 1fr) auto; align-items: center; column-gap: 0.5rem; min-height: 1.75rem; opacity: 0; animation: heroIn 0.45s ease forwards; animation-delay: calc(var(--nth, 0) * 70ms); }
+    #heroSection .today-line .tl-pic { display: inline-flex; grid-column: 1; color: rgba(var(--fg-rgb),0.5); }
+    #heroSection .today-line .tl-pic svg { width: 1.0625rem; height: 1.0625rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: inherit; }
+    #heroSection .today-line .tl-time { grid-column: 2; margin: 0; font-weight: 600; color: rgba(var(--fg-rgb),0.9); }
+    #heroSection .today-line .tl-what { grid-column: 3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #heroSection .today-line .tl-item.untimed .tl-what { grid-column: 2 / 4; }
+    #heroSection .today-line .tl-rain { grid-column: 4; margin: 0; }
+    #heroSection .today-line .tl-cut { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { #heroSection .today-line .tl-item { opacity: 1; animation: none; } }
   .wx-sun { transform-origin: 0.75rem 0.75rem; animation: wxTurn 24s linear infinite; }
   .wx-cloud { animation: wxDrift 6s ease-in-out infinite alternate; }
   .wx-drops { stroke-dasharray: 2 3; animation: wxFall 1.2s linear infinite; }
@@ -1933,6 +1998,15 @@
   .agent-live-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--accent); flex: none; animation: agentLivePulse 1.6s ease-in-out infinite; }
   @keyframes agentLivePulse { 50% { opacity: 0.3; } }
   @media (prefers-reduced-motion: reduce) { .agent-live-dot { animation: none; } }
+  /* The same dot at the top of the page while a task is working, with how
+     many in words. Quiet ink: the accent beside the Dashboard button read as
+     an alert, and "1 active" did not say one what. */
+  .agents-working { display: inline-flex; align-items: center; gap: 0.4375rem; padding: 0; border: 0; background: none; font: inherit; font-size: 0.75rem; color: rgba(var(--fg-rgb),0.62); white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color 0.15s ease; }
+  .agents-working:hover, .agents-working:focus-visible { color: var(--fg); }
+  .agents-working:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.25rem; border-radius: 0.25rem; }
+  /* The narrowest phones have no room for the last word beside the computer
+     and the Dashboard button (the fist was squeezed out): the dot says it. */
+  @media (max-width: 389px) { .agents-working-more { display: none; } }
   .message.bot .reply-rule { border: 0; border-top: 1px solid rgba(var(--fg-rgb),0.1); margin: 0.75rem 0; }
   .message.bot .reply-table { overflow-x: auto; margin: 0.5rem 0 0.625rem; }
   .message.bot .reply-table table { border-collapse: collapse; font-size: var(--chat-text-sm); line-height: 1.4; }
@@ -1987,10 +2061,8 @@
     <div class="header-right">
       <button type="button" class="theme-toggle" aria-label="Light, dark or match this device" title="Light, dark or match this device"><span class="sun"><svg data-icon="sun" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2351 4438 c-41 -22 -60 -60 -76 -152 -30 -176 -11 -466 35 -541 44 -72 136 -72 180 0 35 56 53 201 47 375 -6 175 -23 261 -59 297 -30 29 -92 40 -127 21z M954 3846 c-46 -46 -45 -84 1 -161 112 -184 355 -395 458 -395 54 0 97 43 97 97 0 103 -211 346 -395 458 -77 46 -115 47 -161 1z M3685 3845 c-184 -112 -395 -355 -395 -458 0 -54 43 -97 97 -97 103 0 346 211 458 395 46 77 47 115 1 161 -46 46 -84 45 -161 -1z M2038 3251 c-75 -24 -155 -70 -248 -142 -164 -126 -276 -298 -332 -508 -30 -113 -30 -324 0 -445 89 -357 375 -638 732 -721 103 -24 318 -24 420 0 415 97 718 448 756 875 18 208 -66 484 -190 629 -26 29 -51 61 -56 72 -17 31 -173 146 -256 188 -113 58 -156 67 -255 55 -58 -7 -111 -6 -183 3 -151 18 -319 16 -388 -6z m433 -171 c21 -11 51 -34 66 -50 14 -17 60 -51 102 -76 98 -61 152 -112 211 -202 75 -112 95 -183 95 -327 -1 -99 -5 -131 -24 -184 -111 -315 -467 -461 -766 -315 -182 90 -292 260 -303 474 -11 217 88 401 283 528 39 25 82 57 97 71 34 32 157 101 181 101 10 0 36 -9 58 -20z M505 2524 c-117 -21 -160 -61 -151 -138 10 -87 84 -115 326 -123 174 -6 319 12 375 47 72 44 72 136 0 180 -75 46 -376 65 -550 34z M3856 2525 c-44 -9 -93 -24 -111 -35 -72 -44 -72 -135 0 -180 56 -35 201 -53 375 -47 255 9 325 38 325 137 0 101 -70 129 -340 136 -123 2 -192 -1 -249 -11z M1316 1475 c-181 -109 -396 -355 -396 -453 0 -48 54 -102 102 -102 69 0 244 129 354 261 136 163 163 241 105 300 -42 41 -90 39 -165 -6z M3319 1481 c-58 -59 -31 -137 105 -300 110 -132 285 -261 354 -261 48 0 102 54 102 102 0 69 -129 244 -261 354 -163 136 -241 163 -300 105z M2352 1098 c-65 -32 -97 -181 -89 -418 9 -255 38 -325 137 -325 99 0 128 70 137 325 6 174 -12 319 -47 375 -31 50 -87 67 -138 43z"/></svg></span><span class="moon"><svg data-icon="moon" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2610 3989 c-208 -17 -528 -84 -605 -126 -11 -7 -58 -30 -104 -53 -46 -22 -134 -75 -195 -118 -524 -363 -824 -866 -852 -1432 -7 -142 13 -342 45 -450 11 -36 28 -94 39 -130 59 -200 241 -470 424 -630 120 -105 221 -171 387 -255 139 -69 225 -101 346 -129 39 -8 90 -20 115 -27 25 -6 140 -13 255 -16 229 -6 389 9 515 47 36 11 71 20 79 20 24 0 324 122 381 155 30 18 72 40 92 49 20 10 67 40 105 67 37 27 91 65 119 83 142 94 165 246 54 356 -53 53 -109 72 -265 90 -375 43 -704 237 -900 531 -148 222 -203 531 -144 819 13 63 68 240 80 255 4 6 18 37 30 70 54 145 163 336 290 510 16 22 36 63 44 90 13 44 51 115 88 168 21 30 -3 51 -69 58 -80 9 -227 8 -354 -2z m-83 -222 c-231 -246 -413 -627 -463 -973 -25 -178 -15 -421 24 -575 16 -64 44 -149 61 -190 18 -41 39 -91 48 -112 16 -36 73 -131 125 -206 51 -74 213 -243 296 -308 115 -92 175 -130 305 -195 l108 -54 -93 -27 c-337 -96 -644 -82 -973 45 -182 71 -393 239 -508 404 -80 115 -96 143 -104 172 -3 15 -15 46 -25 70 -44 99 -78 281 -78 418 0 91 25 258 53 364 18 66 95 249 128 305 165 279 369 479 664 650 55 32 107 63 115 70 39 32 304 163 332 165 4 0 -3 -11 -15 -23z"/></svg></span><span class="device"><svg data-icon="device" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M2336 4430 c-58 -51 -71 -107 -71 -305 0 -138 3 -180 18 -222 53 -151 181 -151 234 0 26 76 26 369 0 444 -22 63 -74 113 -117 113 -18 0 -42 -11 -64 -30z M949 3851 c-34 -35 -39 -92 -13 -144 72 -144 315 -356 407 -357 61 0 107 46 107 108 -1 91 -214 334 -357 406 -52 26 -109 21 -144 -13z M2530 3518 c-30 -6 -156 -9 -280 -8 -124 0 -249 -4 -278 -9 -130 -26 -338 -151 -474 -285 -166 -164 -269 -346 -322 -569 -76 -318 -15 -662 169 -952 56 -88 314 -341 400 -391 105 -61 232 -112 363 -146 108 -27 130 -30 292 -30 162 0 184 2 292 30 131 34 258 85 363 146 86 50 344 303 400 391 247 389 268 872 54 1264 -130 238 -364 446 -607 540 -76 29 -90 31 -199 30 -65 -1 -143 -6 -173 -11z m-78 -211 c9 -28 32 -95 51 -147 82 -221 112 -428 112 -760 0 -320 -26 -510 -102 -737 l-28 -83 -88 0 c-342 0 -655 212 -777 527 -101 258 -73 548 74 770 52 80 178 205 256 255 216 138 285 175 390 208 88 29 93 27 112 -33z m648 -405 c180 -270 186 -660 14 -930 -37 -57 -115 -154 -120 -149 -1 1 10 49 26 106 16 56 34 146 41 199 14 122 14 428 -1 547 -10 81 -65 310 -90 375 -15 38 71 -60 130 -148z M520 2534 c-107 -21 -180 -75 -180 -134 0 -43 50 -95 113 -117 75 -26 368 -26 444 0 149 52 151 179 5 233 -35 12 -87 17 -202 19 -85 2 -166 1 -180 -1z M1258 1417 c-121 -69 -268 -216 -322 -324 -43 -85 0 -173 84 -173 50 0 85 17 176 86 117 88 254 270 254 336 0 62 -46 108 -107 108 -15 0 -54 -15 -85 -33z M2348 995 c-32 -18 -65 -83 -79 -161 -16 -84 -6 -326 16 -386 20 -58 74 -108 115 -108 41 0 95 50 115 108 22 60 32 302 16 386 -27 144 -98 207 -183 161z"/></svg></span></button>
       <button type="button" class="device-toggle" id="deviceToggle" hidden aria-haspopup="dialog" aria-expanded="false" aria-controls="deviceSheet"><span class="on"><svg data-icon="computer" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M3165 3823 c-736 -14 -858 -20 -1270 -67 -549 -62 -545 -61 -645 -41 -164 33 -257 11 -316 -78 -52 -78 -56 -103 -65 -412 -17 -561 -27 -1419 -18 -1478 18 -110 86 -210 177 -260 108 -58 54 -56 1390 -57 l1227 -1 70 21 c60 19 78 31 135 89 49 48 73 82 91 126 l24 60 -3 840 c-2 462 -7 874 -11 915 -18 156 -80 254 -199 312 l-66 33 -176 1 c-96 0 -251 -1 -345 -3z m-1275 -279 c391 -45 420 -46 845 -55 242 -5 521 -13 620 -17 l180 -7 -3 -790 c-2 -434 -6 -792 -9 -795 -2 -3 -512 -6 -1133 -8 l-1128 -3 -6 73 c-6 82 -21 1045 -21 1380 0 119 3 220 8 224 4 4 38 18 75 30 49 17 81 22 117 18 28 -3 232 -25 455 -50z M1795 1384 c-601 -17 -1088 -58 -1175 -98 -49 -23 -154 -109 -158 -130 -4 -18 34 -66 51 -66 6 0 28 -15 51 -33 62 -51 74 -55 187 -66 578 -57 2137 -68 3014 -20 254 13 317 22 376 53 84 43 190 117 186 129 -4 15 -160 122 -207 143 -58 27 -238 46 -655 70 -242 14 -1386 26 -1670 18z"/></svg></span><span class="off"><svg data-icon="computeroff" viewBox="0 0 480 480" aria-hidden="true"><path transform="translate(0.000000,480.000000) scale(0.100000,-0.100000)" fill="currentColor" d="M931 4116 c-9 -10 -4 -27 20 -72 18 -33 49 -93 71 -135 21 -42 49 -87 61 -100 13 -13 30 -36 39 -50 l17 -27 -54 -4 c-64 -5 -114 -36 -151 -91 -52 -78 -56 -103 -65 -412 -17 -561 -27 -1419 -18 -1478 18 -110 86 -210 177 -260 108 -59 68 -57 1242 -57 l1076 0 30 -31 29 -30 -165 8 c-257 13 -1542 9 -1805 -5 -468 -25 -747 -55 -815 -86 -49 -23 -154 -109 -158 -130 -4 -18 34 -66 51 -66 6 0 28 -15 51 -33 62 -51 74 -55 187 -66 578 -57 2137 -68 3014 -20 254 13 317 22 376 53 84 43 190 117 186 129 -4 15 -159 122 -207 144 -37 16 -211 42 -292 43 -43 0 -49 3 -87 49 -23 27 -41 51 -41 53 0 3 19 11 42 17 62 19 168 128 199 206 l24 60 -3 840 c-2 462 -7 874 -11 915 -18 156 -80 254 -199 312 l-67 33 -370 -3 c-762 -6 -985 -16 -1380 -61 -198 -22 -372 -42 -388 -44 -23 -3 -44 12 -140 104 -61 60 -115 109 -119 109 -4 0 -22 14 -40 30 -18 17 -67 48 -108 69 -41 21 -101 52 -134 69 -68 37 -61 36 -75 18z m563 -770 c136 -146 221 -238 381 -410 178 -193 480 -509 789 -826 l229 -235 -813 -3 c-447 -1 -815 0 -818 3 -10 10 -37 1579 -27 1633 4 27 13 43 28 50 24 12 4 31 231 -212z m526 183 c234 -27 317 -32 710 -40 245 -5 526 -13 625 -17 l180 -7 -3 -790 c-2 -434 -5 -791 -6 -793 -2 -1 -46 -5 -98 -9 l-94 -6 -49 59 c-27 33 -77 88 -111 124 -34 36 -122 130 -195 210 -195 211 -476 502 -792 820 -100 101 -290 284 -325 314 -20 17 -68 64 -106 103 l-68 72 33 -5 c19 -2 153 -18 299 -35z"/></svg></span></button>
-      <span id="agentIndicator" style="display:none;font-size:0.75rem;color:rgba(var(--accent-strong-rgb),0.8);cursor:pointer;display:none;align-items:center;gap:0.3125rem;" onclick="openDashSlide('#agents')">
-        <span style="width:0.375rem;height:0.375rem;background:var(--accent-strong);border-radius:50%;display:inline-block;animation:typingBounce 1.4s ease-in-out infinite;"></span>
-        <span id="agentCount">0</span> active
-      </span>
+      <!-- While a task is working: how many, in words ("1 task running"); it opens Agents, where each one is. -->
+      <button type="button" class="agents-working" id="agentIndicator" hidden onclick="openDashSlide('#agents')"><span class="agent-live-dot" aria-hidden="true"></span><span id="agentCount"></span></button>
       <a href="#" id="dashboardLink" class="deep" onclick="openDashSlide();return false;">Dashboard</a>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>
@@ -2357,6 +2429,7 @@
   </div>
 </div>
 
+<script src="/upcoming-icons.js"></script>
 <script>
 // Under the box: "Orientate", which asks the browser where it is (only when
 // pressed) to set Closedhand's local time, and from then on the weather there.
@@ -2415,22 +2488,28 @@
   function load() {
     fetch('/api/here', { cache: 'no-store' }).then(function(r) { return r.ok ? r.json() : null; }).then(render).catch(function() {});
     // Today and tomorrow, at a glance, under the weather: a line a day, the
-    // calendar's mark in the glyph column of the first. A screen reader hears
-    // the sentence.
+    // calendar's mark in the glyph column of the first. A phone lays the same
+    // out as a card under the greeting: each day, then a row a thing, with
+    // the picture Upcoming gives its kind (upcoming-icons.js). A thing whose
+    // time is not known shows none. A screen reader hears the sentence.
     fetch('/api/today', { cache: 'no-store' }).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
       var line = document.getElementById('todayLine');
       if (!line) return;
       var entries = (d && d.entries) || [], html = '';
       var cal = '<svg viewBox="0 0 24 24" width="1rem" height="1rem" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
       var rain = '<span class="tl-rain" data-tip="Rain likely"><svg viewBox="0 0 24 24" width="0.875rem" height="0.875rem" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5s-5.5 6-5.5 10a5.5 5.5 0 0 0 11 0c0-4-5.5-10-5.5-10z"/></svg></span>';
+      var pic = function(kind) { var d = (window.UpcomingIcons || {})[kind]; return d ? '<span class="tl-pic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="' + d + '"/></svg></span>' : ''; };
+      var nth = 0;
       [['today', 'Today'], ['tomorrow', 'Tomorrow']].forEach(function(day) {
         var on = entries.filter(function(e) { return e.when === day[0]; });
         if (!on.length) return;
-        html += '<span class="tl-icon">' + (html ? '' : cal) + '</span><span class="tl-day">' + day[1] + '</span><span class="tl-items">' + on.map(function(e) {
-          return '<span class="tl-item"><span class="tl-time">' + esc(e.time) + '</span>' + esc(e.label) + (e.rain ? rain : '') + '</span>';
+        html += '<span class="tl-icon">' + (html ? '' : cal) + '</span><span class="tl-day' + (day[0] === 'today' ? ' tl-today' : '') + '">' + day[1] + '</span><span class="tl-items">' + on.map(function(e) {
+          return '<span class="tl-item' + (e.time ? '' : ' untimed') + '" style="--nth:' + (nth++) + '">' + pic(e.icon) + (e.time ? '<span class="tl-time">' + esc(e.time) + '</span>' : '') + '<span class="tl-what">' + esc(e.label) + '</span>' + (e.rain ? rain : '') + '</span>';
         }).join('') + '</span>';
       });
-      line.innerHTML = html;
+      // Drawn again only when something changed, so the rows settle in once
+      // and not at every quarter-hour look.
+      if (line._drawn !== html) { line.innerHTML = html; line._drawn = html; }
       line.setAttribute('aria-label', (d && d.text) || '');
       line.hidden = !html;
     }).catch(function() {});
@@ -2907,8 +2986,10 @@
       document.documentElement.style.setProperty('--workspace-top', (pageTabs.getBoundingClientRect().bottom + window.scrollY) + 'px');
     }
     if (!hero) return;
+    var cut = hero.querySelectorAll('.today-line .tl-cut');
     if (window.innerWidth > 600 || document.body.classList.contains('chat-active')) {
       hero.style.minHeight = ''; // desktop / chat mode: hand back to CSS
+      cut.forEach(function(el) { el.classList.remove('tl-cut'); });
       return;
     }
     // The phone's home runs from here to the bottom of the screen (100svh,
@@ -2916,10 +2997,37 @@
     // at its foot. A minimum, not a fixed height: taller content scrolls.
     hero.style.minHeight = '';
     document.documentElement.style.setProperty('--hero-top', Math.round(hero.getBoundingClientRect().top + window.scrollY) + 'px');
+    // The ring takes the room the rest leaves, between the size it has while
+    // typing and its largest: the card under the greeting grows with the day
+    // ahead, and the ring gives way so the box and what is under it stay on
+    // the screen.
+    var ring = document.getElementById('talkBtn'), above = hero.querySelector('.hero-space-top'), below = hero.querySelector('.hero-space-bottom');
+    var box = document.getElementById('heroInputWrap');
+    var room = parseFloat(getComputedStyle(hero).minHeight);
+    if (ring && ring.offsetHeight && above && below && box && room && !hero.querySelector('#heroInputWrap:focus-within')) {
+      var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      var least = 6.5 * rem, gap = 0.75 * rem;
+      cut.forEach(function(el) { el.classList.remove('tl-cut'); });
+      var rest = hero.offsetHeight - ring.offsetHeight - above.offsetHeight - below.offsetHeight;
+      // On the smallest phones a full day ahead would push the box off the
+      // screen even so: the card then keeps the next things that fit, the
+      // first always, and the rest are on the dashboard's Upcoming.
+      var over = rest + least + gap - (hero.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom) - room;
+      var rows = [].slice.call(hero.querySelectorAll('.today-line .tl-item'));
+      while (over > 0 && rows.length > 1) {
+        var row = rows.pop(), day = row.parentNode.previousElementSibling, gone = row.offsetHeight;
+        row.classList.add('tl-cut');
+        if (day && !row.parentNode.querySelector('.tl-item:not(.tl-cut)')) { gone += day.offsetHeight + parseFloat(getComputedStyle(day).marginTop); day.classList.add('tl-cut'); }
+        over -= gone; rest -= gone;
+      }
+      hero.style.setProperty('--talk-size', Math.round(Math.max(least, Math.min(13.5 * rem, room - rest - gap))) + 'px');
+    }
   }
   // Header rows can change after sign-in or when the available width changes.
+  // And so can the card under the greeting and the rows under the box, as
+  // the weather, the day ahead and the conversations to pick up arrive.
   var headerObserver = new ResizeObserver(fitMobileHero);
-  [document.querySelector('.header'), document.getElementById('pageTabs')].forEach(function(el) {
+  [document.querySelector('.header'), document.getElementById('pageTabs'), document.querySelector('#heroSection > .hero-footer'), document.getElementById('heroProjects'), document.getElementById('continueOn')].forEach(function(el) {
     if (el) headerObserver.observe(el);
   });
   window.fitMobileHero = fitMobileHero;
@@ -4697,10 +4805,12 @@
       var countEl = document.getElementById('agentCount');
       if (!indicator || !countEl) return;
       if (data.active > 0) {
-        countEl.textContent = data.active;
-        indicator.style.display = 'inline-flex';
+        var tasks = data.active + (data.active === 1 ? ' task' : ' tasks');
+        countEl.innerHTML = tasks + '<span class="agents-working-more"> running</span>';
+        indicator.setAttribute('aria-label', tasks + ' running. Open Agents.');
+        indicator.hidden = false;
       } else {
-        indicator.style.display = 'none';
+        indicator.hidden = true;
         document.querySelectorAll('.agent-live').forEach(function (el) { el.remove(); });
       }
     }).catch(function() {});
@@ -4734,6 +4844,17 @@
     }
   });
 
+  // A menu or sheet closes at a touch or click anywhere outside it and what
+  // opens it. On pointerdown: an iPhone sends no click for a tap on plain text
+  // or empty page, so a sheet waiting for one stayed open. Here, ahead of the
+  // scripts below that use it too.
+  window.closeOnOutside = function(sheetId, openerId, close) {
+    document.addEventListener('pointerdown', function(e) {
+      var sheet = document.getElementById(sheetId);
+      if (sheet && !sheet.hidden && !e.target.closest('#' + sheetId) && !e.target.closest('#' + openerId)) close();
+    });
+  };
+
   function init() {
     fetch('/api/chat/status').then(function(resp) {
       return resp.json();
@@ -4766,16 +4887,46 @@
           if (!row || (!projects.length && !chat)) return;
           var esc = function(x) { return String(x || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
           var shown = projects.slice(0, 5);
-          row.innerHTML = '<span class="hero-projects-label">' + (chat ? 'or pick up' : 'or pick up a project') + '</span>'
+          // A desk names the projects in the row. A phone has one "Projects"
+          // beside Main chat, which opens them as a list along the bottom:
+          // named one by one they wrapped over three ragged rows.
+          row.innerHTML = '<span class="hero-projects-label">or pick up' + (chat ? '' : '<span class="hp-what"> a project</span>') + '</span>'
             + (chat ? '<button type="button" class="hero-project" data-chat="1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Main chat</button>' : '')
+            + (projects.length ? '<button type="button" class="hero-project hero-projects-open" id="heroProjectsOpen" aria-haspopup="menu" aria-expanded="false" aria-controls="projectsSheet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Projects</button>' : '')
             + shown.map(function(c) {
             return '<button type="button" class="hero-project" data-conv="' + esc(c.id) + '">' + esc(c.emoji) + ' ' + esc(c.name) + '</button>';
           }).join('') + (projects.length > shown.length ? '<button type="button" class="hero-project" data-all="1">All projects</button>' : '');
+          var sheet = document.getElementById('projectsSheet'), listed = projects.slice(0, 8);
+          sheet.innerHTML = '<p class="sheet-title">Projects</p>' + listed.map(function(c) {
+            return '<button type="button" role="menuitem" data-conv="' + esc(c.id) + '"><span class="ps-emoji">' + esc(c.emoji) + '</span><span class="ps-name">' + esc(c.name) + '</span></button>';
+          }).join('') + (projects.length > listed.length ? '<hr><button type="button" role="menuitem" data-all="1">All projects</button>' : '');
+          var closeProjects = function() {
+            sheet.hidden = true;
+            var b = document.getElementById('heroProjectsOpen'); if (b) b.setAttribute('aria-expanded', 'false');
+          };
+          // Under the button on a wide screen; a phone makes it a sheet along
+          // the bottom, as it does the computer's and the files menu.
+          var openProjects = function(b) {
+            if (window.closeDeviceSheet) window.closeDeviceSheet();
+            sheet.hidden = false;
+            var r = b.getBoundingClientRect();
+            sheet.style.top = Math.round(r.bottom + 8) + 'px';
+            sheet.style.left = Math.round(Math.max(8, Math.min(r.left, innerWidth - sheet.offsetWidth - 8))) + 'px';
+            b.setAttribute('aria-expanded', 'true');
+          };
           row.addEventListener('click', function(e) {
             var b = e.target.closest('.hero-project'); if (!b) return;
+            if (b.id === 'heroProjectsOpen') { if (sheet.hidden) openProjects(b); else closeProjects(); return; }
             if (b.hasAttribute('data-all')) { openDashSlide('#projects'); return; }
             openConversation(b.hasAttribute('data-chat') ? null : b.getAttribute('data-conv'));
           });
+          sheet.addEventListener('click', function(e) {
+            var b = e.target.closest('button'); if (!b) return;
+            closeProjects();
+            if (b.hasAttribute('data-all')) openDashSlide('#projects'); else openConversation(b.getAttribute('data-conv'));
+          });
+          window.closeOnOutside('projectsSheet', 'heroProjectsOpen', closeProjects);
+          document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeProjects(); });
           row.hidden = false;
           if (typeof fitMobileHero === 'function') fitMobileHero();
         }).catch(function() {});
@@ -5035,6 +5186,8 @@ function closeDeviceSheet() {
   if (button) button.setAttribute('aria-expanded', 'false');
 }
 window.closeDeviceSheet = closeDeviceSheet;
+// It closes at a touch anywhere outside it, as every sheet does (closeOnOutside).
+window.closeOnOutside('deviceSheet', 'deviceToggle', closeDeviceSheet);
 document.addEventListener('click', function (e) {
   var sheet = document.getElementById('deviceSheet');
   if (!sheet) return;
@@ -7876,6 +8029,8 @@ function jsq(s) {
     .catch(function () {});
 })();
 </script>
+<!-- What "Projects" under the phone home's box opens: each project, to pick its conversation back up. -->
+<div class="mon-context-menu projects-sheet" id="projectsSheet" role="menu" aria-label="Projects" hidden></div>
 <!-- What the computer at the top opens (showDevice). -->
 <div class="mon-context-menu device-sheet" id="deviceSheet" role="dialog" aria-labelledby="deviceSheetName" hidden>
   <div class="device-head"><span class="device-head-icon" aria-hidden="true"></span><div><p class="device-name" id="deviceSheetName"></p><p class="device-state" id="deviceSheetState"></p></div></div>
