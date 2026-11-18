@@ -55,7 +55,17 @@ function create({ db, env = process.env, request = fetch }) {
     return sent;
   }
 
-  return { queue, collect, emailStale };
+  // An account as the maintainer's notices name it: its sign-in's email and
+  // provider, or that it was made with an account number, and its personal URL.
+  // handle is what tools/accounts.js finds it by.
+  async function who(ownerId) {
+    const row = (await db.query('SELECT o.email, o.provider, a.hostname FROM owners o LEFT JOIN addresses a ON a.owner_id = o.id WHERE o.id = $1', [ownerId])).rows[0] || {};
+    const by = { google: 'Google', microsoft: 'Microsoft' }[row.provider] || row.provider || 'a sign-in';
+    const name = row.provider === 'anonymous' ? 'an account made with an account number' : `${row.email || 'an account with no email'} (${by})`;
+    return { name: name + (row.hostname ? ', ' + row.hostname : ''), handle: row.hostname || row.email || null };
+  }
+
+  return { queue, collect, emailStale, who };
 }
 
 module.exports = { create };

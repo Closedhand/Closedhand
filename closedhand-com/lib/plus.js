@@ -66,7 +66,7 @@ const AGREE = 'Tick the box first: this payment starts straight away.';
 // An account made with an account number never pays by card (account-number.js).
 const CARDLESS = 'Your Closedhand account uses an account number, so you pay ahead in crypto, never by card.';
 
-function create({ db, env = process.env, request = fetch, includedAi, ahead = null, baseUrl = 'https://closedhand.com' }) {
+function create({ db, env = process.env, request = fetch, includedAi, ahead = null, notices = null, baseUrl = 'https://closedhand.com' }) {
   const API = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox-api.polar.sh' : 'https://api.polar.sh';
   // Where Polar's own forms are served, to frame in My Account.
   const WEB = env.POLAR_SERVER === 'sandbox' ? 'https://sandbox.polar.sh' : 'https://polar.sh';
@@ -98,6 +98,17 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
 
   async function row(ownerId) {
     return (await db.query('SELECT * FROM plus_subscriptions WHERE owner_id = $1', [ownerId])).rows[0] || null;
+  }
+
+  async function tellStarted(ownerId, status, every) {
+    if (!notices) return;
+    try {
+      const { name } = await notices.who(ownerId);
+      const renews = every > 1 ? `every ${every} months` : 'every month';
+      await notices.queue(status === 'trialing'
+        ? `Closedhand: ${name} started the subscription, renewing ${renews}, with its 14 free days first.`
+        : `Closedhand: ${name} subscribed, renewing ${renews}.`);
+    } catch (e) { console.error('[operator] notice:', e.message); }
   }
 
   // Stops a subscription at Polar now. Gone already, or already cancelled, is
@@ -399,6 +410,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
         return 'a second subscription, stopped';
       }
       const at = data.modified_at || data.created_at || event.timestamp || null;
+      const before = await row(ownerId);
       // A newer event wins; an older one for the same subscription, or an
       // ended old subscription after a new one began, changes nothing.
       const saved = await db.query(
@@ -416,6 +428,8 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
         [ownerId, data.customer_id || data.customer?.id || null, data.id, status, data.current_period_end || null, data.cancel_at_period_end === true, at, LIVE, data.current_period_start || null, every]);
       if (!saved.rowCount) return 'older than what is known';
       syncLater(ownerId);
+      // The maintainer hears of a subscription starting, free days first or paid.
+      if (LIVE.includes(status) && !(before && before.polar_subscription_id === data.id && LIVE.includes(before.status))) await tellStarted(ownerId, status, every);
       return 'subscription ' + status;
     }
     // A payment that bought nothing is given back in full: one for an account

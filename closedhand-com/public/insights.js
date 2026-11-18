@@ -297,12 +297,31 @@
     row('Closedhand email', p.assistant_email ? `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month` : 'Off');
     row('Free 14 days', firstMonth(p));
     row('Subscription', plusLine(p));
-    if (p.first_month_usd != null || p.plus_status) {
+    const paying = ['active', 'trialing', 'past_due'].includes(p.plus_status) || (p.ahead_until && new Date(p.ahead_until) > Date.now());
+    if (p.first_month_usd != null || p.plus_status || paying) {
       const used = row('Uncensored LLM use', `Reading from ${provider}…`);
-      fetch('/api/insights/person/' + encodeURIComponent(p.id), { cache: 'no-store' })
+      const readUse = () => fetch('/api/insights/person/' + encodeURIComponent(p.id), { cache: 'no-store' })
         .then(r => (r.ok ? r.json() : Promise.reject()))
         .then(d => { used.textContent = d.usage ? `${usd(d.usage.used)} of ${usd(d.usage.limit)} (${pct(d.usage.used, d.usage.limit)}%)` : `No key at ${provider}`; })
         .catch(() => { used.textContent = `${provider} didn't answer`; });
+      readUse();
+      // Someone paying can be given another month's fair use this month, once.
+      if (paying && !p.maintainer) {
+        const said = { given: "Given: another month's fair use until this month of theirs renews", already: 'Carried on past fair use this month', 'not paying': 'Not paying now, so there is no month to carry on' };
+        const fair = row('Fair use', p.plus_extended ? said.already : '');
+        if (!p.plus_extended) {
+          const give = el('button', 'give-more', "Give another month's fair use");
+          give.type = 'button';
+          give.addEventListener('click', () => {
+            give.disabled = true;
+            fetch('/api/insights/person/' + encodeURIComponent(p.id) + '/carry-on', { method: 'POST' })
+              .then(r => (r.ok ? r.json() : Promise.reject()))
+              .then(d => { p.plus_extended = d.done !== 'not paying'; fair.textContent = said[d.done] || 'Done'; readUse(); })
+              .catch(() => { give.disabled = false; give.textContent = "Didn't work. Try again"; });
+          });
+          fair.append(give);
+        }
+      }
     }
     row('Account id', p.id);
     return box;
@@ -413,7 +432,16 @@
     drawWeeks(d.weeks || []);
     drawGrid(d.urls);
     everyone = d.people || [];
+    // Opened from a notice (?find=their personal URL): that person, open.
+    const find = new URLSearchParams(location.search).get('find');
+    if (find && !drawPeople.found) {
+      drawPeople.found = true;
+      $('search').value = find;
+      const match = everyone.filter(p => [p.email, p.hostname].some(v => v && v.toLowerCase() === find.toLowerCase()));
+      if (match.length === 1) open.add(match[0].id);
+    }
     drawPeople();
+    if (find && open.size) $('people-list').querySelector('.person')?.scrollIntoView({ block: 'center' });
     drawReports(d);
     drawMessages(d);
     $('updated').textContent = 'Only you can open this page. Updated ' +

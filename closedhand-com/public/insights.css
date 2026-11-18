@@ -90,6 +90,9 @@
 .person-details { display: grid; grid-template-columns: max-content 1fr; gap: .375rem 1rem; margin: .75rem 0 0; padding: .75rem 0 0; border-top: 1px solid rgba(var(--fg-rgb),0.08); font-size: .8125rem; }
 .person-details dt { color: var(--dim); }
 .person-details dd { margin: 0; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
+.give-more { display: inline-flex; align-items: center; min-height: 2.25rem; padding: .375rem .875rem; border-radius: .625rem; border: 1px solid rgba(var(--fg-rgb),0.16); background: rgba(var(--fg-rgb),0.04); color: var(--fg); font: 500 .8125rem/1.2 var(--font-ui); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.give-more:hover { background: rgba(var(--fg-rgb),0.08); border-color: rgba(var(--fg-rgb),0.28); }
+.give-more:disabled { opacity: 0.55; cursor: default; }
 .person-seen { flex: none; display: inline-flex; align-items: center; gap: .375rem; font-size: .75rem; color: var(--muted); }
 .dot { width: .5rem; height: .5rem; border-radius: 50%; }
 .card .people .person-url { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .125rem; }

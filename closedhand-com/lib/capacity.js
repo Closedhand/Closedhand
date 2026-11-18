@@ -17,6 +17,8 @@
 //   included): when it lasts 14 days and then 7 at the last 30 days' pace,
 //   and when it is less than one free period's ceiling (INCLUDED_AI_TRIAL_USD).
 //   Each is told again only after the credit has been topped up.
+// - Someone paying (a subscription or paid ahead) past 80% of this month's
+//   fair use: once a month, and again after it has been carried on.
 // The thresholds a share has reached: the fixed ones, then every 25% past 100.
 function reached(share, fixed, every = 0) {
   const levels = fixed.filter(level => share >= level);
@@ -24,7 +26,7 @@ function reached(share, fixed, every = 0) {
   return levels;
 }
 
-function create({ db, env = process.env, notices, includedAi = null }) {
+function create({ db, env = process.env, notices, includedAi = null, baseUrl = 'https://closedhand.com' }) {
   const monthlyPeople = Number(env.INCLUDED_AI_MONTHLY_PEOPLE || 100);
   const dailyPeople = Number(env.INCLUDED_AI_DAILY_PEOPLE || 25);
   const urlLimit = Number.parseInt(env.ADDRESS_LIMIT || '100', 10);
@@ -82,6 +84,21 @@ function create({ db, env = process.env, notices, includedAi = null }) {
       "SELECT count(*)::int AS n FROM addresses WHERE activated_at IS NOT NULL OR created_at > now() - interval '24 hours'")).rows[0].n);
     if (urlLimit > 0 && await claim('personal-urls', 'limit-' + urlLimit, reached(taken / urlLimit * 100, [75, 90, 100]))) {
       told.push(`Closedhand: ${taken} of ${urlLimit} personal URLs are taken. Past ${urlLimit} nobody new can claim one, so raise the limit if more people are coming.`);
+    }
+    // Someone paying who has used most of this month's fair use, once a month
+    // and again once it has been carried on, so the maintainer can give more.
+    if (includedAi?.paying) {
+      await db.query("DELETE FROM operator_alerts WHERE kind = 'fair-use' AND created_at < now() - interval '62 days'");
+      for (const p of await includedAi.paying()) {
+        const use = await includedAi.usage(p.ownerId).catch(() => null);
+        if (!use || use.used < use.limit * 0.8) continue;
+        if (!await claim('fair-use', `${p.ownerId}:${p.monthFrom.toISOString().slice(0, 10)}:${p.extended ? 2 : 1}`, [80])) continue;
+        const { name, handle } = await notices.who(p.ownerId);
+        const share = Math.min(100, Math.floor(use.used / use.limit * 100));
+        told.push(`Closedhand: ${name} has used ${share}% of this month's fair use of the uncensored LLM` + (p.extended
+          ? ', after carrying on to the end of the month.'
+          : `. To give them another month's fair use this month at no charge: ${baseUrl}/insights?find=${encodeURIComponent(handle)}`));
+      }
     }
     for (const text of told) await notices.queue(text);
     return told;

@@ -32,7 +32,21 @@ function validReceipt(id, receipt, secret) {
     crypto.timingSafeEqual(Buffer.from(receipt, 'hex'), Buffer.from(receiptFor(id, secret), 'hex'));
 }
 
-function register(app, { db, secret }) {
+// The maintainer's notice of a report (lib/operator-notices.js): the
+// reporter's words quoted as sent, never read as instructions, and how to read
+// the whole report. A report says nothing of whose Closedhand sent it.
+const QUOTED = 600;
+function noticeText({ id, comment, platform, version, shots }) {
+  const words = String(comment || '').replace(/\s+/g, ' ').trim();
+  const quoted = words.length > QUOTED ? words.slice(0, QUOTED).replace(/\s+\S*$/, '') + '…' : words;
+  const from = [platform, version && 'version ' + version].filter(Boolean).join(', ');
+  return `Closedhand: a bug report came in${from ? ` (${from})` : ''}. ` +
+    (quoted ? `Their words, as sent: "${quoted}"` : 'It has no description: the last messages of their chat say what went wrong.') +
+    (shots ? ` It has ${shots} ${shots === 1 ? 'screenshot' : 'screenshots'}.` : '') +
+    ` Read it: node tools/bugs.js show ${id.slice(0, 8)}.`;
+}
+
+function register(app, { db, secret, notices = null }) {
   const hits = new Map();
   let hour = { at: Date.now(), reports: 0 };
   setInterval(() => {
@@ -83,15 +97,17 @@ function register(app, { db, secret }) {
         screenshots.push({ path: `selfhost/bug/${id}_${i}.${sh.mediaType.split('/')[1].replace('jpeg', 'jpg')}`, mediaType: sh.mediaType, base64: sh.base64 });
       });
       // A retry of a report that timed out finds the first copy and keeps it.
-      await db.query(
+      const saved = await db.query(
         `INSERT INTO bug_reports (id, user_id, platform, comment, transcript, screenshots, source, install_id, app_version)
-         VALUES ($1, $2, $3, $4, $5, $6, 'self-host', $7, $8) ON CONFLICT (id) DO NOTHING`,
+         VALUES ($1, $2, $3, $4, $5, $6, 'self-host', $7, $8) ON CONFLICT (id) DO NOTHING RETURNING id`,
         [id, SELF_HOST_REPORTER_ID, str(b.platform, 40), str(b.comment, 2000), JSON.stringify(transcript), JSON.stringify(screenshots),
           str(b.install_id, 32), str(b.app_version, 40)]);
       hour.reports++;
       const row = (await db.query("SELECT jsonb_array_length(screenshots) AS shots FROM bug_reports WHERE id = $1 AND source = 'self-host'", [id])).rows[0];
       if (!row) throw new Error('report missing after save');
       console.log(`[bugs] saved ${id} (${row.shots} screenshots)`);
+      if (saved.rowCount && notices) await notices.queue(noticeText({ id, comment: str(b.comment, 2000), platform: str(b.platform, 40), version: str(b.app_version, 40), shots: row.shots }))
+        .catch(e => console.error('[operator] notice:', e.message));
       return res.json({ ok: true, id, receipt: receiptFor(id, secret), screenshots: row.shots });
     } catch (e) {
       console.error('[bugs] intake failed:', e.message);
@@ -100,4 +116,4 @@ function register(app, { db, secret }) {
   });
 }
 
-module.exports = { register, submissionId, receiptFor, validReceipt, sender };
+module.exports = { register, submissionId, receiptFor, validReceipt, sender, noticeText };

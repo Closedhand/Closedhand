@@ -247,6 +247,39 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     const plan = (await db.query('SELECT starts_at, extended_for FROM ahead_plans WHERE owner_id = $1 AND starts_at <= now() AND ends_at > now() AND ended_at IS NULL', [ownerId])).rows[0];
     return plan ? { status: 'active', current_period_start: monthIn(plan.starts_at).from, extended_for: plan.extended_for, ahead: true } : null;
   }
+  // Everyone paying now, by subscription or paid ahead, but the maintainer, with
+  // the day their month of fair use began (lib/capacity.js tells the maintainer
+  // when one is nearly used).
+  async function paying() {
+    const rows = (await db.query(
+      `SELECT owner_id FROM plus_subscriptions WHERE status IN ('active', 'trialing', 'past_due')
+       UNION SELECT owner_id FROM ahead_plans WHERE starts_at <= now() AND ends_at > now() AND ended_at IS NULL`)).rows;
+    const found = [];
+    for (const { owner_id: ownerId } of rows) {
+      if (await maintainer(ownerId)) continue;
+      const sub = await subscription(ownerId);
+      if (!sub?.current_period_start) continue;
+      const monthFrom = new Date(sub.current_period_start);
+      found.push({ ownerId, monthFrom, extended: !!sub.extended_for && new Date(sub.extended_for).getTime() === monthFrom.getTime() });
+    }
+    return found;
+  }
+  // What carrying on past fair use buys (lib/plus.js, lib/ahead.js), given at no
+  // charge by the maintainer from the insights page: another month's fair use
+  // for the month running now. The person sees it as carried on to the end of
+  // the month, as when they pay, and can't then pay for it too.
+  async function carryOn(ownerId) {
+    const sub = await subscription(ownerId);
+    if (!sub?.current_period_start) return 'not paying';
+    const from = new Date(sub.current_period_start);
+    if (sub.extended_for && new Date(sub.extended_for).getTime() === from.getTime()) return 'already';
+    if (sub.ahead) await db.query('UPDATE ahead_plans SET extended_for = $2, updated_at = now() WHERE owner_id = $1', [ownerId, from]);
+    else await db.query("UPDATE plus_subscriptions SET extended_for = $2, extended_order = NULL, key_synced = false, updated_at = now() WHERE owner_id = $1 AND status IN ('active', 'trialing', 'past_due')", [ownerId, from]);
+    // The key now; failing that, the hourly sweep sets it.
+    await subscribe(ownerId).catch(e => console.error('[included ai] carried on, key not set yet:', e.message));
+    return 'given';
+  }
+
   // The month of fair use a subscription is in, by the day it began.
   const monthOf = sub => (sub.current_period_start ? new Date(sub.current_period_start).getTime() : 0);
   // This month's fair use: another month's when the person paid to carry on in it.
@@ -484,7 +517,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
+  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, subscription, paying, carryOn, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
 module.exports = { create, connection, fairUseUsd };

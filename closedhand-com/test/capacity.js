@@ -202,6 +202,29 @@ test('personal URLs nearing the limit are told at 75%, 90% and 100%, and again o
   await db.query('DELETE FROM addresses');
 });
 
+test('someone paying past 80% of this month\'s fair use is told once, with a link to give more, and again once carried on', async () => {
+  await fresh();
+  await db.query('DELETE FROM addresses');
+  const queued = notices.create({ db, env: {} });
+  const payer = await person('payer@example.com');
+  await urls(1, payer);
+  const host = (await db.query('SELECT hostname FROM addresses WHERE owner_id = $1', [payer])).rows[0].hostname;
+  const monthFrom = new Date('2026-11-05T09:00:00Z');
+  let use = { limit: 25, used: 19.5 }, extended = false;
+  const includedAi = { enabled: () => false, paying: async () => [{ ownerId: payer, monthFrom, extended }], usage: async () => use };
+  const watch = capacity.create({ db, env: { INCLUDED_AI_DAILY_PEOPLE: '1000' }, notices: queued, includedAi });
+  assert.deepEqual(await watch.check(), [], 'under 80%');
+  use = { limit: 25, used: 21 };
+  assert.deepEqual(await watch.check(), [`Closedhand: payer@example.com (Google), ${host} has used 84% of this month's fair use of the uncensored LLM. To give them another month's fair use this month at no charge: https://closedhand.com/insights?find=${host}`]);
+  assert.deepEqual(await watch.check(), [], 'once a month');
+  extended = true; use = { limit: 50, used: 30 };
+  assert.deepEqual(await watch.check(), [], 'carried on: under 80% of the new limit');
+  use = { limit: 50, used: 45 };
+  assert.deepEqual(await watch.check(), [`Closedhand: payer@example.com (Google), ${host} has used 90% of this month's fair use of the uncensored LLM, after carrying on to the end of the month.`]);
+  assert.deepEqual(await watch.check(), []);
+  await db.query('DELETE FROM addresses');
+});
+
 // Possible misuse (lib/misuse.js), with NEAR AI's keys, its spend and its LLM stood in.
 function misuseWorld(keys, answer = 'A household on one connection, probably harmless.', env = {}, spent = 0) {
   const asked = [];

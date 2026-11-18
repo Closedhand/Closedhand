@@ -31,7 +31,7 @@ function verifyBtcpay(signature, raw, secret) {
   return equal(signature, 'sha256=' + crypto.createHmac('sha256', secret).update(raw).digest('hex'));
 }
 
-function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 'https://closedhand.com' }) {
+function create({ db, env = process.env, request = fetch, includedAi, notices = null, baseUrl = 'https://closedhand.com' }) {
   const btcpay = {
     url: String(env.BTCPAY_URL || '').trim().replace(/\/+$/, ''),
     store: String(env.BTCPAY_STORE_ID || '').trim(),
@@ -94,6 +94,10 @@ function create({ db, env = process.env, request = fetch, includedAi, baseUrl = 
     }
     // The key to this month now; failing that, the hourly sweep tries again.
     await includedAi.subscribe(ownerId).catch(e => console.error('[ahead] key not set yet:', e.message));
+    if (notices) {
+      await notices.who(ownerId).then(({ name }) => notices.queue(`Closedhand: ${name} paid ahead in crypto for ${months} ${months === 1 ? 'month' : 'months'}.`))
+        .catch(e => console.error('[operator] notice:', e.message));
+    }
     return true;
   }
 

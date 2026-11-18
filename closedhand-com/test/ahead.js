@@ -83,8 +83,9 @@ function world(more = {}) {
     ...more,
   };
   const includedAi = require('../lib/included-ai').create({ db, env, request });
-  const ahead = require('../lib/ahead').create({ db, env, request, includedAi, baseUrl: 'https://closedhand.com' });
-  const plus = require('../lib/plus').create({ db, env, request, includedAi, ahead, baseUrl: 'https://closedhand.com' });
+  const notices = require('../lib/operator-notices').create({ db, env });
+  const ahead = require('../lib/ahead').create({ db, env, request, includedAi, notices, baseUrl: 'https://closedhand.com' });
+  const plus = require('../lib/plus').create({ db, env, request, includedAi, ahead, notices, baseUrl: 'https://closedhand.com' });
   return { calls, state, includedAi, ahead, plus, env };
 }
 
@@ -178,6 +179,42 @@ test('a subscription every 6 months has a month of fair use for each month of it
   assert.equal((await keyOf(id)).limit, 70, 'once a month');
   told = await planFor(db, w.env, id);
   assert.equal(told.fair_use_renews_at, addMonths(later, 3).toISOString());
+}));
+
+test('the maintainer hears when a subscription starts and when someone pays ahead, and can give anyone paying another month\'s fair use, once a month', quiet(async () => {
+  const w = world();
+  const who = async id => (await db.query('SELECT o.email, a.hostname FROM owners o JOIN addresses a ON a.owner_id = o.id WHERE o.id = $1', [id])).rows[0];
+  const told = async id => { const { hostname } = await who(id); return (await db.query('SELECT text FROM operator_notices WHERE text LIKE $1 ORDER BY seq', ['%' + hostname + '%'])).rows.map(r => r.text); };
+  const start = new Date(Date.now() - 3 * DAY);
+
+  const paid = await person({ freeUsage: 2 }), p = await who(paid);
+  assert.equal(await w.plus.handle(subscription(paid, { product: PLUS, start, end: addMonths(start, 1) })), 'subscription active');
+  await synced(paid);
+  assert.equal(await w.plus.handle(subscription(paid, { product: PLUS, start, end: addMonths(start, 1) })), 'subscription active');
+  assert.deepEqual(await told(paid), [`Closedhand: ${p.email} (Google), ${p.hostname} subscribed, renewing every month.`], 'once, however often Polar says so');
+
+  const trial = await person(), t = await who(trial);
+  await w.plus.handle(subscription(trial, { product: PLUS, start, end: addMonths(start, 1), status: 'trialing' }));
+  await w.plus.handle(subscription(trial, { product: PLUS, start, end: addMonths(start, 1) }));
+  assert.deepEqual(await told(trial), [`Closedhand: ${t.email} (Google), ${t.hostname} started the subscription, renewing every month, with its 14 free days first.`], 'the free days ending in a payment is the same subscription');
+
+  const ahead = await person({ freeUsage: 2 }), a = await who(ahead);
+  await w.ahead.checkout({ id: ahead }, { months: 3, agreed: true });
+  const made = w.state.made[w.state.made.length - 1].id;
+  w.state.invoices.get(made).status = 'Settled';
+  assert.equal(await w.ahead.settled(made), 'paid ahead 3 months');
+  assert.deepEqual(await told(ahead), [`Closedhand: ${a.email} (Google), ${a.hostname} paid ahead in crypto for 3 months.`]);
+
+  // Given from the insights page: what paying to carry on buys, at no charge.
+  assert.equal((await keyOf(paid)).limit, 32);
+  assert.equal(await w.includedAi.carryOn(paid), 'given');
+  assert.equal((await keyOf(paid)).limit, 52, 'another month of fair use');
+  assert.equal((await planFor(db, w.env, paid)).extended, true, 'shown as carried on');
+  assert.equal(await w.includedAi.carryOn(paid), 'already', 'once a month');
+  assert.equal(await w.plus.handle(carryOnOrder('ord_after_free', paid)), 'nothing to carry on, given back', 'nor can they then pay for it');
+  assert.equal(await w.includedAi.carryOn(ahead), 'given', 'paid ahead too');
+  assert.equal((await keyOf(ahead)).limit, 52);
+  assert.equal(await w.includedAi.carryOn(await person()), 'not paying');
 }));
 
 test('paying 3 months ahead in crypto starts a plan with a month of fair use and what the free days left, counted once', quiet(async () => {

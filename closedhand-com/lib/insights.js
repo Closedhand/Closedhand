@@ -281,6 +281,14 @@ function register(app, { db, sessions, render, env = process.env, request = fetc
     res.json({ usage: includedAi && includedAi.enabled() ? await includedAi.usage(req.params.id).catch(() => null) : null });
   }));
 
+  // Another month's fair use for someone paying, at no charge (the notice that
+  // they have nearly used this month's links here).
+  app.post('/api/insights/person/:id/carry-on', guarded(async (req, res) => {
+    if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).json({ error: 'Unknown person' });
+    if (!includedAi?.enabled()) return res.status(503).json({ error: 'The uncensored LLM is not set up here.' });
+    res.json({ done: await includedAi.carryOn(req.params.id) });
+  }));
+
   app.get('/insights', guarded(async (req, res) => { res.type('html').send(render('insights.html')); }));
   app.get('/api/insights', guarded(async (req, res) => { res.json(await gather()); }));
   // Possible misuse, apart from the rest: its summary takes an LLM a few seconds.

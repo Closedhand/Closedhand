@@ -151,15 +151,15 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   // reach the maintainer's own Closedhand through those routes too.
   const notices = require('./lib/operator-notices').create({ db, env, request });
   const includedAi = require('./lib/included-ai').create({ db, env, request, notices });
-  const ahead = require('./lib/ahead').create({ db, env, request, includedAi, baseUrl });
-  const plus = require('./lib/plus').create({ db, env, request, includedAi, ahead, baseUrl });
-  const capacity = require('./lib/capacity').create({ db, env, notices, includedAi });
+  const ahead = require('./lib/ahead').create({ db, env, request, includedAi, notices, baseUrl });
+  const plus = require('./lib/plus').create({ db, env, request, includedAi, ahead, notices, baseUrl });
+  const capacity = require('./lib/capacity').create({ db, env, notices, includedAi, baseUrl });
   const privateLlm = require('./lib/private-llm-check').create({ db, notices, includedAi });
   const backup = require('./lib/backup').create({ db, env, notices });
   const addresses = require('./lib/addresses').register(app, { db, sessions, secret, baseUrl, env, request, includedAi, plus, ahead, notices });
   plus.register(app, { sessions });
   ahead.register(app, { sessions });
-  require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret });
+  require('./lib/bugs').register(app, { db, secret: env.BUG_RECEIPT_SECRET || secret, notices });
   const messages = require('./lib/messages').create({ db, notices });
   messages.register(app);
   const ask = require('./lib/ask').create({ db, env, includedAi });

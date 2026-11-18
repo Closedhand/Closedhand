@@ -364,6 +364,9 @@ test('bug reports: saved once per submission, with a receipt that checks only th
   assert.equal(first.ok, true); assert.equal(first.screenshots, 1);
   const again = await (await json('POST', '/api/bug-intake', body)).json();
   assert.equal(again.id, first.id); assert.equal(again.receipt, first.receipt);
+  assert.deepEqual((await db.query("SELECT text FROM operator_notices WHERE text LIKE 'Closedhand: a bug report%'")).rows.map(r => r.text),
+    [`Closedhand: a bug report came in. Their words, as sent: "It broke" It has 1 screenshot. Read it: node tools/bugs.js show ${first.id.slice(0, 8)}.`], 'the maintainer hears of it once');
+  await db.query("DELETE FROM operator_notices WHERE text LIKE 'Closedhand: a bug report%'");
   assert.deepEqual(await (await json('POST', '/api/bug-intake/status', { id: first.id, receipt: first.receipt })).json(), { status: 'open', resolution_note: null, resolved_at: null });
   assert.equal((await json('POST', '/api/bug-intake/status', { id: first.id, receipt: '0'.repeat(64) })).status, 404);
   assert.equal((await json('POST', '/api/bug-intake', { comment: '' })).status, 400);
@@ -807,6 +810,12 @@ test('the insights page shows everything closedhand.com holds, and only to a Goo
   assert.ok('usage' in await person.json(), 'one person\'s use, read when their row opens');
   assert.equal((await fetch(base + '/api/insights/person/' + me.id)).status, 404, 'hidden from anyone else');
   assert.equal((await fetch(base + '/api/insights/person/' + me.id, { headers: { cookie: (await signIn('google', google('insights-other', 'someone@example.com'))).cookie } })).status, 404);
+  // Another month's fair use, given from here, only by the maintainer (what it
+  // gives is in ahead.js; this site has no provider set up).
+  const give = (headers) => fetch(base + '/api/insights/person/' + me.id + '/carry-on', { method: 'POST', headers });
+  assert.deepEqual(await (await give({ cookie })).json(), { error: 'The uncensored LLM is not set up here.' }, 'the maintainer reaches it');
+  assert.equal((await give({})).status, 404, 'hidden from anyone else');
+  assert.equal((await give({ cookie: (await signIn('google', google('insights-other', 'someone@example.com'))).cookie })).status, 404);
   // The maintainer's own account is marked, and every total leaves it out with its share beside it.
   assert.equal(me.you, true, 'the maintainer\'s own row is marked');
   assert.ok(data.people.filter(p => p.you).every(p => p.email === 'operator@example.com' && p.email_verified), 'only a verified operator email is theirs');
