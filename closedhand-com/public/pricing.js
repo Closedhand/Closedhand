@@ -33,7 +33,7 @@
       if (d.subscribed || d.subscribe) $$('[data-download]').forEach(function (n) { n.hidden = true; });
       if (d.subscribe) $$('[data-subscribe]').forEach(function (n) {
         // Never had the free days: the subscription's first ones are them.
-        if (d.freeDays) n.textContent = 'Subscribe · ' + (d.days || 14) + ' days free';
+        if (d.freeDays) n.textContent = 'Subscribe · ' + (d.days || 7) + ' days free';
         n.hidden = false;
       });
     })

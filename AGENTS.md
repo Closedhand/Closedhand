@@ -246,7 +246,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   never named in anything people read (the Privacy page calls it the company running that hardware),
   and is not one of the LLM providers people can pick.
 - The uncensored LLM Closedhand provides goes by its model's name, never a product name of its own
-  (there is no "Managed Models" and no "Closedhand+"): 14 free days set up for the person, then the
+  (there is no "Managed Models" and no "Closedhand+"): 7 free days set up for the person, then the
   Closedhand subscription keeps it going, renewing every month or every 6 or 12 months, or 3, 6 or
   9 months paid ahead in crypto, which never renew by themselves. Closedhand's own email address
   comes with it and works only while the person has it. The paid part is "the Closedhand
@@ -255,7 +255,7 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   uncensored LLM Closedhand provides". Its page is closedhand.com/pricing. The code, its tables and
   its comments still say included, plus or Managed Models.
 - The uncensored LLM and its subscription are never money in anything people read but the subscription's
-  prices and paying ahead's: no credit, balances, dollars of use, tokens or top-ups. People see a plan (14 free days
+  prices and paying ahead's: no credit, balances, dollars of use, tokens or top-ups. People see a plan (7 free days
   set up for them, a subscription renewing or ending on a day, or paid ahead until a day) and, where the account is shown,
   one plain bar of this month's fair use with no amount, saying in how many days it renews once most
   is used; chat tells them about use only near the fair-use ceiling. Credit exists only behind the scenes (closedhand.com's key limits).
@@ -278,9 +278,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
 - Closedhand uses the uncensored LLM by default, and copy leads with it: an LLM that nobody but the
   person can read. Closedhand is also free software that runs with any LLM the person
   chooses through their own API key, free ones included, said as their choice, plainly, never
-  pushed. Each person has 14 free days of the uncensored LLM, ever, which need no card; an
+  pushed. Each person has 7 free days of the uncensored LLM, ever, which need no card; an
   account made with an account number has none, and pays ahead in crypto only. Someone who did not
-  get them then has the subscription's first 14 days free instead (Polar's trial: the card is
+  get them then has the subscription's first 7 days free instead (Polar's trial: the card is
   taken at checkout, nothing is charged until they end, and Polar emails three days before). It is
   said plainly, with the day it ends and the price after, never as urgency or bait. The free days'
   end is mentioned only in their last three days, and an offer of what comes next puts keeping

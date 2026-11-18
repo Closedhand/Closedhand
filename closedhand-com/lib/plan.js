@@ -1,5 +1,5 @@
 // Where an account stands with Closedhand Managed Models, as its computer and
-// its account page are told (lib/addresses.js): its free 14 days, a
+// its account page are told (lib/addresses.js): its free 7 days, a
 // subscription (renewing every month, or every 6 or 12), paid ahead in crypto
 // (a plan until a day), ended (it had one of them and none runs now), none (it
 // never had Managed Models; its own LLM provider is all it uses), or the

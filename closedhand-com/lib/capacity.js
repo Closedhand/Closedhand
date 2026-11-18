@@ -55,10 +55,10 @@ function create({ db, env = process.env, notices, includedAi = null, baseUrl = '
       [now])).rows[0];
     const started = Number(counts.month), lastDay = Number(counts.day);
     if (monthlyPeople > 0 && await claim('first-months', month, reached(started / monthlyPeople * 100, [75, 90, 100], 25))) {
-      told.push(`Closedhand: ${started} people have started their 14 free days of the uncensored LLM this month, against the ${monthlyPeople} expected. If more people are coming, raise the number expected each month.`);
+      told.push(`Closedhand: ${started} people have started their 7 free days of the uncensored LLM this month, against the ${monthlyPeople} expected. If more people are coming, raise the number expected each month.`);
     }
     if (dailyPeople > 0 && lastDay >= dailyPeople && await claim('burst', day, [100])) {
-      told.push(`Closedhand: ${lastDay} people started their 14 free days of the uncensored LLM in the last 24 hours, more than usual. Worth a look for account farming.`);
+      told.push(`Closedhand: ${lastDay} people started their 7 free days of the uncensored LLM in the last 24 hours, more than usual. Worth a look for account farming.`);
     }
     const anonymous = Number((await db.query("SELECT count(*)::int AS n FROM owners WHERE provider = 'anonymous' AND created_at >= $1::timestamptz - interval '1 day'", [now])).rows[0].n);
     if (dailyAnonymous > 0 && anonymous >= dailyAnonymous && await claim('anonymous-burst', day, [100])) {
@@ -68,7 +68,7 @@ function create({ db, env = process.env, notices, includedAi = null, baseUrl = '
     // every subscription stops at once.
     const credit = includedAi?.enabled() ? await includedAi.credit(now).catch(e => { console.error('[capacity] credit unavailable:', e.message); return null; }) : null;
     if (credit) {
-      const trialUsd = Number(includedAi.trialUsd || env.INCLUDED_AI_TRIAL_USD || 12);
+      const trialUsd = Number(includedAi.trialUsd || env.INCLUDED_AI_TRIAL_USD || 10);
       const days = credit.days == null ? Infinity : credit.days;
       if (days > 14 && credit.left >= trialUsd) await db.query("DELETE FROM operator_alerts WHERE kind = 'provider-credit'");
       const left = '$' + Math.max(0, credit.left).toFixed(2);

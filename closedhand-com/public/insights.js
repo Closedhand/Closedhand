@@ -295,7 +295,7 @@
     if (p.hostname) row('Last online', p.last_online ? `${when(p.last_online)} (${ago(p.last_online)})` : 'Never');
     if (p.renames) row('Renamed', `${n(p.renames)} ${p.renames === 1 ? 'time' : 'times'}`);
     row('Closedhand email', p.assistant_email ? `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month` : 'Off');
-    row('Free 14 days', firstMonth(p));
+    row('Free 7 days', firstMonth(p));
     row('Subscription', plusLine(p));
     const paying = ['active', 'trialing', 'past_due'].includes(p.plus_status) || (p.ahead_until && new Date(p.ahead_until) > Date.now());
     if (p.first_month_usd != null || p.plus_status || paying) {

@@ -228,7 +228,7 @@ test("what Closedhand says about Managed Models follows the plan, keeping them f
   assert.equal(included.nearlyUsedText({ name: "ahead" }, link, false), included.nearlyUsedText({ name: "plus" }, link, false), "the same words for every plan");
   assert.doesNotMatch(included.nearlyUsedText({ name: "ahead", extended: true }, link, false), /end of the month at/);
   assert.match(included.usedUpText({ name: "ended", was: "plus" }, link, false), /^Your subscription has ended, so I can't reply for now\. Subscribe again at closedhand\.com\/subscribe and I'll carry on, or connect your own LLM provider/);
-  assert.match(included.usedUpText({ name: "ended", was: "first-month" }, link, false), /^Your free 14 days of DeepSeek V4.1 Flash Abliterated have ended, so I can't reply for now\. Keep it with a subscription at closedhand\.com\/subscribe and I'll carry on, or connect your own LLM provider/);
+  assert.match(included.usedUpText({ name: "ended", was: "first-month" }, link, false), /^Your free 7 days of DeepSeek V4.1 Flash Abliterated have ended, so I can't reply for now\. Keep it with a subscription at closedhand\.com\/subscribe and I'll carry on, or connect your own LLM provider/);
   assert.equal(included.usedUpText({ name: "ended" }, link, false), included.usedUpText({ name: "ended", was: "first-month" }, link, false), "unknown: the free days' words");
   assert.equal(included.usedUpText(undefined, link, false), included.usedUpText(first, link, false), "no plan known yet: as free days");
   assert.equal(included.period(first), "first-month:2026-03-21T10:00:00.000Z");
@@ -268,7 +268,7 @@ function messages(store, usage) {
   return { job, told, notices };
 }
 
-test("the free 14 days: most of the fair use is said once, and their end once, in their last three days", async () => {
+test("the free 7 days: most of the fair use is said once, and their end once, in their last three days", async () => {
   const ends = new Date(Date.now() + 10 * 86400000).toISOString();
   const store = settingsStore({ included_api_key: policy.sealKey(KEY), model_config: { included: true }, included_ai: { models: MODELS, plan: { name: "first-month", ends_at: ends, email: false } } });
   const usage = { now: 14 };
@@ -442,8 +442,8 @@ test("Settings says in one sentence what the person's plan means for Managed Mod
     "DeepSeek V4.1 Flash Abliterated comes with your subscription, which you cancelled: it ends on 27 November. After that Closedhand needs your own LLM provider to reply. Resume it in [My Account](#account).", "cancelled but running: what it means, and where to resume");
   assert.equal(plan({ state: "available", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" } }), "DeepSeek V4.1 Flash Abliterated comes with your subscription, which you cancelled: it ends on 27 November. Resume it in [My Account](#account).");
   assert.equal(plan({ state: "available", plan: { name: "plus" } }), "DeepSeek V4.1 Flash Abliterated comes with your subscription." + link);
-  assert.equal(plan({ plan: { name: "first-month", ends_at: day(5) } }), "DeepSeek V4.1 Flash Abliterated comes with your free 14 days." + link, "the free days' end only in their last three days");
-  assert.match(plan({ plan: { name: "first-month", ends_at: day(2) } }), /^DeepSeek V4.1 Flash Abliterated comes with your free 14 days, until \d+ \w+\./);
+  assert.equal(plan({ plan: { name: "first-month", ends_at: day(5) } }), "DeepSeek V4.1 Flash Abliterated comes with your free 7 days." + link, "the free days' end only in their last three days");
+  assert.match(plan({ plan: { name: "first-month", ends_at: day(2) } }), /^DeepSeek V4.1 Flash Abliterated comes with your free 7 days, until \d+ \w+\./);
   assert.equal(plan({ state: "in-use", plan: { name: "ended", was: "plus" } }), "Your plan has ended. Subscribe again in [My Account](#account), or use your own LLM provider (free ones work too).", "an ended plan is said here too: Closedhand stops answering with it");
   const page = fs.readFileSync(path.join(root, "webapp/views/dashboard.html"), "utf8");
   const card = page.slice(page.indexOf('<section class="choice-card" id="llm-managed"'), page.indexOf("</section>", page.indexOf('<section class="choice-card" id="llm-managed"')));
@@ -658,7 +658,7 @@ test("Settings, Models has a way to Usage in My Account", () => {
   assert.match(page, /function openUsage\(\) \{\n\s*openMyAccount\(\);[\s\S]{0,500}document\.querySelector\('#tab-account \.my-usage'\)\.scrollIntoView/);
 });
 
-test("14 free days per person: the chat offers no second ones, and the subscription's free days are shown with the day they end and the price after", () => {
+test("7 free days per person: the chat offers no second ones, and the subscription's free days are shown with the day they end and the price after", () => {
   const { endingText, nearlyUsedText, usedUpText } = require("../lib/included-ai");
   const ending = { name: "first-month", ends_at: "2026-11-20T00:00:00Z" };
   for (const text of [endingText(ending, null, false, "UTC"), nearlyUsedText(ending, null, false), usedUpText({ name: "ended", was: "first-month" }, null, false, "UTC")]) {
@@ -669,14 +669,14 @@ test("14 free days per person: the chat offers no second ones, and the subscript
 
   const plan = settingsPlan();
   assert.equal(plan({ state: "in-use", price: "$10", plan: { name: "plus", trial: true, renews_at: "2026-12-01T12:00:00Z" } }),
-    "DeepSeek V4.1 Flash Abliterated comes with your free 14 days, until 1 December, then your subscription renews at $10 a month unless you cancel. Your plan and this month's use are in [My Account](#account).");
-  assert.equal(plan({ state: "in-use", plan: { name: "plus", trial: true, ends_at: "2026-12-01T12:00:00Z" } }).split(". ")[0], "DeepSeek V4.1 Flash Abliterated comes with your free 14 days, which end on 1 December with nothing charged", "cancelled in its free month: nothing is charged");
+    "DeepSeek V4.1 Flash Abliterated comes with your free 7 days, until 1 December, then your subscription renews at $10 a month unless you cancel. Your plan and this month's use are in [My Account](#account).");
+  assert.equal(plan({ state: "in-use", plan: { name: "plus", trial: true, ends_at: "2026-12-01T12:00:00Z" } }).split(". ")[0], "DeepSeek V4.1 Flash Abliterated comes with your free 7 days, which end on 1 December with nothing charged", "cancelled in its free month: nothing is charged");
 
   const setup = fs.readFileSync(path.join(root, "webapp/included-ai-setup.js"), "utf8");
   assert.match(setup, /if \(plan\.name === "plus" && plan\.trial === true\) out\.trial = true;\n\s*if \(plan\.name !== "plus" && plan\.plus_trial === true\) out\.plus_trial = true;/, "the computer keeps both, each only where it fits");
   const page = fs.readFileSync(path.join(root, "webapp/views/dashboard.html"), "utf8");
-  assert.match(page, /\$\("my-plus-get"\)\.textContent = p\.free_month \? "Subscribe \\u00b7 14 days free"/);
-  assert.match(page, /else if \(p\.active && p\.trial\) \{ status\("Free 14 days", "on"\);/);
+  assert.match(page, /\$\("my-plus-get"\)\.textContent = p\.free_month \? "Subscribe \\u00b7 7 days free"/);
+  assert.match(page, /else if \(p\.active && p\.trial\) \{ status\("Free 7 days", "on"\);/);
 });
 
 // Usage's rows go out as a CSV file to keep, not a long table to unfold.
@@ -749,7 +749,7 @@ test("the Terms are agreed once before the personal URL is claimed, and say what
   assert.match(registration, /acceptedTerms: await termsAccepted\(\) \}\)\);/);
   for (const f of ["closedhand-com/views/terms.html", "webapp/views/terms.html"]) {
     const terms = read(f);
-    assert.match(terms, /<h2>12\. The uncensored LLM Closedhand provides<\/h2>\n\s*<p>With the free 14 days, the subscription or a plan paid ahead, your Closedhand assistant uses the uncensored LLM Closedhand provides \(currently DeepSeek V4\.1 Flash Abliterated\)\./, f);
+    assert.match(terms, /<h2>12\. The uncensored LLM Closedhand provides<\/h2>\n\s*<p>With the free 7 days, the subscription or a plan paid ahead, your Closedhand assistant uses the uncensored LLM Closedhand provides \(currently DeepSeek V4\.1 Flash Abliterated\)\./, f);
     assert.match(terms, /The LLM answers to you alone, with no company's rulebook limiting what it can say or do\.<\/p>/);
     assert.match(terms, /Breaking these ends your use of that LLM, without a refund\./);
     assert.match(terms, /up to one month's fair-use amount/, "the carry-over, here and nowhere else");
@@ -782,4 +782,25 @@ test("the maintainer's plan: kept by the computer, told about fair use like a su
   assert.match(page, /if \(plan\.name === "maintainer"\) \{\n\s+\$\("my-plan-status"\)\.hidden = true;\n\s+for \(const id of \["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways"/);
   assert.match(read("closedhand-com/public/account.js"), /model \+ ' is on for your account as the maintainer, with no charge\.'/);
   assert.match(read("lib/engine.js"), /plan\.name === "maintainer" \? `\$\{userName\} runs closedhand\.com, so their account has the LLM with no charge/);
+});
+
+// The free days were 14 and became 7: the number lives in one setting, and
+// everything people read says that number and no other.
+test("the free days are one number: the setting, the card trial and every sentence that names them", () => {
+  const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
+  const site = read("closedhand-com/lib/included-ai.js");
+  const days = Number(/INCLUDED_AI_TRIAL_DAYS \|\| (\d+)\)/.exec(site)[1]);
+  assert.equal(days, 7);
+  assert.match(read("closedhand-com/lib/plus.js"), /trial_interval: 'day', trial_interval_count: includedAi\.trialDays/, "a subscription's free days are the same number");
+  const said = ["README.md", "AGENTS.md", "lib/engine.js", "lib/included-ai.js", "webapp/included-ai.js", "webapp/views/dashboard.html", "webapp/views/terms.html", "webapp/views/privacy.html",
+    "closedhand-com/views/terms.html", "closedhand-com/views/privacy.html", "closedhand-com/views/pricing.html", "closedhand-com/public/account.js", "closedhand-com/public/ask.js",
+    "closedhand-com/public/pricing.js", "closedhand-com/lib/plus.js", "closedhand-com/lib/capacity.js", "closedhand-com/lib/misuse.js"];
+  // "free 14 days", "14 free days", "first 14 days", "14 days free": any number but the setting's is stale.
+  const stale = /(?:free|first) (\d+) days|(\d+) (?:free days|days free)/gi;
+  for (const file of said) {
+    for (const m of read(file).matchAll(stale)) assert.equal(Number(m[1] || m[2]), days, `${file}: "${m[0]}"`);
+  }
+  assert.match(read("closedhand-com/views/terms.html"), /The first 7 days of that LLM are free, once per person/);
+  assert.match(read("closedhand-com/views/pricing.html"), /your first <span data-days>7<\/span> days free/, "what the page shows before the price is fetched");
+  assert.match(read("closedhand-com/public/pricing.js"), /\(d\.days \|\| 7\) \+ ' days free'/);
 });

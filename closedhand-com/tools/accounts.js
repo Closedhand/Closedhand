@@ -1,5 +1,5 @@
 // Recent Closedhand accounts and what each has of Closedhand Managed Models:
-// its free 14 days (allowance, when they began and end, spend so far) and
+// its free 7 days (allowance, when they began and end, spend so far) and
 // its subscription, with this month's spend at the provider across every key. For the
 // maintainer. Reads only; never prints an email or a key.
 //

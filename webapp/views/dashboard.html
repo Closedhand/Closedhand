@@ -3999,13 +3999,13 @@
       if (plan.name === 'maintainer') { said = llmName() + ' is on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
       else if (plan.name === 'ahead') { said = llmName() + ' is paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
       else if (plan.name === 'ended') { said = 'Your plan has ended. ' + (plan.was === 'ahead' ? 'Pay ahead again' : 'Subscribe again') + ' in '; tail = ''; end = ', or use your own LLM provider (free ones work too).'; }
-      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = llmName() + ' comes with your free 14 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
-      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? llmName() + ' comes with your free 14 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : llmName() + ' comes with your free 14 days.'; }
+      else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = llmName() + ' comes with your free 7 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
+      else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? llmName() + ' comes with your free 7 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : llmName() + ' comes with your free 7 days.'; }
       else if (plan.name === 'plus' && plan.ends_at) { said = llmName() + ' comes with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
       else if (plan.name === 'plus') { said = llmName() + ' comes with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.' + renew; }
       else {
         var left = Date.parse(plan.ends_at) - Date.now();
-        said = left > 0 && left <= 3 * 86400000 ? llmName() + ' comes with your free 14 days, until ' + planDay(plan.ends_at) + '.' : llmName() + ' comes with your free 14 days.';
+        said = left > 0 && left <= 3 * 86400000 ? llmName() + ' comes with your free 7 days, until ' + planDay(plan.ends_at) + '.' : llmName() + ' comes with your free 7 days.';
       }
       document.getElementById('included-ai-plan').replaceChildren(said + tail, accountLink('My Account'), end);
     }
@@ -4476,7 +4476,7 @@
         state.push(llmName() + " is paid until " + longDay(plan.ends_at) + ".");
       } else if (plan.name === "first-month") {
         const left = Date.parse(plan.ends_at) - Date.now();
-        state.push(left > 0 && left <= 3 * 86400000 ? "Your free 14 days of " + llmName() + " run until " + day(plan.ends_at) + "." : "Your free 14 days of " + llmName() + " are running.");
+        state.push(left > 0 && left <= 3 * 86400000 ? "Your free 7 days of " + llmName() + " run until " + day(plan.ends_at) + "." : "Your free 7 days of " + llmName() + " are running.");
       } else if (wasPlus) {
         status("Ended", "over");
         state.push(plan.ended_at ? "Your subscription ended on " + day(plan.ended_at) + "." : "Your subscription has ended.");
@@ -4502,7 +4502,7 @@
         window._plusFacts = { until: p.ends_at || null, price: (p.every ? prices.every : prices.plus) || null, every: p.every || 0, card: card ? "your " + brand + " ending " + card.last4 : null };
         // What cancelling would do, never what is happening: a running subscription renews.
         // In its free days nothing has been charged, and cancelling keeps it so.
-        $("my-cancel-desc").textContent = p.trial ? "If you cancel, your free 14 days run until " + day(until) + " and nothing is charged."
+        $("my-cancel-desc").textContent = p.trial ? "If you cancel, your free 7 days run until " + day(until) + " and nothing is charged."
           : until ? "If you cancel, your subscription stays on until " + when(until) + ", then ends." : "If you cancel, your subscription stays on to the end of the time you've paid for, then ends.";
         $("plus-cancel-text").textContent = p.trial ? "Your subscription ends on " + day(until) + " and nothing is charged. Until then you can resume your subscription."
           : "Your subscription ends on " + (until ? when(until) : "the last day you've paid for") + " and is not charged again. Until then you can resume your subscription.";
@@ -4520,12 +4520,12 @@
         $("my-plus-about").textContent = account.anonymous ? "Pay ahead for " + llmName() + " in crypto, so you need no LLM provider of your own. With an account number you pay in crypto only, never by card, so nothing ties your account to your name."
           : "Subscribe to keep " + llmName() + " every month, so you need no LLM provider of your own"
           + (plan.email ? ", and for Closedhand's own email address" : "") + ". " + llmName() + " runs in a TEE, so nobody but you can read anything that goes in or comes out."
-          // Never had the free days: the subscription's first 14 days are them (Polar's trial).
-          + (p.free_month ? " The first 14 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
-        $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 14 days free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
+          // Never had the free days: the subscription's first 7 days are them (Polar's trial).
+          + (p.free_month ? " The first 7 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
+        $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 7 days free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
         $("my-plus-extend").textContent = "Carry on to the end of the month" + (extendPrice ? " \u00b7 " + extendPrice : "");
-        if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free 14 days run until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
-        else if (p.active && p.trial) { status("Free 14 days", "on"); if (p.renews_at) state.push("Your free 14 days run until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
+        if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free 7 days run until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
+        else if (p.active && p.trial) { status("Free 7 days", "on"); if (p.renews_at) state.push("Your free 7 days run until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
         else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + when(p.ends_at) + ", then ends."); }
         else if (p.active) { status("Active", "on"); if (p.renews_at) state.push((p.every ? "Renews every " + p.every + " months, next on " : "Renews on ") + when(p.renews_at) + "."); }
         if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");

@@ -106,7 +106,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
       const { name } = await notices.who(ownerId);
       const renews = every > 1 ? `every ${every} months` : 'every month';
       await notices.queue(status === 'trialing'
-        ? `Closedhand: ${name} started the subscription, renewing ${renews}, with its 14 free days first.`
+        ? `Closedhand: ${name} started the subscription, renewing ${renews}, with its 7 free days first.`
         : `Closedhand: ${name} subscribed, renewing ${renews}.`);
     } catch (e) { console.error('[operator] notice:', e.message); }
   }
@@ -235,9 +235,9 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
   // Polar's checkout for one product, tied to this account by its own ID, so
   // the webhooks that follow can name it. origin: the personal URL that frames
   // it in My Account, which Polar then lets show it.
-  // Each person has 14 free days of Managed Models, set up when they claim
+  // Each person has 7 free days of Managed Models, set up when they claim
   // their personal URL; someone who did not get them then has them as the
-  // subscription's first 14 days instead (INCLUDED_AI_TRIAL_DAYS, so both
+  // subscription's first 7 days instead (INCLUDED_AI_TRIAL_DAYS, so both
   // free periods are the same length): Polar takes the card, charges nothing
   // until they end and emails three days before they do (Polar's trials).
   // Once had, never again; any trial set on the product in Polar is turned off
@@ -623,14 +623,14 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
           longer: await longerPrices(req.get('cf-ipcountry')),
           crypto: ahead ? ahead.options().crypto || [] : [],
           model: includedAi?.current()?.name || null,
-          days: includedAi?.trialDays || 14,
+          days: includedAi?.trialDays || 7,
           subscribe: !!now && now.available && !now.active && !now.ahead_until && !cardless,
           subscribed: !!now?.active || !!mine,
           ...(now?.free_month && !cardless ? { freeDays: true } : {}),
         });
       } catch (e) {
         console.error('[plus] managed models page:', e.message);
-        res.json({ price: null, model: null, days: includedAi?.trialDays || 14, subscribe: false, subscribed: false });
+        res.json({ price: null, model: null, days: includedAi?.trialDays || 7, subscribe: false, subscribed: false });
       }
     });
     route('/api/plus/manage', async (owner, req, res) => {

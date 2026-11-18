@@ -96,7 +96,7 @@ const quiet = fn => async () => { const log = console.log, err = console.error; 
 // The maintainer's notices, as lib/operator-notices.js queues them.
 const noticeBox = () => { const told = []; return { told, queue: async text => { told.push(text); } }; };
 
-test('a claim gets 14 free days of its own: a NEAR key with their own ceiling, never reset, for the chosen model', async () => {
+test('a claim gets 7 free days of its own: a NEAR key with their own ceiling, never reset, for the chosen model', async () => {
   const near = nearAi(), db = database();
   const ai = create({ db, env: env(), request: near.request });
   const id = owner(db);
@@ -104,11 +104,11 @@ test('a claim gets 14 free days of its own: a NEAR key with their own ceiling, n
   assert.match(given.key, /^sk-[a-f0-9]{32}$/);
   assert.deepEqual(given.models, { provider: 'near', chat: MODEL, background: MODEL, name: 'DeepSeek V4.1 Flash Abliterated' }, 'text only: pictures go to the vision language model on the computer');
   const [keyId, made] = [...near.keys][0];
-  assert.equal(made.limit, 12, 'the free days\' ceiling');
+  assert.equal(made.limit, 10, 'the free days\' ceiling');
   assert.equal(made.name, 'Closedhand ' + id, 'named by the account, never its email');
-  assert.deepEqual(db.rows.map(r => [r.key_id, r.granted_usd]), [[keyId, 12]], 'only NEAR\'s id for it is kept');
+  assert.deepEqual(db.rows.map(r => [r.key_id, r.granted_usd]), [[keyId, 10]], 'only NEAR\'s id for it is kept');
   const days = (db.rows[0].ends_at - Date.now()) / DAY;
-  assert.ok(days > 13.9 && days <= 14, 'the free days end in 14 days');
+  assert.ok(days > 6.9 && days <= 7, 'the free days end in 7 days');
   assert.ok(!JSON.stringify(db.rows).includes(given.key), 'the key itself is never stored');
 });
 
@@ -182,7 +182,7 @@ test('claiming again gets a new key with what was left and the same end; the old
   assert.ok(again.key);
   assert.ok(!near.keys.has(firstId), 'the old key is deleted');
   const [, second] = [...near.keys][0];
-  assert.equal(second.limit, 5.75, 'it carries what was left, read afresh');
+  assert.equal(second.limit, 3.75, 'it carries what was left, read afresh');
   assert.equal(db.rows.length, 1);
   const ends = db.rows[0].ends_at;
   assert.ok(ends > new Date(), 'the same free days');
@@ -211,8 +211,8 @@ test('the hourly sweep stops free days that have run out, once, keeping what the
   assert.equal(await ai.sweep(), 1);
   assert.equal(made.limit, 7.326, 'stopped where it stands');
   assert.ok(db.rows[0].stopped_at);
-  assert.equal(db.rows[0].left_usd, 4.67, 'what they left, for a subscription that comes later');
-  assert.equal(near.keys.get(db.rows[1].key_id).limit, 12, 'free days still running are left alone');
+  assert.equal(db.rows[0].left_usd, 2.67, 'what they left, for a subscription that comes later');
+  assert.equal(near.keys.get(db.rows[1].key_id).limit, 10, 'free days still running are left alone');
   assert.equal(await ai.sweep(), 0, 'stopped once');
 }));
 
@@ -234,11 +234,11 @@ test('NEAR lists keys a page at a time: they are read in pages and kept five min
   const id = owner(db);
   await ai.forOwner(id, from());
   const before = pages().length;
-  assert.deepEqual(await ai.usage(id), { limit: 12, used: 0 });
-  assert.deepEqual(await ai.usage(id), { limit: 12, used: 0 });
+  assert.deepEqual(await ai.usage(id), { limit: 10, used: 0 });
+  assert.deepEqual(await ai.usage(id), { limit: 10, used: 0 });
   assert.equal(pages().length, before, 'the new key was kept when it was made: no pages read');
   near.keys.get(db.rows[0].key_id).usage = 3;
-  assert.deepEqual(await ai.usage(id), { limit: 12, used: 0 }, 'kept five minutes');
+  assert.deepEqual(await ai.usage(id), { limit: 10, used: 0 }, 'kept five minutes');
   assert.equal(await create({ db, env: env(), request: near.request }).usage(id).then(u => u.used), 3, 'read afresh by a process without the list');
 });
 
@@ -377,7 +377,7 @@ test('the maintainer\'s account gets a month of fair use, never free days, never
   const now = create({ db, env: env({ OPERATOR_EMAILS: 'Keeper@Example.com' }), request: near.request });
   assert.equal(await now.collect(keeper), null, 'its computer already has it');
   const guest = await now.forOwner(owner(db, 'g-guest', 'guest@example.com'), from());
-  assert.ok(guest && [...near.keys.values()].at(-1).limit === 12, 'anyone else gets the usual free days');
+  assert.ok(guest && [...near.keys.values()].at(-1).limit === 10, 'anyone else gets the usual free days');
 }));
 
 test('the maintainer\'s month renews on the first with the same carry-over, and a key held from before starts its first month at the hourly check', quiet(async () => {
@@ -386,14 +386,14 @@ test('the maintainer\'s month renews on the first with the same carry-over, and 
   const keeper = owner(db, 'g-keeper2', 'keeper@example.com');
   await before.forOwner(keeper, from());
   const [id, key] = [...near.keys][0];
-  assert.equal(key.limit, 12, 'free days, before closedhand.com knew whose it was');
+  assert.equal(key.limit, 10, 'free days, before closedhand.com knew whose it was');
   key.usage = 4;
   const ai = create({ db, env: env({ OPERATOR_EMAILS: 'keeper@example.com' }), request: near.request });
   assert.equal(await ai.collect(keeper), null, 'nothing new to hand over');
-  assert.equal(near.keys.get(id).limit, 27, 'from the 4 used: a month of fair use and the 8 left, carried in');
+  assert.equal(near.keys.get(id).limit, 25, 'from the 4 used: a month of fair use and the 6 left, carried in');
   assert.equal(db.rows[0].maintainer, true);
   assert.equal(await ai.collect(keeper), null);
-  assert.equal(near.keys.get(id).limit, 27, 'the same month is not begun twice');
+  assert.equal(near.keys.get(id).limit, 25, 'the same month is not begun twice');
   // A new month: from what is used now, with what the last one left, up to a month.
   key.usage = 10;
   db.rows[0].base_for = new Date(Date.UTC(2020, 0, 1));

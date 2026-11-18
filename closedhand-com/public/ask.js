@@ -149,7 +149,7 @@
     slot.appendChild(next);
   }
   function hush(yes) { if (next) next.hidden = yes; }
-  var FREE = 'The first 14 days are free and need no card.';
+  var FREE = 'The first 7 days are free and need no card.';
   function after() {
     if (state.left === 0) return over(true);
     say('', handheld

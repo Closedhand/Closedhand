@@ -1002,7 +1002,7 @@ test('the subscription: checkout, a signed webhook, the computer collects its ke
     assert.equal((await call('POST', '/api/plus/checkout', {}, { cookie: owner.cookie })).status, 403, 'only from closedhand.com');
     const checkout = await (await call('POST', '/api/plus/checkout', {}, signedIn(owner.cookie))).json();
     assert.equal(checkout.url, 'https://sandbox.polar.sh/checkout/fixture');
-    assert.deepEqual(polar.at(-1).body, { products: [PLUS], trial_interval: 'day', trial_interval_count: 14, external_customer_id: ownerId, customer_email: 'rowan@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: ownerId } });
+    assert.deepEqual(polar.at(-1).body, { products: [PLUS], trial_interval: 'day', trial_interval_count: 7, external_customer_id: ownerId, customer_email: 'rowan@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: ownerId } });
 
     const subscription = (status, extra = {}) => ({ id: 'sub_rowan', status, product_id: PLUS, customer_id: 'cus_rowan', customer: { id: 'cus_rowan', external_id: ownerId },
       current_period_start: '2026-11-01T00:00:00Z', current_period_end: '2026-12-01T00:00:00Z', cancel_at_period_end: false, modified_at: new Date(Date.now() + (++n) * 1000).toISOString(), ...extra });

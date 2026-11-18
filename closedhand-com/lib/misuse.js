@@ -14,7 +14,7 @@ const usd = n => '$' + Number(n || 0).toFixed(2);
 
 function create({ db, env = process.env, includedAi, request = fetch }) {
   const fairUse = require('./included-ai').fairUseUsd(env);
-  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
+  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 10);
   const label = () => includedAi?.label || 'NEAR AI';
   const perConnection = Number(env.INCLUDED_AI_PER_CONNECTION || 10);
   const dailyPeople = Number(env.INCLUDED_AI_DAILY_PEOPLE || 25);
@@ -87,7 +87,7 @@ function create({ db, env = process.env, includedAi, request = fetch }) {
     if (perConnection > 0 && full) add(`${full} internet ${full === 1 ? 'connection has' : 'connections have'} reached the most free days one connection may have (${perConnection} in 30 days).`);
 
     const lastDay = Number((await db.query("SELECT count(*)::int AS n FROM starter_grants WHERE granted_at > now() - interval '1 day'")).rows[0].n);
-    if (dailyPeople > 0 && lastDay >= dailyPeople) add(`${lastDay} free 14 days started in the last 24 hours, more than the ${dailyPeople} expected.`);
+    if (dailyPeople > 0 && lastDay >= dailyPeople) add(`${lastDay} free 7 days started in the last 24 hours, more than the ${dailyPeople} expected.`);
 
     // Upkeep that keeps failing.
     const stuck = retired.filter(r => r.tries >= 3).length;
@@ -117,7 +117,7 @@ function create({ db, env = process.env, includedAi, request = fetch }) {
         max_tokens: 1500,
         chat_template_kwargs: { enable_thinking: false },
         messages: [
-          { role: 'system', content: `You help the one person who runs closedhand.com keep Closedhand Managed Models from being misused. Each new Closedhand account gets 14 free days: a ${who} key with ${usd(trialUsd)} of use, once per Google or Microsoft sign-in and at most ${perConnection} per internet connection in 30 days. A monthly Managed Models subscription, sold through Polar, gives ${usd(fairUse)} of fair use each month. You are given signs found in closedhand.com's own records. In at most four short plain sentences, say what is most likely going on and what, if anything, to do. Say plainly when something is probably harmless, like a household sharing one connection or one heavy but honest user. Only suggest these actions: set INCLUDED_AI_PER_CONNECTION=0 on Railway to stop new free days; delete a key in ${who}'s dashboard (each is named "Closedhand" and the account id); cancel or refund a subscription in Polar; raise ADDRESS_LIMIT or INCLUDED_AI_MONTHLY_BUDGET_USD on Railway, or add credit at ${who}. Use only what the signs say. Never use dashes as punctuation.` },
+          { role: 'system', content: `You help the one person who runs closedhand.com keep Closedhand Managed Models from being misused. Each new Closedhand account gets 7 free days: a ${who} key with ${usd(trialUsd)} of use, once per Google or Microsoft sign-in and at most ${perConnection} per internet connection in 30 days. A monthly Managed Models subscription, sold through Polar, gives ${usd(fairUse)} of fair use each month. You are given signs found in closedhand.com's own records. In at most four short plain sentences, say what is most likely going on and what, if anything, to do. Say plainly when something is probably harmless, like a household sharing one connection or one heavy but honest user. Only suggest these actions: set INCLUDED_AI_PER_CONNECTION=0 on Railway to stop new free days; delete a key in ${who}'s dashboard (each is named "Closedhand" and the account id); cancel or refund a subscription in Polar; raise ADDRESS_LIMIT or INCLUDED_AI_MONTHLY_BUDGET_USD on Railway, or add credit at ${who}. Use only what the signs say. Never use dashes as punctuation.` },
           { role: 'user', content: list.map(s => '- ' + s).join('\n') },
         ],
       }),

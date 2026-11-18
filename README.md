@@ -57,7 +57,7 @@ Working on Closedhand itself? Build from source with `docker compose -f docker-c
 
 **Setup.** The setup page opens in your browser (or at **http://localhost:3000**) and ticks off each step as it sees it done:
 
-1. **Models.** DeepSeek V4.1 Flash Abliterated, the uncensored LLM Closedhand provides, with 14 free days and no card needed, or your own LLM provider.
+1. **Models.** DeepSeek V4.1 Flash Abliterated, the uncensored LLM Closedhand provides, with 7 free days and no card needed, or your own LLM provider.
 2. **A password** for your dashboard.
 3. **Email and calendar.** Google, Microsoft or both. Google takes one sign-in through Closedhand's own Google app, or about five minutes through a free Google Cloud project of your own, which setup walks you through.
 4. **Your personal URL**, so you can open Closedhand from your phone or any browser.
@@ -87,7 +87,7 @@ By the time you say hello, Closedhand has already read your inbox and calendar.
 
 ## LLMs
 
-Closedhand uses an uncensored LLM by default: DeepSeek V4.1 Flash Abliterated, running in a TEE so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you. You get 14 free days of it, once per person, and then the Closedhand subscription keeps it going, monthly or every 6 or 12 months, or paid ahead in crypto for 3, 6 or 9 months. Its page is [closedhand.com/pricing](https://closedhand.com/pricing).
+Closedhand uses an uncensored LLM by default: DeepSeek V4.1 Flash Abliterated, running in a TEE so nobody but you can read anything that goes in or comes out. When a better uncensored LLM is available, Closedhand switches to it for you. You get 7 free days of it, once per person, and then the Closedhand subscription keeps it going, monthly or every 6 or 12 months, or paid ahead in crypto for 3, 6 or 9 months. Its page is [closedhand.com/pricing](https://closedhand.com/pricing).
 
 Closedhand is also free software and works with any LLM you choose, free ones included: Anthropic, DeepInfra, DeepSeek, Gemini, Groq, Moonshot, OpenAI, OpenRouter, xAI, any OpenAI-compatible endpoint, or a model running on your own computer. The LLM provider you choose sees what you ask under its own terms; with a model on your own computer, no company does. You can switch between them at any time.
 

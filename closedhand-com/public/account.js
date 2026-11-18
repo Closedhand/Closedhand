@@ -106,7 +106,7 @@
     if (plan.name === 'ahead') state.push(model + ' is paid until ' + longDay(plan.ends_at) + '.');
     else if (plan.name === 'first-month') {
       const left = Date.parse(plan.ends_at) - Date.now();
-      state.push(left > 0 && left <= 3 * 86400000 ? 'Your free 14 days of ' + model + ' run until ' + day(plan.ends_at) + '.' : 'Your free 14 days of ' + model + ' are running.');
+      state.push(left > 0 && left <= 3 * 86400000 ? 'Your free 7 days of ' + model + ' run until ' + day(plan.ends_at) + '.' : 'Your free 7 days of ' + model + ' are running.');
     } else if (plan.name === 'ended') state.push('You no longer have ' + model + '.');
     if (['first-month', 'plus', 'ahead'].includes(plan.name)) bar(plan); else $('fair-use').hidden = true;
     const showState = () => { $('plus-state').textContent = state.join(' '); $('plus-state').hidden = !state.length; };
@@ -120,15 +120,15 @@
     if (data.anonymous) $('plus-about').replaceChildren('Pay ahead for ', about, ' in crypto, so you need no LLM provider of your own. With an account number, you pay in crypto only, never by card, so nothing ties your account to your name.');
     else $('plus-about').replaceChildren('Subscribe to keep ', about, ' every month, so you need no LLM provider of your own'
       + (email ? ", and for Closedhand's own email address" : '') + '. ' + model + ' runs in a TEE, so nobody but you can read anything that goes in or comes out.'
-      // Never had the free days: the subscription's first 14 days are them (Polar's trial).
-      + (p.free_month ? ' The first 14 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : ''));
+      // Never had the free days: the subscription's first 7 days are them (Polar's trial).
+      + (p.free_month ? ' The first 7 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : ''));
     $('plus-get').hidden = p.active || crypto || !!data.anonymous;
-    $('plus-get').textContent = p.free_month ? 'Subscribe · 14 days free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
+    $('plus-get').textContent = p.free_month ? 'Subscribe · 7 days free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
     $('plus-manage').hidden = !p.active;
     // A date months away says its year.
     const when = iso => (p.every ? longDay : day)(iso);
-    if (p.active && p.trial && p.ends_at) state.push('Your free 14 days run until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
-    else if (p.active && p.trial && p.renews_at) state.push('Your free 14 days run until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
+    if (p.active && p.trial && p.ends_at) state.push('Your free 7 days run until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
+    else if (p.active && p.trial && p.renews_at) state.push('Your free 7 days run until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
     else if (p.active && p.ends_at) state.push('Ends on ' + when(p.ends_at) + '.');
     else if (p.active && p.renews_at) state.push((p.every ? 'Renews every ' + p.every + ' months, next on ' : 'Renews on ') + when(p.renews_at) + '.');
     if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");

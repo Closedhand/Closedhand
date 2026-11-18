@@ -25,7 +25,7 @@ async function credit(settings) {
   return { limit, used, left: Math.max(0, limit - used) };
 }
 
-// The plan holds: the first 14 days, a subscription, a plan paid ahead, or
+// The plan holds: the first 7 days, a subscription, a plan paid ahead, or
 // the maintainer's own.
 const LIVE_PLANS = ["first-month", "plus", "ahead", "maintainer"];
 function live(settings) {
@@ -105,7 +105,7 @@ function usedUpText(plan, link, web, timeZone) {
   if (plan?.name === "plus" || plan?.name === "ahead") return `You've reached this month's fair use of ${llm(plan)}, ${until(plan, timeZone)}. ${carryOn(web, true)}, or connect your own LLM provider in the ${dashboard(link, web)}.`;
   if (plan?.name === "ended" && plan.was === "ahead") return `Your plan paid ahead has ended, so I can't reply for now. Pay ahead again or subscribe at ${account(web)} and I'll carry on, or connect your own LLM provider in the ${dashboard(link, web)} (free ones work too).`;
   if (plan?.name === "ended" && plan.was === "plus") return `Your subscription has ended, so I can't reply for now. Subscribe again at ${account(web)} and I'll carry on, or connect your own LLM provider in the ${dashboard(link, web)} (free ones work too).`;
-  if (plan?.name === "ended") return `Your free 14 days of ${llm(plan)} have ended, so I can't reply for now. Keep it with a subscription at ${account(web)} and I'll carry on, or connect your own LLM provider in the ${dashboard(link, web)} (free ones work too).`;
+  if (plan?.name === "ended") return `Your free 7 days of ${llm(plan)} have ended, so I can't reply for now. Keep it with a subscription at ${account(web)} and I'll carry on, or connect your own LLM provider in the ${dashboard(link, web)} (free ones work too).`;
   return `You've reached the fair use of ${llm(plan)}, so I can't reply for now. Keep it with a subscription at ${account(web)} and I'll carry on, or connect your own LLM provider in the ${dashboard(link, web)} (free ones work too).`;
 }
 // The person's own LLM provider refused: out of credit, or the key rejected.

@@ -19,7 +19,7 @@ async function usage(db, account) {
   return { dailySent: daily?.sent || 0, dailyReceived: daily?.received || 0, sent: row?.sent || 0, received: row?.received || 0, bytes: Number(row?.bytes || 0), dailySentLimit: 1000, dailyReceivedLimit: 2000, entitled: await entitled(db, account.owner_id) };
 }
 // Closedhand's own email address comes with Closedhand Managed Models: it
-// works while the account's free 14 days run, its subscription gives access,
+// works while the account's free 7 days run, its subscription gives access,
 // a plan paid ahead runs, or it is the maintainer's own (reserve_mail_relay_usage
 // checks the same, migrations 023 and 026).
 async function entitled(db, ownerId) {

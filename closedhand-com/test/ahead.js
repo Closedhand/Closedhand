@@ -196,7 +196,7 @@ test('the maintainer hears when a subscription starts and when someone pays ahea
   const trial = await person(), t = await who(trial);
   await w.plus.handle(subscription(trial, { product: PLUS, start, end: addMonths(start, 1), status: 'trialing' }));
   await w.plus.handle(subscription(trial, { product: PLUS, start, end: addMonths(start, 1) }));
-  assert.deepEqual(await told(trial), [`Closedhand: ${t.email} (Google), ${t.hostname} started the subscription, renewing every month, with its 14 free days first.`], 'the free days ending in a payment is the same subscription');
+  assert.deepEqual(await told(trial), [`Closedhand: ${t.email} (Google), ${t.hostname} started the subscription, renewing every month, with its 7 free days first.`], 'the free days ending in a payment is the same subscription');
 
   const ahead = await person({ freeUsage: 2 }), a = await who(ahead);
   await w.ahead.checkout({ id: ahead }, { months: 3, agreed: true });

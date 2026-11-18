@@ -146,7 +146,7 @@ test('checkout, carrying on and the portal go to Polar for this account only', a
   assert.equal(await w.plus.checkout({ id: p.id, email: 'person@example.com' }), 'https://polar.sh/checkout/fixture-1111');
   const asked = w.calls.at(-1);
   assert.equal(asked.url, 'https://api.polar.sh/v1/checkouts/');
-  assert.deepEqual(asked.body, { products: [PLUS], trial_interval: 'day', trial_interval_count: 14, external_customer_id: p.id, customer_email: 'person@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: p.id } }, 'never had the free month: the subscription starts with it');
+  assert.deepEqual(asked.body, { products: [PLUS], trial_interval: 'day', trial_interval_count: 7, external_customer_id: p.id, customer_email: 'person@example.com', success_url: 'https://closedhand.com/account?plus=welcome', metadata: { owner_id: p.id } }, 'never had the free month: the subscription starts with it');
   await w.plus.extend({ id: p.id });
   assert.deepEqual(w.calls.at(-1).body.products, [EXTEND]);
   assert.equal(w.calls.at(-1).body.allow_trial, false, 'carrying on is never free');

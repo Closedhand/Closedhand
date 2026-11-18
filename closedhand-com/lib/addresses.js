@@ -282,7 +282,7 @@ async function releaseIdle(pool, days) {
 
 // The Terms as they stand (views/terms.html, its "Last updated" day): what
 // an account agreed to when its claim says the person ticked the box.
-const TERMS_VERSION = '2026-11-06';
+const TERMS_VERSION = '2026-11-18';
 async function agreed(db, ownerId, body) {
   if (body?.acceptedTerms === true) await db.query('UPDATE owners SET terms_version = $2, terms_accepted_at = now() WHERE id = $1', [ownerId, TERMS_VERSION]);
 }
@@ -619,7 +619,7 @@ function register(app, { db, sessions, secret, baseUrl, env = process.env, reque
 
   // Which provider and models Closedhand Managed Models use now. A computer
   // with its key asks every hour and switches itself over when they change.
-  // It is also told its plan (lib/plan.js: its free 14 days, a subscription,
+  // It is also told its plan (lib/plan.js: its free 7 days, a subscription,
   // ended or none) and how much of the plan's fair use is used (a NEAR key
   // can't read that itself), a subscriber whose account holds no key yet gets
   // one here, once, to seal, and the maintainer's own Closedhand collects

@@ -140,7 +140,7 @@ test('using Closedhand anonymously is paid for first: the claim waits with no ac
   assert.equal(await webhook('InvoiceSettled', made.id), 200, 'sent again, it changes nothing');
   const owner = (await db.query("SELECT * FROM owners WHERE provider = 'anonymous'")).rows;
   assert.equal(owner.length, 1, 'one account');
-  assert.deepEqual([owner[0].email, owner[0].email_verified, owner[0].terms_version], [null, false, '2026-11-06']);
+  assert.deepEqual([owner[0].email, owner[0].email_verified, owner[0].terms_version], [null, false, '2026-11-18']);
   const plan = (await db.query('SELECT starts_at, ends_at FROM ahead_plans WHERE owner_id = $1', [owner[0].id])).rows[0];
   assert.ok(plan && new Date(plan.ends_at) > new Date(Date.now() + 85 * 86400000), 'three months paid ahead');
   assert.deepEqual((await db.query('SELECT id, months FROM ahead_payments WHERE owner_id = $1', [owner[0].id])).rows, [{ id: 'btcpay:' + made.id, months: 3 }]);

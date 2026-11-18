@@ -47,10 +47,10 @@ test('free days past the expected number are told at 75%, 90%, 100%, then every 
   await started(5);
   assert.deepEqual(await watch.check(), [], 'under 75%');
   await started(1);
-  assert.deepEqual(await watch.check(), ["Closedhand: 6 people have started their 14 free days of the uncensored LLM this month, against the 8 expected. If more people are coming, raise the number expected each month."]);
+  assert.deepEqual(await watch.check(), ["Closedhand: 6 people have started their 7 free days of the uncensored LLM this month, against the 8 expected. If more people are coming, raise the number expected each month."]);
   assert.deepEqual(await watch.check(), [], 'told once');
   await started(4);
-  assert.deepEqual(await watch.check(), ["Closedhand: 10 people have started their 14 free days of the uncensored LLM this month, against the 8 expected. If more people are coming, raise the number expected each month."], 'one notice for 90%, 100% and 125% passed at once');
+  assert.deepEqual(await watch.check(), ["Closedhand: 10 people have started their 7 free days of the uncensored LLM this month, against the 8 expected. If more people are coming, raise the number expected each month."], 'one notice for 90%, 100% and 125% passed at once');
   assert.equal((await db.query("SELECT count(*) AS n FROM operator_alerts WHERE kind = 'first-months'")).rows[0].n, '4');
   await started(1, new Date(Date.UTC(2020, 0, 15)));
   assert.deepEqual(await watch.check(), [], 'another month counts apart');
@@ -63,7 +63,7 @@ test('a burst of free days in a day is told once that day', async () => {
   await started(2);
   assert.deepEqual(await watch.check(), []);
   await started(1);
-  assert.deepEqual(await watch.check(), ['Closedhand: 3 people started their 14 free days of the uncensored LLM in the last 24 hours, more than usual. Worth a look for account farming.']);
+  assert.deepEqual(await watch.check(), ['Closedhand: 3 people started their 7 free days of the uncensored LLM in the last 24 hours, more than usual. Worth a look for account farming.']);
   await started(5);
   assert.deepEqual(await watch.check(), [], 'once a day');
 });

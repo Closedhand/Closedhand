@@ -261,7 +261,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   assert.deepEqual([withAccount.el("my-plus-get").hidden, withAccount.el("my-card-row").hidden, withAccount.el("action-plus-cancel").hidden, withAccount.el("action-plus-keep").hidden, withAccount.el("my-plus-extend").hidden], [true, false, false, true, true]);
   assert.equal(withAccount.el("my-card-desc").textContent, "Visa ending 4242, expires 08/29", "the card it is paid with, shown");
   assert.equal(withAccount.el("my-cancel-desc").textContent, "If you cancel, your subscription stays on until 15 December, then ends.", "what cancelling would do, beside a plan that renews");
-  assert.match(html, /"If you cancel, your free 14 days run until " \+ day\(until\) \+ " and nothing is charged\."/, "free days that renew aren't said to end");
+  assert.match(html, /"If you cancel, your free 7 days run until " \+ day\(until\) \+ " and nothing is charged\."/, "free days that renew aren't said to end");
   assert.equal(withAccount.el("plus-cancel-text").textContent, "Your subscription ends on 15 December and is not charged again. Until then you can resume your subscription.");
   assert.match(withAccount.el("delete-account-text").textContent, /^This deletes your Closedhand account: amber-fox-42\.closedhand\.ai stops working and closedhand\.com forgets your sign-in\. This also permanently deletes everything Closedhand keeps for you on your own computer/);
   const html2 = fs.readFileSync(require.resolve("../webapp/views/dashboard.html"), "utf8");
@@ -360,7 +360,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
 
   const first = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "first-month", ends_at: day(20) }, used: 0.1, plus: { available: false } } } }));
   await first.state.loadMyAccount();
-  assert.equal(first.el("my-plan-state").textContent, "Your free 14 days of DeepSeek V4.1 Flash Abliterated are running.", "their end is said in their last three days only");
+  assert.equal(first.el("my-plan-state").textContent, "Your free 7 days of DeepSeek V4.1 Flash Abliterated are running.", "their end is said in their last three days only");
   assert.equal(first.el("my-plus-get").hidden, true, "nothing on sale, nothing offered");
 
   const without = accountPage(() => ({ body: { account: null } }));

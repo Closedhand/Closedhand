@@ -3,7 +3,7 @@
 // Managed Models run on, and hands it, once, to the computer that claimed.
 // That computer then talks to the provider directly, so no message ever
 // passes through here; what stays here is the provider's id for the key and
-// when its free 14 days end.
+// when its free 7 days end.
 //
 // The provider is NEAR AI's private inference (lib/included-ai-near.js), which
 // makes, reads, limits and deletes the keys. Computers follow the provider
@@ -13,7 +13,7 @@
 // has one key: claiming again makes a new key with whatever was left and the
 // same end date, and deletes the old one.
 //
-// The start is 14 free days (INCLUDED_AI_TRIAL_DAYS) with a ceiling of their
+// The start is 7 free days (INCLUDED_AI_TRIAL_DAYS) with a ceiling of their
 // own (INCLUDED_AI_TRIAL_USD); the hourly sweep stops the key when they are
 // over, unless a subscription has taken over. They are given once per
 // person, ever (starter_grants keeps a one-way fingerprint of the sign-in,
@@ -74,8 +74,8 @@ const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 25);
 function create({ db, env = process.env, request = fetch, notices = null }) {
   const keys = require('./included-ai-near').create({ db, env, request, notices });
   const fairUse = fairUseUsd(env);
-  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 12);
-  const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 14);
+  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 10);
+  const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 7);
   // Ten, so an office or a household sharing one connection all get theirs,
   // while one connection can't collect it again and again.
   const perConnection = Number(env.INCLUDED_AI_PER_CONNECTION || 10);
