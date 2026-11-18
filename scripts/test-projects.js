@@ -61,7 +61,7 @@ function fakeDb(tables) {
   return { db, log };
 }
 
-function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, tables = {} } = {}) {
+function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, tables = {}, people = null } = {}) {
   const { db, log } = fakeDb({ projects: rows, conversation_threads: threads, ...tables });
   const asked = [], judged = [], saved = [];
   const fakes = {
@@ -78,6 +78,7 @@ function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {
     "./profile-settings": { updateSettings: async (userId, change) => { const s = {}; change(s); saved.push(s); } },
     "../user-store": { UserStore: { load: async () => ({ userId: "u1", profile: { timezone: "Europe/London" } }) } },
     "./platforms/whatsapp-linked": { isOwnChat: () => false },
+    ...(people ? { "./people": people } : {}),
   };
   const load = Module._load;
   Module._load = function (request, parent, ...rest) {
@@ -754,6 +755,33 @@ test("a project follows what comes in: whole conversations with someone its reco
   await unreadable.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
   assert.deepEqual(unreadable.rows[0].state.open, ["Pay the deposit", "Book the parking permit"], "no answer changes nothing");
   assert.equal(unreadable.saved.length, 0, "and is looked at again next time");
+
+  // Whole chats are for the project's own people, not anyone its running summary
+  // mentions, and never for their own family. Anyone the record lists still counts whole.
+  const morgan = [
+    msg("Morgan", "Morgan", 4, "Where should we live after the baby comes?"),
+    msg("Morgan", "Morgan", 3, "Is Dana Fixture still helping with the van?"),
+  ];
+  const familyTables = () => ({ ...tables(), data_cache: morgan.map((r) => ({ ...r })) });
+  const nobody = { load: async () => ({ ofChat: () => null, ofHandle: () => null }), mail: (a) => "mail:" + a };
+  const inSummary = loadProjects([{ ...move(), summary: "Morgan will stay nearby during the move." }], answer, { tables: familyTables(), people: nobody });
+  await inSummary.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.match(inSummary.asked[0], /Is Dana Fixture still helping/, "what names someone in it counts");
+  assert.doesNotMatch(inSummary.asked[0], /Where should we live/, "a name the summary mentions does not bring the whole chat");
+  const listed = () => ({ ...move(), state: { ...move().state, people: [...move().state.people, { name: "Morgan Fixture", position: "lending the van" }] } });
+  const asFamily = loadProjects([listed()], answer, { tables: familyTables(), people: {
+    load: async () => ({ ofChat: (jid) => (jid === "Morgan" ? { role: "wife", facts: ["family-wife"] } : null), ofHandle: () => null }),
+    mail: (a) => "mail:" + a } });
+  await asFamily.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.doesNotMatch(asFamily.asked[0], /Where should we live/, "nor does family, even listed in it");
+  const byPinnedName = loadProjects([listed()], answer, { tables: familyTables(), people: {
+    load: async () => ({ ofChat: () => null, ofHandle: () => null, persons: [{ name: "Morg", role: "wife", facts: ["family-wife-morg"], names: [{ name: "Morg" }] }] }),
+    mail: (a) => "mail:" + a } });
+  await byPinnedName.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.doesNotMatch(byPinnedName.asked[0], /Where should we live/, "family known by a shorter name in a Pinned Fact than the chat's (\"Morg\", \"Morgan\")");
+  const notFamily = loadProjects([listed()], answer, { tables: familyTables(), people: nobody });
+  await notFamily.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.match(notFamily.asked[0], /Where should we live/, "someone else the record lists counts whole, as the movers do");
 
   // Pulse reads the projects after they caught up; a timer keeps them going while Pulse is off.
   const pulse = read("lib/pulse.js");
