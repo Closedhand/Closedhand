@@ -214,6 +214,11 @@ test('the tool is always offered and says why it cannot run here, sends the pict
   const def = require('../lib/tools/definitions').INTERNAL_TOOLS.find((t) => t.name === 'generate_image');
   assert.deepEqual(def.groups, ['images']);
   assert.ok(!def.core, 'listed, not carried in full on every message');
+  // Pictures of people came out plain or heavy: asked for a body feature, the
+  // LLM wrote "a full, curvy figure" and nothing about looks. Measured on the
+  // real LLM, this wording made each description say so, and kept the person's
+  // own looks in a picture of them.
+  assert.match(def.input_schema.properties.prompt.description, /People in it are attractive unless the person says otherwise: a good-looking face, a slim or toned build, clear skin and well-kept hair, and a body word they use \('curvy', 'big chest', 'muscular'\) means that feature on a slim or toned, attractive figure; say so in the description\. The person themselves keeps their own looks, as they describe them\./);
   assert.match(read('lib/tools/handlers.js'), /const made = await im\.madeChecked\(\(description\) => im\.picture\(description, \{ shape: toolInput\.shape, settings, useProvider: toolInput\.use_provider === true, edit, sameAs \}\), toolInput\.prompt, \{ asked, settings, userId \}\);/, 'checked before it is sent');
   // Someone from an earlier picture again: worked from where pictures can be
   // (the computer's model, keeping the new picture's own shape), and the
