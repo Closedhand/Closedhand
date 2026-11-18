@@ -404,3 +404,15 @@ test('the page: the box and its script are on the home page, and what it says is
   // The LLM goes by its name, with "uncensored" beside it.
   assert.match(script, /state\.name \+ ', the uncensored LLM Closedhand provides'/);
 });
+
+test('the questions to try drift past in one line, stop for the pointer and the keyboard, stand still for reduced motion, and each asks', () => {
+  const home = fs.readFileSync(path.join(__dirname, '..', 'views', 'home.html'), 'utf8');
+  const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'ask.js'), 'utf8');
+  const tries = home.match(/<div class="ask-tries" id="askTries"[^>]*>\s*<div class="ask-tries-track">([\s\S]*?)<\/div>\s*<\/div>/);
+  assert.ok(tries, 'one track of questions');
+  assert.ok((tries[1].match(/<button type="button">/g) || []).length >= 6, 'a mix, so none leads');
+  assert.match(home, /\.ask-tries:hover \.ask-tries-track, \.ask-tries:focus-within \.ask-tries-track \{ animation-play-state: paused; \}/);
+  assert.match(home, /@media \(prefers-reduced-motion: reduce\) \{\s*\.ask-tries \{ overflow-x: auto;[^}]*\}\s*\.ask-tries-track \{ animation: none; \}/);
+  assert.match(script, /copy\.setAttribute\('aria-hidden', 'true'\); copy\.tabIndex = -1;/, 'the copies that close the loop are hidden from screen readers and the keyboard');
+  assert.match(script, /tries\.addEventListener\('click', function \(e\) \{/, 'one listener, so the copies ask too');
+});

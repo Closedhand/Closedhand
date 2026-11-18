@@ -313,8 +313,16 @@
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(input.value); }
   });
-  Array.prototype.forEach.call(tries.querySelectorAll('button'), function (b) {
-    b.addEventListener('click', function () { ask(b.textContent); });
+  // The questions to try drift past in one line: it holds them twice so the
+  // drift comes round without a jump, the copies hidden from screen readers
+  // and the keyboard, and any of them asks its question.
+  var track = tries.querySelector('.ask-tries-track');
+  if (track) Array.prototype.forEach.call(track.querySelectorAll('button'), function (b) {
+    var copy = b.cloneNode(true); copy.setAttribute('aria-hidden', 'true'); copy.tabIndex = -1; track.appendChild(copy);
+  });
+  tries.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button');
+    if (b && tries.contains(b)) ask(b.textContent);
   });
   // Going on to the download after asking is counted, and nothing else is.
   ['macAppLink', 'copyInstall'].forEach(function (id) { var el = byId(id); if (el) el.addEventListener('click', went); });

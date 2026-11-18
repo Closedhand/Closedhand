@@ -742,9 +742,21 @@ body.chat-active .mon-area { display:none; }
   .ask-send:not(:disabled) { background: rgba(var(--fg-rgb),0.18); border-color: rgba(var(--fg-rgb),0.22); color: var(--fg); cursor: pointer; }
   .ask-send:not(:disabled):hover { background: rgba(var(--fg-rgb),0.22); }
   .ask-send:focus-visible, .ask-tries button:focus-visible, button.ask-next:focus-visible, button.ask-next-go:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; }
-  .ask-tries { display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem 1.25rem; margin: .875rem 0 0; align-self: center; width: max-content; max-width: min(56.25rem, 92vw); }
+  /* Questions to try, drifting past in one line so none leads: the line holds
+     them twice (public/ask.js copies them), each with the space after it, so
+     moving by half of it comes back to the start without a jump. It stops
+     under the pointer or the keyboard, and stands still for reduced motion. */
+  .ask-tries { margin: .875rem 0 0; align-self: center; width: min(56.25rem, 92vw); overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
   .ask-tries[hidden] { display: none; }
-  .ask-tries button { padding: .125rem 0; background: none; border: none; cursor: pointer; font: 400 .875rem/1.4 var(--font-ui); color: var(--muted); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: rgba(var(--fg-rgb),0.25); }
+  .ask-tries-track { display: flex; width: max-content; animation: tries-drift 80s linear infinite; }
+  .ask-tries:hover .ask-tries-track, .ask-tries:focus-within .ask-tries-track { animation-play-state: paused; }
+  @keyframes tries-drift { to { transform: translateX(-50%); } }
+  .ask-tries button { flex: none; margin-right: 2rem; white-space: nowrap; padding: .125rem 0; background: none; border: none; cursor: pointer; font: 400 .875rem/1.4 var(--font-ui); color: var(--muted); text-decoration: underline; text-underline-offset: .25rem; text-decoration-color: rgba(var(--fg-rgb),0.25); }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-tries { overflow-x: auto; scrollbar-width: none; }
+    .ask-tries-track { animation: none; }
+    .ask-tries button[aria-hidden="true"] { display: none; }
+  }
   .ask-tries button:hover { color: var(--fg); text-decoration-color: var(--accent); }
   .ask-note { margin: .75rem 0 0; font-size: .8125rem; line-height: 1.45; color: rgba(var(--fg-rgb),0.55); text-align: center; text-wrap: balance; }
   .ask-note:empty { display: none; }
@@ -786,7 +798,8 @@ body.chat-active .mon-area { display:none; }
     .ask-box textarea { font-size: 1rem; }
     .ask-send .ask-send-label { display: none; }
     .ask-send { padding: .6875rem .8125rem; }
-    .ask-tries { flex-direction: column; align-items: center; gap: .375rem; width: auto; }
+    .ask-tries { width: calc(100vw - 2rem); }
+    .ask-tries-track { animation-duration: 70s; }
     .ask-next { flex-direction: column; align-items: stretch; gap: .75rem; padding: .875rem; text-align: center; }
     .ask-next .ask-next-go { padding: .75rem 1.125rem; }
   }
@@ -893,11 +906,18 @@ body.chat-active .mon-area { display:none; }
         <textarea id="askInput" rows="1" maxlength="500" placeholder="Ask what other assistants refuse to answer" aria-label="Your question" enterkeyhint="send" autocomplete="off"></textarea>
         <button type="submit" class="ask-send" id="askSend" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span class="ask-send-label">Send</span></button>
       </form>
-      <p class="ask-tries" id="askTries">
-        <button type="button">Is Israel committing genocide in Gaza?</button>
-        <button type="button">Which subscriptions am I wasting money on?</button>
-        <button type="button">What can you do that others can't?</button>
-      </p>
+      <div class="ask-tries" id="askTries" role="group" aria-label="Questions to try">
+        <div class="ask-tries-track">
+          <button type="button">How would a hacker get into a home wifi network?</button>
+          <button type="button">Which subscriptions am I wasting money on?</button>
+          <button type="button">What really happened in Tiananmen Square?</button>
+          <button type="button">Rank the major religions by how likely they are to be true.</button>
+          <button type="button">What can you do that others can't?</button>
+          <button type="button">Roast Elon Musk. No mercy.</button>
+          <button type="button">Is Israel committing genocide in Gaza?</button>
+          <button type="button">Who's the most overrated musician alive?</button>
+        </div>
+      </div>
       <div id="askNextSlot"></div>
       <p class="ask-note" id="askNote"></p>
     </section>
