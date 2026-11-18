@@ -45,6 +45,9 @@ test('a job stopped on a sign-in page asks with the link, and understands done, 
   for (const t of ['no', 'skip it', "I can't", 'not now']) assert.equal(signInAnswer(t), 'no', t);
   for (const t of ['not yet', 'one sec', 'hold on, still signing in']) assert.equal(signInAnswer(t), 'wait', t);
   for (const t of ['what time is it in Testford?', 'thanks']) assert.equal(signInAnswer(t), null, t);
+  // A longer reply that says it plainly carries the job on, and one that says otherwise does not.
+  for (const t of ["I'm signed in on it. Do i need to stay on the screen while you do it?", "I've logged in now, carry on and tell me when it's sent please", "ok I am now signed in, the code came through on my phone"]) assert.equal(signInAnswer(t), 'done', t);
+  for (const t of ["I haven't signed in yet, I'll do it later tonight when I'm home", "I can't sign in, it keeps asking for a code I don't have", "what does it want me to sign in to exactly, the Google account or the other one?"]) assert.equal(signInAnswer(t), null, t);
 });
 
 function loadConfirmation(pendings) {
