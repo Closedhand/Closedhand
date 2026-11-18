@@ -389,6 +389,17 @@ test("each hour: the plan and its fair use are kept, a waiting key is taken seal
   assert.equal(await ai.refresh(), false);
   assert.deepEqual(store.box.settings.included_ai.usage, { limit: 20, used: 16.5 });
   assert.equal(store.box.settings.included_notices.length, 1, "kept once");
+  // A notice of a report this Closedhand sent itself is let go unsaid; another's is kept.
+  // The wording is closedhand.com's own (closedhand-com/lib/bugs.js noticeText).
+  const { noticeText } = require("../closedhand-com/lib/bugs");
+  store.box.settings.bug_receipts = [{ id: "3f2a9c1e-0000-4000-8000-000000000001" }];
+  const mine = { id: "n-mine", text: noticeText({ id: "3f2a9c1e-0000-4000-8000-000000000001", comment: "the chart is wrong" }) };
+  const theirs = { id: "n-theirs", text: noticeText({ id: "7b7b7b7b-0000-4000-8000-000000000002", comment: "the chart is wrong" }) };
+  answer.now = { ...answer.now, notices: [notice, mine, theirs] };
+  assert.equal(await ai.refresh(), true);
+  assert.deepEqual(store.box.settings.included_notices.map((n) => n.id), [notice.id, "n-theirs"], "only someone else's report");
+  answer.now = { ...answer.now, notices: [notice] };
+  store.box.settings.included_notices = [notice];
   // Sent by the bot: let go, and never kept again.
   store.box.settings.included_notices_sent = [notice.id];
   assert.equal(await ai.refresh(), true);

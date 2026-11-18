@@ -147,6 +147,16 @@ function cleanPlan(plan, previous) {
   return out;
 }
 
+// A notice of a bug report this Closedhand sent itself tells the person who
+// just wrote it nothing new: its id (closedhand-com/lib/bugs.js noticeText ends
+// "node tools/bugs.js show <first 8>.") is one of the reports kept here
+// (lib/bug-reports.js bug_receipts), and it is let go unsaid.
+const REPORT_NOTICE = /^Closedhand: a bug report came in\b[\s\S]*\bnode tools\/bugs\.js show ([0-9a-f]{8})\.$/;
+function ownReport(text, before) {
+  const m = String(text || "").trim().match(REPORT_NOTICE);
+  return !!m && (before.bug_receipts || []).some((r) => String(r?.id || "").startsWith(m[1]));
+}
+
 // Notices for this account not yet kept or sent: each { id, text }, said as
 // written. The ones already sent (included-credit.js records them) are let go.
 function keptNotices(given, before) {
@@ -154,7 +164,7 @@ function keptNotices(given, before) {
   const kept = (before.included_notices || []).filter((n) => n?.id && !sent.has(n.id));
   const known = new Set(kept.map((n) => n.id));
   const fresh = (Array.isArray(given) ? given : [])
-    .filter((n) => n && typeof n.id === "string" && /^[A-Za-z0-9_.:-]{1,80}$/.test(n.id) && typeof n.text === "string" && n.text.trim() && !sent.has(n.id) && !known.has(n.id))
+    .filter((n) => n && typeof n.id === "string" && /^[A-Za-z0-9_.:-]{1,80}$/.test(n.id) && typeof n.text === "string" && n.text.trim() && !sent.has(n.id) && !known.has(n.id) && !ownReport(n.text, before))
     .slice(0, 10).map((n) => ({ id: n.id, text: n.text.trim().slice(0, 1000) }));
   return { list: [...kept, ...fresh].slice(-20), changed: fresh.length > 0 || kept.length !== (before.included_notices || []).length };
 }
