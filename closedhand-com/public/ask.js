@@ -320,6 +320,30 @@
   if (track) Array.prototype.forEach.call(track.querySelectorAll('button'), function (b) {
     var copy = b.cloneNode(true); copy.setAttribute('aria-hidden', 'true'); copy.tabIndex = -1; track.appendChild(copy);
   });
+  // Scrolled, not slid (see .ask-tries in the page), about 30 pixels a second,
+  // and held while a finger, the pointer or the keyboard is on it.
+  if (track && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    var held = 0, at = 0, pos = 0, resume = null;
+    var hold = function () { clearTimeout(resume); held = 1; };
+    var letGo = function (later) { clearTimeout(resume); resume = setTimeout(function () { held = 0; pos = tries.scrollLeft; }, later || 0); };
+    tries.addEventListener('pointerenter', hold);
+    tries.addEventListener('pointerleave', function () { letGo(0); });
+    tries.addEventListener('focusin', hold);
+    tries.addEventListener('focusout', function () { letGo(0); });
+    tries.addEventListener('touchstart', hold, { passive: true });
+    tries.addEventListener('touchend', function () { letGo(1500); }, { passive: true });
+    var drift = function (t) {
+      if (at && !held && !tries.hidden && tries.offsetWidth) {
+        var half = track.scrollWidth / 2;
+        pos += Math.min(t - at, 100) * 0.03;
+        if (pos >= half) pos -= half;
+        tries.scrollLeft = pos;
+      }
+      at = t;
+      requestAnimationFrame(drift);
+    };
+    requestAnimationFrame(drift);
+  }
   tries.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('button');
     if (b && tries.contains(b)) ask(b.textContent);

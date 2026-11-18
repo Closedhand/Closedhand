@@ -405,14 +405,19 @@ test('the page: the box and its script are on the home page, and what it says is
   assert.match(script, /state\.name \+ ', the uncensored LLM Closedhand provides'/);
 });
 
-test('the questions to try drift past in one line, stop for the pointer and the keyboard, stand still for reduced motion, and each asks', () => {
+test('the questions to try drift past in one line, scrolled not slid, held for a finger, the pointer and the keyboard, still for reduced motion, and each asks', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'views', 'home.html'), 'utf8');
   const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'ask.js'), 'utf8');
-  const tries = home.match(/<div class="ask-tries" id="askTries"[^>]*>\s*<div class="ask-tries-track">([\s\S]*?)<\/div>\s*<\/div>/);
+  const tries = home.match(/<div class="ask-tries computer-only" id="askTries"[^>]*>\s*<div class="ask-tries-track">([\s\S]*?)<\/div>\s*<\/div>/);
+  assert.ok(tries, 'on computers only: on phones and tablets the ring turns through questions');
   assert.ok(tries, 'one track of questions');
   assert.ok((tries[1].match(/<button type="button">/g) || []).length >= 6, 'a mix, so none leads');
-  assert.match(home, /\.ask-tries:hover \.ask-tries-track, \.ask-tries:focus-within \.ask-tries-track \{ animation-play-state: paused; \}/);
-  assert.match(home, /@media \(prefers-reduced-motion: reduce\) \{\s*\.ask-tries \{ overflow-x: auto;[^}]*\}\s*\.ask-tries-track \{ animation: none; \}/);
+  // Scrolled, never slid: iPhone Safari left parts of a wide sliding strip undrawn.
+  assert.doesNotMatch(home, /tries-drift|\.ask-tries-track \{[^}]*animation/);
+  assert.match(home, /\.ask-tries \{[^}]*overflow-x: auto;/);
+  assert.match(script, /tries\.scrollLeft = pos;/);
+  assert.match(script, /prefers-reduced-motion: reduce/, 'still for reduced motion');
+  for (const held of ["'pointerenter', hold", "'focusin', hold", "'touchstart', hold"]) assert.ok(script.includes(held), 'held: ' + held);
   assert.match(script, /copy\.setAttribute\('aria-hidden', 'true'\); copy\.tabIndex = -1;/, 'the copies that close the loop are hidden from screen readers and the keyboard');
   assert.match(script, /tries\.addEventListener\('click', function \(e\) \{/, 'one listener, so the copies ask too');
 });
