@@ -180,6 +180,8 @@ test("one-off runner answers in the originating chat without creating a schedule
   await until(() => h.db.tables.agent_tasks[0].status === "completed");
   const prompt = h.calls[0].system;
   assert.match(prompt, /Answer the user's question directly in chat/);
+  // A job that did something says so first: asked "why isn't this done?", one answered the why and the posting came second.
+  assert.match(prompt, /When you did something for them \(sent, posted, booked, changed\), open with what you did, then answer whatever else they asked\./);
   assert.match(prompt, /Make a page with save_report, or another separate deliverable such as a spreadsheet file, when the user asks for a document, report or spreadsheet/);
   assert.doesNotMatch(prompt, /Write a clear, detailed report/);
   assert.equal(h.db.tables.agent_tasks[0].result, "The confirmed time is 20:00.");
