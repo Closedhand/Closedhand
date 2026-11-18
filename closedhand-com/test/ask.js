@@ -389,7 +389,7 @@ test('the page: the box and its script are on the home page, and what it says is
   // and stopped there were a dead end.
   assert.match(asking.INSTRUCTION, /it generates images, takes actions for them and works with their mail, calendar, files and whatever else they connect/);
   // Where it runs, so it never says it runs on their computer or that nothing leaves it.
-  assert.match(asking.INSTRUCTION, /You run in a TEE at a company that provides private inference, away from their computer: what they send you leaves it encrypted, and nobody but them can read it, not closedhand\.com and not the company running that hardware\. Say nothing about what that company keeps or logs\./);
+  assert.match(asking.INSTRUCTION, /Two things set you apart from other assistants, and asked what you are or what you can do, say both: you answer what they refuse, and you run in a TEE at a company that provides private inference, away from their computer: what they send you leaves it encrypted, and nobody but them can read it, not closedhand\.com and not the company running that hardware\. Say nothing about what that company keeps or logs\./);
   assert.match(asking.INSTRUCTION, /never say that Closedhand cannot do it, and never open with what you cannot do: first give what you can from here, such as how it would go about it or a taste of the answer, without pretending to know anything of theirs, then say in one sentence that downloading Closedhand, below on this page, does it for real/);
   // And only then: an answer it can give here carries no line about downloading.
   assert.match(asking.INSTRUCTION, /Say that only then: a question you can answer here gets its answer alone, with no mention of downloading\.$/);
