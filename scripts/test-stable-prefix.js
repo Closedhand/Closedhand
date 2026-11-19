@@ -75,7 +75,16 @@ test('a connected server\'s tools load with the first call when the request name
   assert.equal(likelyMcpTools('anything', [], []).size, 0);
   const full = new Set(within);
   assert.equal(likelyMcpTools('move my dentist event', [], big, full).size, 0, 'what the conversation loaded already counts towards the size');
-  assert.match(read('lib/engine.js'), /for \(const name of likelyMcpTools\(userMessage, conversation, getUserMcpToolDefs\(userId\), loadedTools\)\) loadedTools\.add\(name\);/);
+  const engine = read('lib/engine.js');
+  assert.match(engine, /for \(const name of likelyMcpTools\(userMessage, conversation, getUserMcpToolDefs\(userId\), loadedTools, room, room === MCP_LOAD_CACHED_CHARS \? room : room \/ 2\)\) loadedTools\.add\(name\);/);
+
+  // A provider seen to answer from its cache: a server's tools whole where they fit.
+  assert.equal(likelyMcpTools('thanks!', [], big, new Set(), 120000, 120000).size, big.length, 'the whole server when there is room for it');
+  assert.equal(likelyMcpTools('thanks!', [], big, new Set(), 24000).size, 0, 'and only what the request names when there is not');
+  const huge = big.concat(Array.from({ length: 300 }, (_, i) => def('archive_record_' + i)));
+  assert.equal(likelyMcpTools('thanks!', [], huge, new Set(), 120000, 120000).size, 0, 'a server past the room still loads by what the request names');
+  assert.match(engine, /const room = _readsFromCache\.has\(cacheKey\) \? MCP_LOAD_CACHED_CHARS : MCP_LOAD_CHARS;\n\s+if \(room > mcpRoom\) \{/, 'more room once, when the provider is known to read from cache');
+  assert.match(engine, /if \(\(response\.usage\?\.cache_read_input_tokens \|\| 0\) > 0\) _readsFromCache\.add\(cacheKey\);/);
 });
 
 test('a reply handed to the background carries on as the chat\'s own request, with one note at the end', () => {
