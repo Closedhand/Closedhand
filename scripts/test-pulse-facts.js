@@ -140,8 +140,19 @@ test("who of the people a message is from no Pinned Fact names, asked about once
   const first = pulse.indexOf("if (askWho) {"), writer = pulse.indexOf("let written = await writeOnce();");
   assert.ok(first > 0 && first < writer, "before the writer");
   assert.doesNotMatch(pulse.slice(first, writer), /recordTold/, "and nothing is recorded as told");
-  assert.match(pulse, /if \(askWho\) text \+= `\\n\\nWho's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember\.`;/, "otherwise the message goes with the question");
+  assert.match(pulse, /const asking = askWho && facts\.namesThem\(text, askWho\);\n\s*if \(asking\) text \+= `\\n\\nWho's \$\{askWho\} to you, and where do they live\? Tell me once and I'll remember\.`;/, "otherwise the message goes with the question, when it speaks of them");
+  assert.match(pulse, /if \(asking\) await require\("\.\/profile-settings"\)\.updateSettings/, "and only a question asked counts as asked");
   assert.equal((pulse.match(/s\.asked_who = \[\.\.\.\(s\.asked_who \|\| \[\]\), askWho\.toLowerCase\(\)\]\.slice\(-500\)/g) || []).length, 2, "asked once, either way");
+});
+
+// The question goes under a message that speaks of them, never under one about
+// something else of theirs, where it read as random.
+test("a message speaks of someone when a word of their name is in it, whole", () => {
+  assert.equal(f.namesThem("Theo asked if you're back before the 20th.", "Theo"), true);
+  assert.equal(f.namesThem("theo's moved the weekend", "Theo Marsh"), true, "any word of the name, in any case");
+  assert.equal(f.namesThem("Your dentist's appointment on the 4th still needs moving.", "Theo"), false, "not under a message about something else");
+  assert.equal(f.namesThem("Anabel sent the forms.", "Ana"), false, "a whole word, never part of another name");
+  assert.equal(f.namesThem("Zoë says the train is late.", "Zoë"), true, "letters beyond English too");
 });
 
 // A reply that asks the person for something on what they started reaches the

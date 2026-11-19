@@ -3577,6 +3577,8 @@
   // Direct WebSocket to bot (no Supabase hops)
   var chatWs = null;
   var pendingMessages = [];
+  // A connection that comes back after a drop missed what was sent meanwhile.
+  var _chatWasOpen = false;
 
   function connectChat() {
     if (chatWs && chatWs.readyState <= 1) return;
@@ -3591,6 +3593,8 @@
           var pm = pendingMessages.shift();
           chatWs.send(JSON.stringify(typeof pm === 'string' ? { type: 'chat', text: pm } : pm));
         }
+        if (_chatWasOpen) catchUp();
+        _chatWasOpen = true;
       };
       chatWs.onmessage = function(event) {
         try {
@@ -4386,10 +4390,6 @@
     scrollToBottom();
   }
 
-  // What arrived while this tab was away: everything sent after the last
-  // message shown here, matched on the text as sent. Matching on what the
-  // page displays never worked, since that also holds the time label and the
-  // formatting, so nothing missed was ever caught up.
   // One chat in every app (lib/one-chat.js). The names of the apps a
   // message can come from; the web chat is this one, so it needs none.
   var VIA_NAMES = { whatsapp_linked: 'WhatsApp', telegram: 'Telegram' };
@@ -4436,14 +4436,43 @@
     }).catch(function () {});
   }
 
-  function missedSince(history, lastShown) {
-    if (!lastShown) return [];
-    for (var i = history.length - 1; i >= 0; i--) {
-      if (history[i].content === lastShown) {
-        return history.slice(i + 1).filter(function (m) { return m.direction === 'outbound'; });
+  // What arrived while this tab could not hear it, because it was out of view
+  // or its connection dropped and came back: everything in the conversation
+  // after the last message shown here, matched on the text as sent (what the
+  // page displays also holds the time label and the formatting). Read from
+  // the one conversation, so a turn on WhatsApp comes in too: the web chat's
+  // own log has only its own replies, and a WhatsApp conversation followed in
+  // a tab left open was missing from it until reloaded.
+  function sameWords(t) { return String(t || '').replace(REPLY_PREFIX, '').replace(/\s+/g, ' ').trim(); }
+  function missedSince(stored, shown) {
+    var seen = shown.slice(-20).map(sameWords);
+    for (var s = shown.length - 1; s >= 0 && s >= shown.length - 10; s--) {
+      for (var i = stored.length - 1; i >= 0; i--) {
+        if (sameWords(stored[i].content) === sameWords(shown[s])) {
+          return stored.slice(i + 1).filter(function (m) { return seen.indexOf(sameWords(m.content)) === -1; });
+        }
       }
     }
     return [];
+  }
+  var _catchingUp = false;
+  function catchUp() {
+    if (!hasMessages || _catchingUp) return;
+    var projectId = _openProject ? _openProject.id : null;
+    _catchingUp = true;
+    fetch('/api/conversation' + (projectId ? '?project=' + encodeURIComponent(projectId) : ''))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (conv) {
+        if (!conv || !conv.messages || projectId !== (_openProject ? _openProject.id : null)) return;
+        var shown = [].map.call(messagesEl.querySelectorAll('.message'), function (el) { return el._raw; }).filter(function (t) { return typeof t === 'string' && t; });
+        var missed = missedSince(shownInThread(conv.messages), shown);
+        if (!missed.length) return;
+        hideTyping();
+        missed.forEach(showStored);
+        scrollToBottom();
+      })
+      .catch(function () {})
+      .then(function () { _catchingUp = false; });
   }
 
   // A reopened conversation shows what was said. A note wholly in brackets
@@ -4832,15 +4861,7 @@
     if (document.visibilityState === 'visible' && isAuthenticated) {
       connectChat();
       pollAgentStatus();
-      // Poll for any missed messages
-      fetch('/api/chat/history').then(function(r) { return r.json(); }).then(function(data) {
-        var allShown = messagesEl.querySelectorAll('.message');
-        var last = allShown.length ? allShown[allShown.length - 1]._raw : '';
-        missedSince(data.messages || [], last).forEach(function(m) {
-          hideTyping();
-          addMessage(m.content, 'bot', null, m.created_at || null);
-        });
-      }).catch(function() {});
+      catchUp();
     }
   });
 

@@ -101,21 +101,28 @@ test("a reopened conversation shows what was said, not Closedhand's bookkeeping"
   assert.doesNotMatch(page, /thread\.messages\.forEach/, "nothing draws a thread unfiltered");
 });
 
-test("coming back to the tab shows what arrived while away", () => {
-  const start = page.indexOf("  function missedSince(history, lastShown) {");
+test("coming back to the tab, or a connection coming back, shows what arrived meanwhile, from every app", () => {
+  const prefix = page.match(/  var REPLY_PREFIX = .*;\n/)[0];
+  const start = page.indexOf("  function sameWords(t) {");
   const box = {};
-  vm.runInNewContext(page.slice(start, page.indexOf("\n  }\n", start) + 4) + "\nthis.f = missedSince;", box);
-  const history = [
-    { direction: "inbound", content: "find me a hotel" },
-    { direction: "outbound", content: "On it, back in about ten minutes." },
-    { direction: "outbound", content: "Three good ones: …" },
-    { direction: "outbound", content: "Reminder: iCloud storage" },
+  vm.runInNewContext(prefix + page.slice(start, page.indexOf("\n  }\n", page.indexOf("  function missedSince(stored, shown) {", start)) + 4) + "\nthis.f = missedSince;", box);
+  const stored = [
+    { role: "user", content: "find me a hotel" },
+    { role: "assistant", content: "On it, back in about ten minutes." },
+    { role: "user", content: "[replying to Closedhand's message: \"On it\"] make it near the station", via: "whatsapp_linked" },
+    { role: "assistant", content: "Three good ones: …", via: "whatsapp_linked" },
+    { role: "assistant", content: "Reminder: iCloud storage" },
   ];
-  assert.deepEqual([...box.f(history, "On it, back in about ten minutes.")].map((m) => m.content), ["Three good ones: …", "Reminder: iCloud storage"]);
-  assert.deepEqual([...box.f(history, "Reminder: iCloud storage")], [], "nothing new");
-  assert.deepEqual([...box.f(history, "")], [], "an empty page has nothing to anchor on");
+  const f = (shown) => [...box.f(stored, shown)].map((m) => m.content);
+  assert.deepEqual(f(["find me a hotel", "On it, back in about ten minutes."]), [stored[2].content, "Three good ones: …", "Reminder: iCloud storage"], "a WhatsApp turn comes in too, the person's words with it");
+  assert.deepEqual(f(["On it, back in about ten minutes.", "make it near the station"]), ["Three good ones: …", "Reminder: iCloud storage"], "their words shown live without the quoted reply still count as shown");
+  assert.deepEqual(f(["Three good ones: …", "Reminder: iCloud storage"]), [], "nothing new");
+  assert.deepEqual(f([]), [], "an empty page has nothing to anchor on");
+  assert.equal((page.match(/var REPLY_PREFIX = /g) || []).length, 1, "one reading of a quoted reply");
   assert.match(page, /div\._raw = raw;/, "each message keeps the text as sent");
-  assert.match(page, /missedSince\(data\.messages \|\| \[\], last\)/);
+  assert.match(page, /fetch\('\/api\/conversation' \+ \(projectId \? '\?project=' \+ encodeURIComponent\(projectId\) : ''\)\)[\s\S]{0,400}missedSince\(shownInThread\(conv\.messages\), shown\)/, "read from the conversation open here, Chat or a project's");
+  assert.match(page, /if \(document\.visibilityState === 'visible' && isAuthenticated\) \{\n\s*connectChat\(\);\n\s*pollAgentStatus\(\);\n\s*catchUp\(\);/, "when the tab comes back");
+  assert.match(page, /if \(_chatWasOpen\) catchUp\(\);\n\s*_chatWasOpen = true;/, "and when its connection comes back by itself");
 });
 
 test("the conversation uses the app's scale, set once, larger on touch screens", () => {
