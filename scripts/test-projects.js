@@ -61,7 +61,7 @@ function fakeDb(tables) {
   return { db, log };
 }
 
-function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, tables = {}, people = null } = {}) {
+function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, tables = {}, people = null, facts = {} } = {}) {
   const { db, log } = fakeDb({ projects: rows, conversation_threads: threads, ...tables });
   const asked = [], judged = [], saved = [];
   const fakes = {
@@ -76,7 +76,7 @@ function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {
     "./model-wire": { responseText: (r) => r.answer },
     "./services/usi": { embedText: async () => null, embedBatch: async () => [] },
     "./profile-settings": { updateSettings: async (userId, change) => { const s = {}; change(s); saved.push(s); } },
-    "../user-store": { UserStore: { load: async () => ({ userId: "u1", profile: { timezone: "Europe/London" } }) } },
+    "../user-store": { UserStore: { load: async () => ({ userId: "u1", profile: { timezone: "Europe/London" }, facts }) } },
     "./platforms/whatsapp-linked": { isOwnChat: () => false },
     ...(people ? { "./people": people } : {}),
   };
@@ -742,7 +742,8 @@ test("a project follows what comes in: whole conversations with someone its reco
   assert.doesNotMatch(asked, /sofa/, "nor a short word of its name, which says the same about anything");
   assert.doesNotMatch(asked, /paid the deposit|20% off/, "never their own chat with Closedhand, nor mail sent to a list");
   assert.match(asked, /Go through OPEN NOW one by one\. Drop an open item once what was said shows it answered, done or no longer needed/);
-  assert.match(asked, /Only what is about this project changes it: leave out anything else these messages say, however personal\./);
+  assert.match(asked, /\[m1\] [^\n]*York Removals[^\n]*Deposit received/, "each item has an id the answer can name");
+  assert.match(asked, /Only the items in about change the picture; leave out anything else they say, however personal\./);
   const p = one.rows[0];
   assert.deepEqual(p.state.open, ["Return the old keys"], "what it settled goes, what is new comes once, reworded or not");
   assert.deepEqual(p.state.people.map((x) => x.name), ["Dana Fixture"], "a list it did not give is kept, not emptied");
@@ -756,32 +757,33 @@ test("a project follows what comes in: whole conversations with someone its reco
   assert.deepEqual(unreadable.rows[0].state.open, ["Pay the deposit", "Book the parking permit"], "no answer changes nothing");
   assert.equal(unreadable.saved.length, 0, "and is looked at again next time");
 
-  // Whole chats are for the project's own people, not anyone its running summary
-  // mentions, and never for their own family. Anyone the record lists still counts whole.
+  // Whole chats are gathered from the project's own people, not from anyone its
+  // running summary mentions, and its LLM says which of what came in is the
+  // project's, knowing who everyone is: someone in it, family or not, talks
+  // about other things too.
   const morgan = [
     msg("Morgan", "Morgan", 4, "Where should we live after the baby comes?"),
     msg("Morgan", "Morgan", 3, "Is Dana Fixture still helping with the van?"),
   ];
   const familyTables = () => ({ ...tables(), data_cache: morgan.map((r) => ({ ...r })) });
-  const nobody = { load: async () => ({ ofChat: () => null, ofHandle: () => null }), mail: (a) => "mail:" + a };
+  const nobody = { load: async () => ({ ofChat: () => null, ofHandle: () => null, contactLine: () => "" }), mail: (a) => "mail:" + a };
   const inSummary = loadProjects([{ ...move(), summary: "Morgan will stay nearby during the move." }], answer, { tables: familyTables(), people: nobody });
   await inSummary.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
   assert.match(inSummary.asked[0], /Is Dana Fixture still helping/, "what names someone in it counts");
   assert.doesNotMatch(inSummary.asked[0], /Where should we live/, "a name the summary mentions does not bring the whole chat");
   const listed = () => ({ ...move(), state: { ...move().state, people: [...move().state.people, { name: "Morgan Fixture", position: "lending the van" }] } });
-  const asFamily = loadProjects([listed()], answer, { tables: familyTables(), people: {
-    load: async () => ({ ofChat: (jid) => (jid === "Morgan" ? { role: "wife", facts: ["family-wife"] } : null), ofHandle: () => null }),
-    mail: (a) => "mail:" + a } });
-  await asFamily.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
-  assert.doesNotMatch(asFamily.asked[0], /Where should we live/, "nor does family, even listed in it");
-  const byPinnedName = loadProjects([listed()], answer, { tables: familyTables(), people: {
-    load: async () => ({ ofChat: () => null, ofHandle: () => null, persons: [{ name: "Morg", role: "wife", facts: ["family-wife-morg"], names: [{ name: "Morg" }] }] }),
-    mail: (a) => "mail:" + a } });
-  await byPinnedName.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
-  assert.doesNotMatch(byPinnedName.asked[0], /Where should we live/, "family known by a shorter name in a Pinned Fact than the chat's (\"Morg\", \"Morgan\")");
-  const notFamily = loadProjects([listed()], answer, { tables: familyTables(), people: nobody });
-  await notFamily.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
-  assert.match(notFamily.asked[0], /Where should we live/, "someone else the record lists counts whole, as the movers do");
+  const wife = { "family-wife-morgan": { value: "Sam's wife is Morgan.", category: "person", subject: "Morgan" }, "profile-home": { value: "Lives in Leeds.", category: "profile" }, "pattern-mail": { value: "Heavy marketing mail.", category: "topic" } };
+  const picked = (ids) => JSON.stringify({ ...JSON.parse(answer), about: ids });
+  const some = loadProjects([listed()], picked(["m2"]), { tables: familyTables(), people: nobody, facts: wife });
+  await some.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.match(some.asked[0], /\[m1\] [^\n]*Is Dana Fixture[\s\S]*\[m2\] [^\n]*Where should we live/, "someone the record lists comes whole, family too");
+  assert.match(some.asked[0], /WHO THE USER AND THE PEOPLE IN THEIR LIFE ARE:[\s\S]*Lives in Leeds\.[\s\S]*Sam's wife is Morgan\./, "told who they are, as the chat knows them");
+  assert.doesNotMatch(some.asked[0], /marketing mail/, "and nothing else of their Pinned Facts");
+  assert.equal(some.rows[0].summary, "Deposit paid and the permit is sorted.", "what it says is the project's changes the picture");
+  const none = loadProjects([listed()], picked([]), { tables: familyTables(), people: nobody, facts: wife });
+  await none.projects.followIncoming("u1", { now: Date.parse("2026-11-04T18:00:00Z") });
+  assert.equal(none.rows[0].summary, "Van booked for Saturday.", "and when none of it is, nothing changes, whatever else the answer says");
+  assert.equal(none.saved.length, 1, "and the look is noted all the same");
 
   // Pulse reads the projects after they caught up; a timer keeps them going while Pulse is off.
   const pulse = read("lib/pulse.js");
