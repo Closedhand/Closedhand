@@ -77,6 +77,22 @@ test("placed: by a Pinned Fact, or by the relation they were saved under when th
   assert.equal(bracket.describe(bracket.find("mum")[0]), "Wren, your mum", "a fact's subject is a name, not its note");
 });
 
+test("a Pinned Fact gives the relation tied to its own person, not every relation it mentions", () => {
+  const p = people.build({ userName: "Sam Fixture", facts: {
+    "family-mum-wren": { value: "Sam's mother is called Wren. Her birthday is 2 March.", category: "person", subject: "Wren" },
+    "family-wife-ana": { value: "Sam's wife is Ana. She gets on well with Sam's mother and visits Sam's father in Alnwick.", category: "person", subject: "Ana" },
+    "friend-bea": { value: "Bea is Sam's wife's oldest friend; Sam's mother knows her too.", category: "person", subject: "Bea" },
+    "person-cal": { value: "Cal, Sam's husband, works nights.", category: "person", subject: "Cal" },
+  } });
+  const [mum] = p.find("mum"), [wife] = p.find("wife");
+  assert.equal(p.describe(mum), "Wren, your mum");
+  assert.equal(p.describe(wife), "Ana, your wife", "the wife's fact mentions the mother, and she stays the wife");
+  assert.notEqual(mum, wife, "and two people");
+  assert.equal(p.find("dad").length, 0, "nor is anyone the father the wife's fact only mentions");
+  assert.equal(p.find("Bea")[0].role, null, "a friend's fact that mentions the wife and mother is neither");
+  assert.equal(p.describe(p.find("husband")[0]), "Cal, your husband", "a relation tied to the name in the text, with none in the key");
+});
+
 test("a search for a person brings their other names and addresses, and a name many share brings none", () => {
   const p = world();
   assert.deepEqual(p.expand(["dad"]).sort(), ["rowan", "rowan.pike@example.org"].sort());
