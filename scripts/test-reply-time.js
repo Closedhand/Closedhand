@@ -9,11 +9,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 
-test("a model request gets the engine's three minutes, and one that ran out is not sent again", () => {
+test("a model request gets three minutes, and one that ran out while writing is not sent again", () => {
   const wire = read('lib/model-wire.js'), engine = read('lib/engine.js');
-  assert.match(wire, /const signal = options\.signal \|\| AbortSignal\.timeout\(180000\);/);
-  assert.match(engine, /rej\(new Error\("LLM API timeout \(3min\)"\)\), 180_000\)/, 'the same three minutes');
-  assert.match(engine, /const ranOut = \/timeout\|timed out\/i\.test\(`\$\{llmErrFirst\?\.name \|\| ""\} \$\{llmErrFirst\?\.message \|\| ""\}`\);\n\s*if \(!ranOut\) \{ try \{ response = await require\("\.\/sleep-watch"\)\.retryNetwork\(/);
+  assert.match(wire, /stallWatch\(options\.signal \|\| AbortSignal\.timeout\(options\.limitMs \|\| 180000\), \{ ours: !options\.signal \}\);/);
+  assert.match(engine, /rej\(new Error\("LLM API timeout \(3min\)"\)\), 190_000\)/, 'the chat waits just past the same three minutes (scripts/test-stalled-llm.js)');
+  assert.match(engine, /const ranOut = llmErr && \/timeout\|timed out\/i\.test\(`\$\{llmErr\?\.name \|\| ""\} \$\{llmErr\?\.message \|\| ""\}`\);\n\s*if \(llmErr && !ranOut\) \{ try \{ response = await require\("\.\/sleep-watch"\)\.retryNetwork\(/);
   for (const e of [{ name: 'TimeoutError', message: 'The operation was aborted due to timeout' }, { message: 'LLM API timeout (3min)' }]) {
     assert.ok(/timeout|timed out/i.test(`${e.name || ''} ${e.message || ''}`), e.message);
   }

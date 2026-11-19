@@ -295,7 +295,7 @@ test("the sealed hardware runs Managed Models and is no provider people pick: fo
   assert.equal(require("../webapp/provider-names").PROVIDERS.near, undefined);
   assert.doesNotMatch(read("webapp/model-summary.js"), /near\.ai/);
   assert.ok(near.isNear({ provider: "near" }) && near.isNear({ provider: "custom", baseUrl: "https://cloud-api.near.ai/v1" }) && !near.isNear({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1" }));
-  assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal, \.\.\.\(live \? \{ onChunk: live\.take \} : \{\}\) \}\)/);
+  assert.match(read("lib/model-wire.js"), /near\.isNear\(conn\) \? await near\.complete\(conn, body, \{ signal, \.\.\.\(live \? \{ onChunk: \(piece\) => \{ watch\.heard\(\); return live\.take\(piece\); \} \} : \{\}\) \}\)/);
 });
 
 test("only the NEAR AI models whose privacy can be proven are listed, as they say they read, asked once a day", async () => {

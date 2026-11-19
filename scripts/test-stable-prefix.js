@@ -36,7 +36,8 @@ test('a background job\'s prompt has the clock of when it began, whenever it is 
   assert.equal(a, b, 'the same prompt after a pause, so a resumed job is read from cache');
   assert.match(a, /That is when this job began; it can be some minutes later by now\./);
   const agents = read('lib/agents.js');
-  assert.match(agents, /const began = await jobBegan\(taskId\);\n\s+const systemPrompt = buildAgentSystemPrompt\(goal, userStore, platform, \{ began \}\)/);
+  assert.match(agents, /const began = await jobBegan\(taskId\);/);
+  assert.match(agents, /: buildAgentSystemPrompt\(goal, userStore, platform, \{ began \}\) \+ toolScope\.catalog/);
   assert.match(agents, /if \(kept && now - kept < SAME_CLOCK_MS && kept <= now\) return new Date\(kept\);/, 'kept with the job while it is recent, taken afresh after a long pause');
 });
 
@@ -75,4 +76,36 @@ test('a connected server\'s tools load with the first call when the request name
   const full = new Set(within);
   assert.equal(likelyMcpTools('move my dentist event', [], big, full).size, 0, 'what the conversation loaded already counts towards the size');
   assert.match(read('lib/engine.js'), /for \(const name of likelyMcpTools\(userMessage, conversation, getUserMcpToolDefs\(userId\), loadedTools\)\) loadedTools\.add\(name\);/);
+});
+
+test('a reply handed to the background carries on as the chat\'s own request, with one note at the end', () => {
+  const { carriedMessages, carriedTools, CARRIED_ON } = require('../lib/task-evidence');
+  const chat = {
+    system: [{ type: 'text', text: 'You are Closedhand.', cache_control: { type: 'ephemeral' } }],
+    tools: [{ name: 'search_cache', description: 's', input_schema: {} }, { name: 'umcp_office_calendar_get_events', description: 'c', input_schema: {} }],
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: '[Closedhand context for this message]' }, { type: 'text', text: 'Who is free on Friday?' }] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'umcp_office_calendar_get_events', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '[]' }] },
+    ],
+  };
+  const messages = carriedMessages(chat);
+  assert.deepEqual(messages.slice(0, 2), chat.messages.slice(0, 2), 'everything before the note is exactly what the chat sent, so it is read from cache');
+  assert.equal(messages.length, 3, 'the note joins the last message rather than making two in a row from the same side');
+  assert.deepEqual(messages[2].content[0], chat.messages[2].content[0], 'tool results stay first in their message');
+  assert.equal(messages[2].content[1].text, CARRIED_ON);
+  assert.equal(chat.messages[2].content.length, 1, 'the chat\'s own copy is not changed');
+  assert.equal(carriedMessages({ messages: [{ role: 'assistant', content: 'Looking.' }] }).at(-1).role, 'user');
+
+  const scope = { has: (n) => ['save_report', 'umcp_office_rooms_book'].includes(n), describe: (n) => ({ name: n, description: 'd', input_schema: {}, note: 'x' }) };
+  const names = (msgs) => carriedTools(chat, scope, msgs).map((t) => t.name);
+  assert.deepEqual(names(messages), ['search_cache', 'umcp_office_calendar_get_events'], 'the chat\'s tools as they were, nothing added at the start');
+  const more = [...messages, { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'get_tool_details', input: { tool_name: 'umcp_office_rooms_book' } }, { type: 'tool_use', id: 't3', name: 'get_tool_details', input: { tool_name: 'bridge_shell_run' } }] }];
+  assert.deepEqual(names(more), ['search_cache', 'umcp_office_calendar_get_events', 'umcp_office_rooms_book'], 'one it reaches for later goes at the end; one a background job may not use is not added');
+  assert.equal(carriedTools(chat, scope, more)[2].note, undefined);
+
+  const engine = read('lib/engine.js'), agents = read('lib/agents.js');
+  assert.match(engine, /if \(lastSent\) snapshot\.chat = \{ system: lastSent\.system, tools: lastSent\.tools, messages: lastSent\.place\(messages\) \};/);
+  assert.match(agents, /const carried = resumeState\?\.runtime\?\.request\?\.chat \|\| null;\n\s+const systemPrompt = carried \? carried\.system/);
+  assert.match(agents, /tools: carried \? require\("\.\/task-evidence"\)\.carriedTools\(carried, toolScope, messages\) : toolScope\.definitions\(messages\),/);
 });

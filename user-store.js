@@ -528,12 +528,14 @@ class UserStore {
   // eventAt: when the thing the reminder is about happens, if it is about a
   // dated event, so the dashboard can show that rather than the reminder's
   // own firing time.
-  async saveSchedule(name, cronExpression, task, chatId, runOnce = null, timezone = null, platform = null, eventAt = null, kind = "reminder") {
+  // `exact`: the moment a one-off is for, to the second (runAt), and for a
+  // task that is one step fixed in advance, that step (action).
+  async saveSchedule(name, cronExpression, task, chatId, runOnce = null, timezone = null, platform = null, eventAt = null, kind = "reminder", exact = {}) {
     // Remove existing with same name
     await supabase.from("schedules").delete().eq("user_id", this.userId).eq("name", name);
     const { data } = await supabase
       .from("schedules")
-      .insert({ user_id: this.userId, name, cron_expression: cronExpression, task, enabled: true, chat_id: chatId, run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" ? "task" : "reminder" })
+      .insert({ user_id: this.userId, name, cron_expression: cronExpression, task, enabled: true, chat_id: chatId, run_once: runOnce, timezone, platform, event_at: eventAt, kind: kind === "task" ? "task" : "reminder", run_at: exact.runAt || null, action: exact.action || null })
       .select()
       .single();
 
@@ -644,7 +646,7 @@ class UserStore {
     // Get users with active schedules
     const { data: schedUsers } = await supabase
       .from("schedules")
-      .select("user_id, name, cron_expression, task, chat_id, platform, run_once, timezone, kind, created_at, last_run")
+      .select("user_id, name, cron_expression, task, chat_id, platform, run_once, timezone, kind, created_at, last_run, run_at, action")
       .eq("enabled", true);
 
     // Get users with pulse enabled
@@ -711,6 +713,9 @@ class UserStore {
               // one-off that came due while Closedhand was off is told.
               created_at: s.created_at,
               last_run: s.last_run,
+              // The exact moment a one-off is for, and the step fixed for it.
+              run_at: s.run_at || null,
+              action: s.action || null,
             };
           })
           .filter((s) => s._chatId),
