@@ -104,7 +104,7 @@ test("a correction received during generation changes the next answer",async()=>
 });
 for(const verdict of [{passed:false,status:"failed",feedback:"Source missing"},{passed:false,status:"unavailable",feedback:"Checker offline"}])test("one-off preserves partial output when verification is "+verdict.status,async()=>{
   const h=harness({tables:{agent_tasks:[row()]},verdict});await h.load("agents").processPendingTasks();await until(()=>h.db.tables.agent_tasks[0].status==="partial");
-  assert.equal(h.calls.length,verdict.status==="failed"?2:1);assert.ok(h.db.tables.agent_tasks[0].result.includes("20:00"));
+  assert.equal(h.calls.length,verdict.status==="failed"?3:1);assert.ok(h.db.tables.agent_tasks[0].result.includes("20:00"));
 });
 // A rewrite cannot make a missing booking appear. When the check says so,
 // the honest answer goes out once, marked unfinished, with no note left over.
@@ -113,10 +113,19 @@ test("one-off sends an honest blocked answer without a rewrite",async()=>{
   await h.load("agents").processPendingTasks();await until(()=>h.db.tables.agent_tasks[0].status==="partial");
   assert.equal(h.calls.length,1);assert.ok(!JSON.stringify(h.db.tables.agent_tasks[0].messages).includes("VERIFICATION"));
 });
-test("a failed check rewrites once and leaves no unanswered note",async()=>{
+// Each failed check sends the job back to work, the last one told to do what
+// is left or say why it can't; that answer goes as it is.
+test("a failed check sends the job back to work after each check and leaves no unanswered note",async()=>{
   const h=harness({tables:{agent_tasks:[row()]},verdict:{passed:false,status:"failed",feedback:"Source missing"}});
   await h.load("agents").processPendingTasks();await until(()=>h.db.tables.agent_tasks[0].status==="partial");
   const msgs=h.db.tables.agent_tasks[0].messages;assert.equal(msgs[msgs.length-1].role,"assistant");
+  const notes=JSON.stringify(msgs);assert.match(notes,/VERIFICATION \(attempt 1\/2\)/);assert.match(notes,/VERIFICATION \(attempt 2\/2\)/);assert.doesNotMatch(notes,/attempt 3/);
+});
+test("a routine's failed check works the same way",async()=>{
+  const auto=row({status:"pending",lease_until:"2000-01-01T00:00:00Z",runtime:{config:{task_prompt:"Read departure",task_max_duration:900}},started_at:new Date().toISOString()});
+  const h=harness({tables:{automation_runs:[auto]},verdict:{passed:false,status:"failed",feedback:"Source missing"}});
+  await h.load("automations").processPendingAutomationRuns();await until(()=>h.db.tables.automation_runs[0].status==="partial");
+  assert.equal(h.calls.length,3);assert.match(JSON.stringify(h.db.tables.automation_runs[0].messages),/VERIFICATION \(attempt 2\/2\)/);
 });
 test("automation sends an honest blocked answer without a rewrite",async()=>{
   const auto=row({status:"pending",lease_until:"2000-01-01T00:00:00Z",runtime:{config:{task_prompt:"Read departure",task_max_duration:900}},started_at:new Date().toISOString()});

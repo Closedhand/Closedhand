@@ -16,14 +16,11 @@ test('a page link moves after the answer, once', () => {
   assert.ok(engine.indexOf('require("./page-link").linkLast(finalText)') < engine.indexOf('finalText = require("./follow-on").withBreaks(finalText);'));
 });
 
-test('the header names what was not done, and only when it was really not done', () => {
-  const stub = (rel, exports) => { const p = require.resolve(rel); require.cache[p] = { id: p, filename: p, loaded: true, exports }; };
-  for (const m of ['../lib/llm', '../lib/agent-context', '../lib/task-evidence', '../lib/response-presentation', '../lib/dashboard-links', '../lib/follow-on', '../lib/task-model', '../lib/db', '../lib/messaging', '../lib/context', '../lib/storage', '../lib/user-mutex']) { try { stub(m, {}); } catch (_) {} }
-  const { partialHeader } = require('../lib/task-delivery');
-  const row = (verdict, status = 'partial') => ({ status, runtime: { verification: { verdict } } });
-  assert.equal(partialHeader(row(null, 'completed')), '');
-  assert.equal(partialHeader(row({ status: 'unavailable' })), '', 'a check that could not run is not a gap');
-  assert.equal(partialHeader(row({ status: 'failed', retry: false, criteriaResults: [{ criterion: 'Booking moved', met: false }] })), '', 'an answer asking the person explains itself');
-  assert.equal(partialHeader(row({ status: 'failed', retry: true, criteriaResults: [{ criterion: 'Booking moved to 7pm', met: false }, { criterion: 'Times given', met: true }] })), 'Not done yet: booking moved to 7pm.\n\n');
-  assert.equal(partialHeader({ status: 'partial', runtime: { lastVerdict: { status: 'failed', criteriaResults: [{ criterion: 'Report sent', met: false }] } } }), 'Not done yet: report sent.\n\n');
+// A job's answer says itself what it could not do and why (verification.js
+// retryNote); a line of Closedhand's own on top ("Not done yet: ...") read as
+// if the job were still going when it had stopped.
+test("a job's answer goes as it was written, with no line of Closedhand's own on top", () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'task-delivery.js'), 'utf8');
+  assert.doesNotMatch(src, /Not done yet|partialHeader/);
+  assert.match(src, /if \(!report\) return failedNote\(row, store\);\n\s*return reportDigest\(report, dest\.platform/);
 });

@@ -268,8 +268,13 @@ test("an answer sent back by the quality check is rewritten as the only answer",
   vm.runInNewContext(src.slice(start, src.indexOf("\n}\n", start) + 2) + "\nthis.f = retryNote;", box);
   const note = box.f(1, 2, "Prices are weekly totals, not nightly.");
   assert.match(note, /Prices are weekly totals/);
+  assert.match(note, /Do what is still missing first\./);
   assert.match(note, /has not seen your previous answer/);
   assert.match(note, /do not mention a correction, an earlier version or this check/);
+  assert.match(note, /What you sent them along the way, such as pictures, has reached them: the answer accounts for each, and says why you sent another\./, "a second picture says why it came");
+  const last = box.f(2, 2, "Still clothed.");
+  assert.match(last, /This was the last check\. If there is still a way to do what is missing, do it now\. If it cannot be done, say so plainly in the answer: what you could not do and why it could not be done\./);
+  assert.doesNotMatch(last, /Do what is still missing first/);
   for (const f of ["lib/agents.js", "lib/automations.js"]) {
     const caller = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
     assert.match(caller, /text: retryNote\(/, `${f} uses the shared note`);
