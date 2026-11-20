@@ -19,6 +19,8 @@ const rules = require("../lib/project-rules");
 
 const DAY = 86400000;
 const iso = (ms) => new Date(ms).toISOString();
+// Lets a judgement the reply did not wait for finish.
+const settled = () => new Promise((r) => setImmediate(r));
 
 function fakeDb(tables) {
   const log = { updates: [], inserts: [], deletes: [] };
@@ -61,7 +63,7 @@ function fakeDb(tables) {
   return { db, log };
 }
 
-function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, tables = {}, people = null, facts = {} } = {}) {
+function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {}, goals = [], verdict = null, held = null, tables = {}, people = null, facts = {} } = {}) {
   const { db, log } = fakeDb({ projects: rows, conversation_threads: threads, ...tables });
   const asked = [], judged = [], saved = [];
   const fakes = {
@@ -70,7 +72,7 @@ function loadProjects(rows, answer = '{"touched":[]}', { threads = [], files = {
     "./timezone": { getUserTimezone: () => "UTC" },
     "./db": { supabase: db },
     "./llm": { getInternalClient: () => ({ model: "m", client: { messages: { create: async (req) => { asked.push(req.messages[0].content); return { answer }; } } } }),
-      getUserLLMClient: () => ({ model: "main", client: { messages: { create: async (req) => { judged.push(req); return { answer: verdict }; } } } }) },
+      getUserLLMClient: () => ({ model: "main", client: { messages: { create: async (req) => { judged.push(req); if (held) await held; return { answer: verdict }; } } } }) },
     "./task-model": { modelCall: (client, req) => client.messages.create(req) },
     "./verification": { parseObject: (t) => { try { return JSON.parse(t); } catch { return null; } } },
     "./model-wire": { responseText: (r) => r.answer },
@@ -253,7 +255,8 @@ test("something noticed is offered only when the rules pass and the person's LLM
   await projects.warm("u1");
   await projects.fileTurn("u1", said);
   assert.equal(await projects.pickTouched("u1", said), "eeee5555-party");
-  assert.equal(await projects.judgeTouched("u1", said, [{ role: "user", content: "Mia's party is on the 14th" }]), true);
+  assert.equal(await projects.judgeTouched("u1", said, [{ role: "user", content: "Mia's party is on the 14th" }]), null, "the reply never waits for the judgement");
+  await settled();
   assert.equal(judged.length, 1, "judged by the person's own LLM");
   assert.match(judged[0].system, /Say yes only when all of these hold: the user is the one running it[\s\S]*When unsure, say no\./);
   assert.match(judged[0].messages[0].content, /"first_noticed_days_ago":1[\s\S]*"their_projects":\["House move"\]/);
@@ -286,7 +289,8 @@ test("something noticed is offered only when the rules pass and the person's LLM
   await no.projects.warm("u1");
   await no.projects.fileTurn("u1", said);
   await no.projects.pickTouched("u1", said);
-  assert.equal(await no.projects.judgeTouched("u1", said, []), false);
+  assert.equal(await no.projects.judgeTouched("u1", said, []), null);
+  await settled();
   assert.doesNotMatch(no.projects.getProjectsBlock("u1"), /PROJECT TO OFFER/);
   assert.equal(no.rows[0].status, "declined");
 
@@ -305,6 +309,29 @@ test("something noticed is offered only when the rules pass and the person's LLM
     assert.equal(r.rows[0].status, "offered", `${why}: kept, it may grow`);
     assert.doesNotMatch(r.projects.getProjectsBlock("u1"), /PROJECT TO OFFER/, why);
   }
+});
+
+test("a judgement that comes after the reply is written is offered at the next message about it", async () => {
+  const noticed = { id: "eeee5555-party", name: "Mia's party", emoji: "🎉", status: "offered", summary: "Party on the 14th", state: { people: [{ name: "Ravi Fixture" }], open: ["Book the room", "Order the cake"] }, links: [], files: [], offered_at: null, created_at: iso(Date.now() - DAY), last_touched: iso(Date.now()) };
+  const said = "ravi fixture said yes to mia's party";
+  let release;
+  const { projects, judged } = loadProjects([noticed], undefined, { verdict: JSON.stringify({ offer: true, why: "They are organising it", name: "Mia's party", emoji: "🎉" }), held: new Promise((r) => { release = r; }) });
+  await projects.warm("u1");
+  await projects.fileTurn("u1", said);
+  await projects.pickTouched("u1", said);
+  assert.equal(await projects.judgeTouched("u1", said, []), null);
+  assert.doesNotMatch(projects.getProjectsBlock("u1"), /PROJECT TO OFFER/, "this reply goes without it");
+  release();
+  await settled();
+  const next = "the cake for mia's party is ordered, ravi fixture is bringing candles";
+  await projects.fileTurn("u1", next);
+  await projects.pickTouched("u1", next);
+  assert.equal(await projects.judgeTouched("u1", next, []), true, "the yes is kept");
+  assert.equal(judged.length, 1, "and not asked again");
+  assert.match(projects.getProjectsBlock("u1"), /PROJECT TO OFFER: [^\n]*Mia's party/);
+  await projects.fileTurn("u1", said);
+  await projects.pickTouched("u1", said);
+  assert.equal(await projects.judgeTouched("u1", said, []), null, "offered once");
 });
 
 test("starting and changing a project holds to one emoji each", async () => {
