@@ -43,7 +43,7 @@ test("one narrow question to their LLM picks who to ask about, once, in Pulse's 
 
 test("the question follows the answer as its own message, unless a fact pinned meanwhile names them", async () => {
   const src = read("lib/ask-who.js");
-  assert.match(src, /s\.asked_who = \[\.\.\.\(s\.asked_who \|\| \[\]\), found\.who\.toLowerCase\(\)\]\.slice\(-500\)/, "the same list Pulse keeps");
+  assert.match(src, /s\.asked_who = \[\.\.\.\(s\.asked_who \|\| \[\]\), who\.toLowerCase\(\)\]\.slice\(-500\)/, "the same list Pulse keeps");
   assert.match(src, /return `\$\{String\(reply\)\.trim\(\)\}\\n\[\[next\]\]\\n\$\{found\.question\}`;/);
   const named = { ...facts, "friend-bea": { value: "Bea is Sam's oldest friend, in Porto.", subject: "Bea" } };
   assert.equal(await a.addQuestion({ store: { facts: named }, check: Promise.resolve({ who: "Bea", kind: "name", question: "?" }), reply: "Yes." }), "Yes.");
@@ -51,6 +51,47 @@ test("the question follows the answer as its own message, unless a fact pinned m
   assert.match(engine, /if \(!askWhoCheck\) askWhoCheck = require\("\.\/ask-who"\)\.whoToAsk\(\{ userId, store: ctx\.activeUserStore, message: userMessage \}\)\.catch\(\(\) => null\);\n\s*const recalled = fetchRelevantContext/, "beside the turn's recall");
   assert.ok(engine.indexOf('require("./ask-who").addQuestion(') < engine.indexOf('finalText = require("./follow-on").withBreaks(finalText);'), "before the reply is split");
   assert.ok(engine.indexOf('require("./ask-who").addQuestion(') > engine.indexOf("Run ended at a confirmation gate"), "never on a reply that waits for a yes");
+});
+
+test("a check still running never holds the answer: the question follows as its own message once it is in, and counts as asked only if it went", async () => {
+  const saved = [];
+  const settings = require.resolve("../lib/profile-settings");
+  const real = require.cache[settings];
+  require.cache[settings] = { id: settings, filename: settings, loaded: true, exports: { updateSettings: async (userId, change) => { const x = {}; change(x); saved.push(x.asked_who); } } };
+  try {
+    const found = { who: "Tamsin", kind: "name", question: "Who's Tamsin to you, and where do they live? Tell me once and I'll remember." };
+    // In already: under the answer, as before.
+    assert.equal(await a.addQuestion({ userId: "u1", store: { facts }, check: Promise.resolve(found), reply: "Booked." }), `Booked.\n[[next]]\n${found.question}`);
+    assert.deepEqual(saved.splice(0), [["tamsin"]]);
+    // Still running: the answer goes as it is, at once.
+    let finish;
+    const check = new Promise((r) => { finish = r; });
+    const sent = [];
+    const reply = await a.addQuestion({ userId: "u1", store: { facts }, check, reply: "Booked.", later: async (q) => { sent.push(q); return true; } });
+    assert.equal(reply, "Booked.", "the answer does not wait");
+    assert.deepEqual(sent, []);
+    finish(found);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(sent, [found.question], "then the question, on its own");
+    assert.deepEqual(saved.splice(0), [["tamsin"]], "asked, so asked once");
+    // Not sent (they wrote again meanwhile): not counted, so asked next time.
+    let finish2;
+    const check2 = new Promise((r) => { finish2 = r; });
+    await a.addQuestion({ userId: "u1", store: { facts }, check: check2, reply: "Booked.", later: async () => false });
+    finish2(found);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(saved, [], "not noted when it did not go");
+  } finally {
+    if (real) require.cache[settings] = real; else delete require.cache[settings];
+  }
+  const engine = read("lib/engine.js");
+  assert.match(engine, /later: inProject \? null : \(question\) => askLater\(/, "outside a project's conversation");
+  const later = engine.slice(engine.indexOf("async function askLater("), engine.indexOf("// After yielding to a newer message"));
+  assert.match(later, /if \(ctx\.currentAsk\[userId\] \|\| ctx\.pendingAsks\[userId\] > 0\) return false;/, "not while they are writing again");
+  assert.match(later, /if \(current\.conversations\.filter\(\(m\) => m && m\.role === "user"\)\.length !== userTurns\) return false;/, "not once they have");
+  assert.match(later, /await require\("\.\/messaging"\)\.sendToPlatform\(platform, chatId, question\);\n\s*current\.conversations\.push\(\{ role: "assistant", content: question, via: platform \}\);/, "sent, so it reaches the other app, and kept in the conversation");
 });
 
 test("a fact pinned in the same step as a change that waits for a yes is pinned at once", () => {

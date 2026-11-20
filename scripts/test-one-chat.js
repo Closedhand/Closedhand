@@ -87,18 +87,34 @@ test("a turn's messages carry the app; the other apps get the turn: the web chat
   assert.deepEqual(web.pop().project, { id: "p1", emoji: "📦" }, "a project's turn goes to that project's conversation");
 });
 
-test("a task's answer goes where its turn went: one sent to the web chat reaches their own WhatsApp chat", async (t) => {
-  const wa = [];
+test("a message sent on its own shows in the web chat and their own WhatsApp chat, whichever it went to, a reply being written or not", async (t) => {
+  const web = [], wa = [];
   const oneChat = load({
-    "./web-chat-ws": { hasWebChatConnection: () => true, sendToUser: () => {} },
+    "./web-chat-ws": { hasWebChatConnection: () => true, sendToUser: (userId, msg) => web.push(msg) },
     "./platforms/whatsapp-linked": { selfChat: () => "447700900001@s.whatsapp.net", mirrorPersonToSelf: async (x) => wa.push(["me", x]), sendLinkedMessage: async (jid, x) => wa.push(["closedhand", x]) },
   }, t);
-  await oneChat.answerElsewhere("u1", "web", "The draft to Priya Fixture is shorter now, still unsent.");
-  assert.deepEqual(wa.splice(0), [["closedhand", "The draft to Priya Fixture is shorter now, still unsent."]]);
-  await oneChat.answerElsewhere("u1", "whatsapp_linked", "Done.");
-  await oneChat.answerElsewhere("u1", "telegram", "Done.");
-  assert.equal(wa.length, 0, "WhatsApp's own answer is there already, and Telegram's chats are not copied");
-  assert.match(read("lib/task-delivery.js"), /if \(sentText && table === "agent_tasks"\) await require\("\.\/one-chat"\)\.answerElsewhere\(row\.user_id, sentVia, sentText\);/, "a task's, not a routine's: those stay where they went");
+  const tick = () => new Promise((r) => setImmediate(r));
+  oneChat.sentElsewhere("u1", "web", "The draft to Priya Fixture is shorter now, still unsent.");
+  await tick();
+  assert.deepEqual(wa.splice(0), [["closedhand", "The draft to Priya Fixture is shorter now, still unsent."]], "the web chat's goes to WhatsApp");
+  assert.equal(web.length, 0);
+  oneChat.sentElsewhere("u1", "whatsapp_linked", "Your parcel left the depot.");
+  await tick();
+  assert.deepEqual(web.pop().messages, [{ role: "assistant", content: "Your parcel left the depot.", via: "whatsapp_linked" }], "and WhatsApp's to the web chat");
+  assert.equal(wa.length, 0);
+
+  // A turn's own sends wait for it; anything else's go as they are sent.
+  let release, inside = null;
+  const turn = oneChat.asTurn("u1", async () => { inside = oneChat.turnsOwn("u1"); await new Promise((r) => { release = r; }); });
+  await tick();
+  assert.equal(inside, true, "the turn's own");
+  assert.equal(oneChat.turnsOwn("u1"), false, "a task finishing while the reply is written is not the turn's");
+  release();
+  await turn;
+  let afterwards = null;
+  await oneChat.asTurn("u1", async () => { setTimeout(() => { afterwards = oneChat.turnsOwn("u1"); }, 5); });
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(afterwards, false, "work a turn set going that outlives it is not the turn's");
 });
 
 test("the turn's hook, proactive messages and the web chat page", () => {
@@ -106,7 +122,10 @@ test("the turn's hook, proactive messages and the web chat page", () => {
   assert.match(engine, /const card = oneChat\.catchUp\(conversation, platform, \{ botName: ctx\.activeUserStore\?\.profile\?\.settings\?\.bot_name \|\| "Closedhand" \}\);\n\s*if \(card && await oneChat\.sendCatchUp\(platform, chatId, card\)[\s\S]{0,140}opts\.caughtUp = true;/, "the card goes before the answer, in the app they are in");
   assert.match(engine, /oneChat\.after\(\{ userId, via: platform, said: userMessage, reply, fileData, project: project \? project\.project : null \}\)/);
   const messaging = read("lib/messaging.js");
-  assert.match(messaging, /if \(userId && !\(ctx\.currentAsk && ctx\.currentAsk\[userId\]\)\) \{\n\s*try \{ require\("\.\/one-chat"\)\.sentElsewhere\(/, "a proactive message shows in the web chat; a turn's own sends do not show twice");
+  assert.match(messaging, /if \(userId && !require\("\.\/one-chat"\)\.turnsOwn\(userId\)\) \{\n\s*try \{ require\("\.\/one-chat"\)\.sentElsewhere\(/, "a proactive message shows in the other app; a turn's own sends do not show twice");
+  assert.match(engine, /const turn = \(\) => require\("\.\/one-chat"\)\.asTurn\(userId, run\);\n\s*ctx\.userQueues\[userId\] = ctx\.userQueues\[userId\]\.then\(turn, turn\);/, "each turn runs as itself");
+  assert.match(engine, /if \(confirmResult\) \{[\s\S]{0,400}oneChat\.after\(\{ userId, via: platform, said: userMessage, reply: typeof confirmResult === "string" \? confirmResult : "" \}\)/, "a yes and what came of it reach the other apps too");
+  assert.doesNotMatch(engine, /sendWebMessage\(info\.userId, text\)/, "the follow-up to a parked request goes by sendToPlatform, so it reaches both");
   const wa = read("lib/platforms/whatsapp-linked.js");
   assert.match(wa, /const id = require\("@whiskeysockets\/baileys"\)\.generateMessageIDV2\(_sock\.user\?\.id\);\n\s*_sentIds\.add\(id\);/, "a mirrored message is never answered, even if its echo comes first");
   assert.match(read("lib/pulse.js"), /via = via \|\| t\.platform;/);
