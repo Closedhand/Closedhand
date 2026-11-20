@@ -228,12 +228,14 @@ test("the line for work moving to the background names nothing the request does 
   const compose = new Function("require", "ctx", engine.slice(at, engine.indexOf("\n}\n", at) + 2) + "\nreturn composeHandover;")((m) => fake[m], {});
   const request = "Why does the second paragraph sound so stiff? Make it plainer.";
   said = "I'm reworking your wording for the Leeds pickup on the 9th and the £250 budget, and will post it here.";
-  assert.match(await compose("u1", request, [], 100, "whatsapp_linked"), /^I'm carrying on with this in the background and will post the answer here when it's done\.$/, "and no dashboard link after it");
+  assert.match(await compose("u1", request, [], 100, "whatsapp_linked"), /^I'm carrying on with this in the background and will come back here once it's done\.$/, "and no dashboard link after it");
   said = "I'm reworking the wording you asked about and will post the new version here.";
   assert.match(await compose("u1", request, [], 100, "whatsapp_linked"), /^I'm reworking the wording you asked about/);
   said = "I'm finding the 3 cheapest flights to Lisbon on the 14th and will post them here.";
   assert.match(await compose("u1", "Find me the 3 cheapest flights to Lisbon on the 14th", [], 100, "web"), /^I'm finding the 3 cheapest/, "figures the request has are fine");
-  assert.match(engine.slice(at, at + 1600), /never add a place, date, amount, name or detail it does not contain/);
+  assert.match(engine.slice(at, at + 1600), /never add a place, date, amount, name or detail their request does not contain/);
+  assert.match(engine.slice(at, at + 1600), /with the answer, when they asked a question; with what was done, when they asked for something to be done/, "an answer only for a question");
+  assert.match(engine.slice(at, at + 1600), /never by repeating their message back or answering it/);
 });
 
 test("full source pages preserve exact details and isolate user/source identity", async () => {
