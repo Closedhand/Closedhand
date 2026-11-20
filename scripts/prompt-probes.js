@@ -85,6 +85,9 @@ const INVENTORY = { results: [{ id: "m_640", from: "Fixture Lettings <hello@fixt
 const TOMORROW = { events: [{ summary: "Dentist", start: "2026-11-18T09:40:00+00:00", location: "Sample Dental, Fixture Road" }, { summary: "Lunch with Priya", start: "2026-11-18T13:00:00+00:00", location: "Sample Cafe", canceled: true }, { summary: "Flour supplier call", start: "2026-11-18T15:30:00+00:00" }] };
 const FLIGHT = [{ label: "Email: Your booking FX204 to Lisbon (from Fixture Airlines, 2026-11-02)", text: "Your flight FX204 to Lisbon departs 12 March at 07:15 from London Gatwick. Booking reference QX7R2." }];
 
+// A background job, started.
+const STARTED = { success: true, task_id: "t_probe1", dashboard_url: "https://fixture.example/dashboard#agents", model: "fixture-model", message: "Agent started (using fixture-model). It'll work in the background and send you the result when done." };
+
 // Unasked advice to keep away from shock, as the LLM has written it.
 const STEERS = /\b(skip|avoid|don'?t (open|lead) with|not the ones where|rather than (showing off|leading with)|keep it)\b[^.\n]{0,60}\b(shock|gore|edgy|slurs?|rude|crude|swear\w*|erotica|vulgar|gimmick|clean|filth\w*|smut\w*)\b|safe to (demo|show)|without being crude|reads? as a (toy|gimmick|novelty)|look like a toy|edgy ones|isn'?t (the |about )?(rudeness|filth|smut|shock|swearing|rude words|"it says rude words")|aren'?t the (filthiest|rudest|edgiest)|porn bot|not something shocking|for shock'?s sake|shock (gets|value)/i;
 const PROBES = [
@@ -106,6 +109,14 @@ const PROBES = [
     pass: (r) => calls(r).length === 0 && /\d/.test(textOf(r)) },
   { name: "big_job_to_an_agent", drop: { section: "BACKGROUND AGENTS (agent_start):" }, messages: [U("Find me three hotels in Lisbon for 7 to 14 October under £120 a night and compare them.")],
     pass: (r) => went(r, /agent_start/) },
+  // What it says once a job is handed over: it will come back, with the
+  // answer to a question, or with what was done for something to do.
+  { name: "handover_of_a_task_promises_no_answer", drop: null, steps: 3, found: () => ({ ok: true }),
+    messages: [U("Go through my inbox and unsubscribe me from every newsletter I never open."), ...toolTurn("agent_start", { goal: "Unsubscribe Robin from the newsletters Robin never opens" }, STARTED)],
+    pass: (r) => textOf(r).length > 10 && !/\banswers?\b/i.test(textOf(r)), note: (r) => JSON.stringify(textOf(r).slice(-200)) },
+  { name: "handover_of_a_question_comes_back", drop: null, steps: 3, found: () => ({ ok: true }),
+    messages: [U("Find me three hotels in Lisbon for 7 to 14 October under £120 a night and compare them."), ...toolTurn("agent_start", { goal: "Find and compare three Lisbon hotels, 7 to 14 October, under £120 a night" }, STARTED)],
+    pass: (r) => textOf(r).length > 10 && /\b(back|post|send|let you know|tell you|here)\b/i.test(textOf(r)), note: (r) => JSON.stringify(textOf(r).slice(-200)) },
   { name: "own_words_answered_here", drop: { section: "NEVER delegate when:" }, messages: [U("How does a tracker mortgage work?"), A("A tracker follows the Bank of England base rate plus a set margin, so your payment moves when the base rate does. Some have a collar, and most have no early repayment charge."), U("What did you mean by collar?")],
     pass: (r) => !went(r, /agent_start/) && textOf(r).length > 20 },
   { name: "pins_a_fact_in_passing", drop: { line: "Pinned Facts: pin a durable truth" }, steps: 2, found: (c) => (c.name === "get_facts" ? { facts: [{ key: "family-partner", value: "Robin's partner is Ana Fixture." }, { key: "profile-work", value: "Robin runs a small bakery, Sample Loaf, in Hackney." }] } : null),
