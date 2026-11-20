@@ -183,3 +183,14 @@ test("mail that answers something the person sent says so, with the start of wha
   assert.match(pulse, /REPLIES: when a point is an email that asks them something or is waiting on them, written to them by a person or answering something they sent \(not a mailing list\)/);
   assert.match(pulse, /if \(JUNK_SENDER\.test\(row\.data\?\.from \|\| ""\) \|\| fromMailingList\(\{ labels, body: original \}\)\) return null;/);
 });
+
+// What no item shows (whether a to-do is done yet) is theirs to know: the
+// writer once copied the noticing's own note as a fact ("still hasn't been
+// re-booked"), with a deadline it guessed. Measured on the person's model:
+// asserted 5/5 before, hedged 4/5 with this, a real "please rebook" still told
+// plainly and a list's "still interested?" still not sent.
+test("what no item shows is said as unknown, and the noticing's notes are its own reading", () => {
+  assert.match(pulse, /When the items do not show whether something is done yet or still wanted, that is theirs to know: never state it as fact/);
+  assert.match(pulse, /noticed these as possibly worth a nudge \(its own reading of the items, not more of them: what no item shows, such as whether something has been done since, it does not know\):\\n\$\{flaggedText\}/);
+  assert.doesNotMatch(pulse, /If the message would only matter if something you do not know is true/);
+});
