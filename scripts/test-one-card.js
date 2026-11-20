@@ -87,3 +87,15 @@ test("the chat collects a step's changes before it asks, and pauses whatever fol
   assert.match(engine, /batch: cardBatch\.length > 1 \? cardBatch\.map\(held\) : null,/);
   assert.match(engine, /require\("\.\/confirm-card"\)\.together\(cardBatch\.map\(\(c\) => c\.card\)\)/);
 });
+
+test("a background job puts a step's connected-server actions on one card too, and one answer covers them", () => {
+  const ask = (what) => `I'm about to run ${what} on office:\n\nevent_id: e1\n\nReply "yes" to go ahead or "no" to skip it.`;
+  const card = together([ask("calendar_delete_event"), ask("calendar_delete_event"), ask("contacts_delete_contact")]);
+  assert.match(card, /^Just to confirm, 3 things:\n\n1\. Run calendar_delete_event on office:\n\nevent_id: e1\n\n2\. Run calendar_delete_event/);
+  assert.equal((card.match(/Reply "yes"/g) || []).length, 1);
+  const agents = read("lib/agents.js");
+  assert.match(agents, /if \(pendingSend\._plain && !sendAt\) \{ \(pendingSend\._with = pendingSend\._with \|\| \[\]\)\.push\(\{ block, question \}\); continue; \}/);
+  assert.match(agents, /require\("\.\/confirm-card"\)\.together\(together\.map\(\(t\) => t\.question\)\)/);
+  assert.match(agents, /batch: together \? together\.map\(\(t\) => \(\{ toolName: t\.block\.name, toolInput: t\.block\.input, toolUseId: t\.block\.id, isInternal: isInternalTool\(t\.block\.name\) \}\)\) : null,/);
+  assert.match(agents, /if \(Array\.isArray\(pending\.batch\) && pending\.batch\.length\) \{[\s\S]{0,1200}return approved \? "Doing those now\." : "OK, I won't do those\.";/);
+});
