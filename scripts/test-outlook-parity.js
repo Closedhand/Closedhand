@@ -108,9 +108,30 @@ test("a rewritten draft keeps the pictures its wording placed, unless asked to d
   const html = Buffer.from(out.raw.split("--b1")[2].split("\r\n\r\n")[1], "base64").toString();
   assert.match(html, /<div>New wording<\/div>\n<div><img src="cid:court-1" alt="court"><\/div>/);
   const update = block("outlook_draft_update");
-  assert.match(update, /withInlineImages\(wasHtml \? live\.body\.content : "", toolInput\.body_html \|\| textToHtml\(toolInput\.body\), keepImages\)/);
+  assert.match(update, /const before = wasHtml \? live\.body\.content : "";[\s\S]*withInlineImages\(before, toolInput\.body_html \|\| textToHtml\(toolInput\.body, before\), keepImages\)/);
   assert.match(update, /for \(const p of \(parts \|\| \[\]\)\.filter\(\(x\) => x\.isInline\)\)/);
-  assert.match(read("lib/services/imap-mail.js"), /withInlineImages\(p\.html \|\| "", body_html \|\| textToHtml\(body\), keep_inline_images\)/);
+  assert.match(read("lib/services/imap-mail.js"), /withInlineImages\(p\.html \|\| "", body_html \|\| textToHtml\(body, p\.html\), keep_inline_images\)/);
+});
+
+test("a rewritten draft keeps its links on their words, in Gmail, Outlook and other mail", () => {
+  const { textToHtml, replaceTextParts } = require("../lib/gmail-draft");
+  const before = '<div>Hi Mara,</div><div>Photos of the courts are on our site <a href="https://example.com/courts?size=all&amp;view=grid">here</a>. Prices are <a href="https://example.com/prices">on this page</a>, and <a href="https://example.com/faq">https://example.com/faq</a> answers the rest.</div>';
+  // Written back as Gmail's plain text shows a link, and as Closedhand reads one.
+  const html = textToHtml("Hi Mara,\nPhotos of the courts are on our site here <https://example.com/courts?size=all&view=grid>. Prices are On this page (https://example.com/prices).\nSee https://example.com/faq too.", before);
+  assert.match(html, /on our site <a href="https:\/\/example\.com\/courts\?size=all&amp;view=grid">here<\/a>\./);
+  assert.match(html, /Prices are <a href="https:\/\/example\.com\/prices">On this page<\/a>\.<\/div>/);
+  assert.match(html, /See https:\/\/example\.com\/faq too\./, "a bare address stays as written");
+  assert.doesNotMatch(html, /&lt;https/);
+  // Words that no longer go with the address stay plain text.
+  assert.match(textToHtml("Photos are at <https://example.com/courts?size=all&view=grid>.", before), /Photos are at &lt;https:/);
+  // And with nothing to go on, plain text stays plain.
+  assert.equal(textToHtml("see here <https://example.com/x>"), "<div>see here &lt;https://example.com/x&gt;</div>");
+  // Gmail's rewrite: the HTML part has the link again, the plain part keeps Gmail's own form.
+  const raw = ['Content-Type: multipart/alternative; boundary="b1"', "", "--b1", "Content-Type: text/plain", "", "Old", "--b1", "Content-Type: text/html", "", before, "--b1--", ""].join("\r\n");
+  const out = replaceTextParts(raw, "Photos are on our site here <https://example.com/courts?size=all&view=grid>.", null, true);
+  const part = (n) => Buffer.from(out.raw.split("--b1")[n].split("\r\n\r\n")[1], "base64").toString();
+  assert.match(part(2), /our site <a href="https:\/\/example\.com\/courts\?size=all&amp;view=grid">here<\/a>\./);
+  assert.equal(part(1), "Photos are on our site here <https://example.com/courts?size=all&view=grid>.");
 });
 
 test("Outlook events take the same fields as Google's, with attendees, files and a OneDrive link", () => {
