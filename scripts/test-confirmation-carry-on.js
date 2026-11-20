@@ -73,7 +73,7 @@ test("the chat's loop takes the turn up where it stopped", () => {
   assert.match(engine, /const turnOpts = \{ \.\.\.opts, platform, fromPerson: true \};/);
   assert.match(engine, /const confirmResult = await handleConfirmation\(userId, chatId \|\| userId, String\(userMessage\), turnOpts\);/);
   assert.match(engine, /conversation\.push\(\{ role: "user", content: opts\.resume \? opts\.resume\.said : userMessage \}\);/, "the conversation records the answer");
-  assert.match(engine, /messages\.push\(\.\.\.\(opts\.resume \? opts\.resume\.messages : conversation\)\);/, "the turn as it stood");
+  assert.match(engine, /messages\.push\(\.\.\.\(opts\.resume \? opts\.resume\.messages : carried \|\| conversation\)\);/, "the turn as it stood");
   assert.match(engine, /const isLight = !fileData && !opts\.resume && /);
   assert.match(engine, /const isQuick = !fileData && !isLight && !opts\.resume && /);
   assert.match(engine, /for \(const m of opts\.resume\?\.messages \|\| \[\]\) \{[\s\S]{0,300}loadedTools\.add\(b\.name\);/, "tools unlocked before the question stay unlocked");
