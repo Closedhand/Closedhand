@@ -9,7 +9,8 @@ const vm = require("node:vm");
 const src = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
 const start = src.indexOf("const TOOL_FAMILIES");
 const end = src.indexOf("\n}\n", src.indexOf("function likelyOnDemandTools")) + 3;
-const box = {};
+// The kept set lives in lib/kept-tools.js, kept with the thread (scripts/test-kept-tools.js).
+const box = { require: (name) => { if (name !== "./kept-tools") throw new Error(name); return require("../lib/kept-tools"); } };
 vm.runInNewContext(src.slice(start, end) + "\nthis.likely = likelyOnDemandTools; this.kept = keptTools;", box);
 const available = ["gmail_send", "gmail_reply", "gmail_create_draft", "gcal_create_event", "gcal_update_event", "drive_search", "drive_read", "outlook_send", "list_bookings", "booking_scan", "add_schedule", "list_schedules", "remove_schedule", "maps_search_places", "maps_directions", "maps_geocode"].map((name) => ({ name }));
 const pick = (msg, convo = []) => [...box.likely(msg, convo, available)].sort();
