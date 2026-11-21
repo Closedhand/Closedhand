@@ -227,3 +227,70 @@ test("the page opens with an interactive piece: what it costs a month, what is c
   assert.match(db.tables.reports[0].content, /\[Connect your bank\]\(https:\/\/amber-fox-42\.closedhand\.ai\/dashboard#bank\)/);
   assert.ok(db.tables.paying_for[0].first_look_at, "said once");
 });
+
+test("something new that looks like paying is read on its own and takes its place in the picture; the rest is not read again", async () => {
+  const stub = (rel, exports) => { const p = require.resolve("../lib/" + rel); require.cache[p] = { id: p, filename: p, loaded: true, exports }; };
+  const asked = [];
+  let answer = '{"paying": [{"name": "Streamflix", "what": "Films", "amount": 11.99, "currency": "GBP", "every": "month", "status": "active", "groups": ["G1", "G2"]}]}';
+  stub("llm", { getInternalClient: () => ({ client: {}, model: "stand-in" }) });
+  stub("task-model", { modelCall: async (c, params) => { asked.push(params); return params.system === P.SAME ? '{"same": [], "overlap": []}' : answer; } });
+  stub("model-wire", { responseText: (r) => r });
+  const mail = (id, from, subject, at) => ({ source: "gmail", type: "email", external_id: id, received_at: at, created_at: at, data: { from, subject, labels: ["INBOX"], body: "Your plan renews. Payment received." } });
+  const bank = ["2026-07-03", "2026-08-03", "2026-09-03", "2026-10-03"].map((d, i) => ({ source: "lunchflow", type: "bank_transaction", external_id: "t" + i, received_at: d + "T00:00:00Z", created_at: d + "T06:00:00Z", user_id: "u1", data: { date: d, amount: -9.99, currency: "GBP", payee: "STREAMFLIX P1234" } }));
+  const tables = { data_cache: bank, paying_for: [] };
+  const db = fakeDb(tables, {
+    paying_candidates: ({ p_offset }) => (p_offset ? [] : [
+      mail("m1", "Streamflix <billing@streamflix.example>", "Your receipt", "2026-09-03T09:00:00Z"),
+      mail("m2", "Streamflix <billing@streamflix.example>", "Your price is changing", "2026-10-07T09:00:00Z"),
+      mail("m3", "GymCo <members@gymco.example>", "Your membership payment", "2026-09-20T09:00:00Z"),
+    ]),
+    paying_activity: () => [],
+  });
+  const old = "2026-09-20T09:00:00.000Z";
+  const row = { user_id: "u1", built_at: "2026-10-05T00:00:00Z", rebuilt_at: "2026-10-01T00:00:00Z", sources: ["mail"], picture: [
+    { key: "streamflix", name: "Streamflix", what: "Films", amount: 9.99, currency: "GBP", every: "month", status: "active", sources: ["mail"], seen_last: old },
+    { key: "gymco", name: "GymCo", what: "Gym", amount: 30, currency: "GBP", every: "month", status: "active", sources: ["mail"], seen_last: old },
+  ] };
+  const got = await P.addNew("u1", row, { store: {}, db });
+  assert.equal(asked.length, 1, "one reading, of what the new item is from");
+  const read = asked[0].messages[0].content;
+  assert.match(read, /billing@streamflix\.example/, "the sender of the new item");
+  assert.match(read, /STREAMFLIX|streamflix p/i, "with that service's bank payments, read together as the whole reading does");
+  assert.doesNotMatch(read, /gymco/i, "and nobody else");
+  assert.equal(got.read, 2);
+  assert.equal(got.picture.find((e) => e.key === "streamflix").amount, 11.99, "what was found takes its place");
+  assert.deepEqual(got.picture.find((e) => e.key === "gymco"), row.picture[1], "what was not read stays as it was");
+  assert.deepEqual(got.sources.sort(), ["bank", "mail"]);
+  const saved = db.writes.find((w) => w.name === "paying_for").upsert;
+  assert.ok(saved.built_at && !("rebuilt_at" in saved), "the time of the last whole reading is left alone");
+
+  // A name the picture does not hold yet may be one it holds under another: the last pass looks.
+  asked.length = 0;
+  answer = '{"paying": [{"name": "Streamflix Kids", "amount": 4.99, "currency": "GBP", "every": "month", "status": "active", "groups": ["G1"]}]}';
+  const more = await P.addNew("u1", row, { store: {}, db });
+  assert.deepEqual(asked.map((a) => (a.system === P.SAME ? "same" : "read")), ["read", "same"]);
+  assert.equal(more.picture.length, 3);
+
+  // Nothing new since it was last read: nothing is asked, and the picture stands.
+  asked.length = 0;
+  const none = await P.addNew("u1", { ...row, built_at: "2026-10-08T00:00:00Z" }, { store: {}, db });
+  assert.equal(asked.length, 0);
+  assert.deepEqual(none.picture, row.picture);
+});
+
+test("the whole picture is read again once a week, and only added to in between", () => {
+  const src = read("lib/paying-for.js");
+  assert.match(src, /const whole = !row\?\.built_at \|\| Date\.now\(\) - Date\.parse\(row\.rebuilt_at \|\| row\.built_at\) > REBUILD_EVERY;\n\s+const stale = whole \|\| await changedSince\(userId, row\.built_at, db\);/);
+  assert.match(src, /const built = whole \? await build\(userId, \{ store, db \}\) : await addNew\(userId, row, \{ store, db \}\);/);
+  assert.match(src, /upsert\(\{ user_id: userId, picture, sources, built_at: now, rebuilt_at: now \}/, "a whole reading says when it was");
+  assert.match(read("migrations/094_paying_for_rebuilt_at.sql"), /ALTER TABLE paying_for ADD COLUMN IF NOT EXISTS rebuilt_at timestamp with time zone;/);
+});
+
+test("a sender's brand is its name, whatever its address ends in, so one service's mail and bank payments are read together", () => {
+  assert.equal(P.brandOf("mail:streamflix <billing@streamflix.example>"), "streamflix");
+  assert.equal(P.brandOf("mail:billing@mail.streamflix.co.uk"), "streamflix");
+  assert.equal(P.brandOf("mail:hello@streamflix.tv"), "streamflix", "an ending the list never heard of is still an ending");
+  assert.equal(P.brandOf("bank:streamflix p"), "streamflix");
+  assert.equal(P.brandOf("mail:sam lee <sam.lee@gmail.com>"), "sam.lee@gmail.com", "a person at a mailbox anyone can have is themselves");
+  assert.notEqual(P.brandOf("mail:sam.lee@gmail.com"), P.brandOf("mail:ana.ruiz@gmail.com"));
+});
