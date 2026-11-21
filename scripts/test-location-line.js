@@ -29,3 +29,27 @@ test("setup saves the place as the location only, never as a Pinned Fact", () =>
   assert.match(read("lib/tools/definitions.js"), /Where they are at the moment is not a fact either: it is their saved location \(save_location\)/);
   assert.match(read("migrations/063_location_is_not_a_fact.sql"), /^DELETE FROM facts WHERE key = 'profile-location';$/m, "the place setup pinned before goes");
 });
+
+// Asking for a position: only Telegram has a share button. On the web chat
+// there was no bot to send one with, and the whole reply to "is it supposed
+// to rain later?" failed with "Something went wrong".
+test("a tool that needs a position asks with Telegram's button there, and in words everywhere else", async () => {
+  const ctx = require("../lib/context");
+  const { requestLocation, NO_LOCATION } = require("../lib/location");
+  const sent = [];
+  const bot = ctx.bot;
+  try {
+    ctx.bot = null;
+    assert.equal(await ctx.runWithInheritedContext(async () => { ctx.activePlatform = "web"; return requestLocation("c1", "u-web", "rain later?"); }), false);
+    ctx.bot = { sendMessage: async (chatId, text) => { sent.push(chatId); } };
+    assert.equal(await ctx.runWithInheritedContext(async () => { ctx.activePlatform = "whatsapp_linked"; return requestLocation("c2", "u-wa", "rain later?"); }), false, "never Telegram's bot for a WhatsApp chat");
+    assert.equal(await ctx.runWithInheritedContext(async () => { ctx.activePlatform = "telegram"; return requestLocation("c3", "u-tg", "rain later?"); }), true);
+    assert.deepEqual(sent, ["c3"]);
+    assert.equal(ctx.pendingLocationRequests["u-tg"].originalMessage, "rain later?");
+    assert.equal(ctx.pendingLocationRequests["u-web"], undefined);
+  } finally { ctx.bot = bot; delete ctx.pendingLocationRequests["u-tg"]; }
+  assert.match(NO_LOCATION, /Ask where they are/);
+  const engine = read("lib/engine.js");
+  assert.match(engine, /if \(await requestLocation\(chatId, userId, originalText\)\) return null;/);
+  assert.match(engine, /result = \{ error: require\("\.\/location"\)\.NO_LOCATION \};/);
+});
