@@ -90,3 +90,33 @@ test("the sandbox starts the hidden browser on demand, looking like the visible 
   assert.match(helper, /cdp\.send\("Network\.setBlockedURLs", \{"urls": _SKIP_WHEN_READING\}\)/, "images are dropped inside Chrome, not queued through Python");
   assert.match(read("lib/wallet.js"), /pw, browser, context = _get_browser\(\$\{JSON\.stringify\(engine === "headless" \? "headless" : "visible"\)\}\)/);
 });
+
+// A reply to a refund claim was typed in the hidden browser; the person, told
+// it was about to be sent, looked at the visible one and saw an empty box.
+test("typing, clicking and pressing keys are done in the visible browser, where the person can watch", () => {
+  engines._reset();
+  assert.equal(engines.acts({ action: "fill", ref: 3, text: "Hello" }), true);
+  assert.equal(engines.acts({ action: "click", ref: 3 }), true);
+  assert.equal(engines.acts({ action: "press", key: "Enter" }), true);
+  assert.equal(engines.acts({ action: "batch", steps: [{ action: "outline" }, { action: "fill", ref: 2, text: "x" }] }), true);
+  for (const action of ["outline", "scrape_text", "screenshot", "extract_data", "read_pages", "wait_for"]) assert.equal(engines.acts({ action }), false, action);
+  assert.equal(engines.acts({ action: "batch", steps: [{ action: "outline" }, { action: "scrape_text" }] }), false);
+
+  engines.ran("u", "headless", "https://help.example.com/contact/message/42");
+  assert.deepEqual(engines.actsHidden("u", { action: "fill", ref: 7, text: "Hello" }, "headless"), { host: "help.example.com", url: "https://help.example.com/contact/message/42" }, "the page the job was reading");
+  assert.deepEqual(engines.actsHidden("u", { action: "click", ref: 1, url: "https://shop.example.com/basket" }, "headless"), { host: "shop.example.com", url: "https://shop.example.com/basket" });
+  assert.equal(engines.actsHidden("u", { action: "fill", ref: 7, text: "x" }, "visible"), null, "already where they can watch");
+  assert.equal(engines.actsHidden("u", { action: "outline" }, "headless"), null, "reading stays hidden");
+  engines.moveToVisible("u", "help.example.com");
+  assert.equal(engines.choose("u", { action: "outline", url: "https://help.example.com/contact" }), "visible", "and the site stays visible for the day");
+
+  const handlers = read("lib/tools/handlers.js");
+  const at = handlers.indexOf("const moving = engines.actsHidden(");
+  assert.ok(at > handlers.indexOf("const engine = engines.choose(userId, toolInput);"), "decided once the browser is chosen");
+  assert.ok(at < handlers.indexOf("let answer = await sandboxBrowse(userId, { ...body, engine }, 60000);"), "and before anything is done");
+  const block = handlers.slice(at, handlers.indexOf("// A step in the other browser than the last one", at));
+  assert.match(block, /engines\.moveToVisible\(userId, moving\.host\);/);
+  assert.match(block, /sandboxBrowse\(userId, \{ op: "step", engine: "visible", step: \{ action: "outline", url: moving\.url \} \}, 60000\)/, "the page is opened there and read again: an outline's numbers belong to the browser that made it");
+  assert.match(block, /moved_to_visible: `Nothing was done yet\./);
+  assert.doesNotMatch(block, /\{ \.\.\.body, engine \}/, "the step itself is not run");
+});
