@@ -359,8 +359,10 @@ test('the page: the box and its script are on the home page, and what it says is
   const script = fs.readFileSync(path.join(__dirname, '..', 'public', 'ask.js'), 'utf8');
   assert.match(home, /<script src="\/ask-private\.js" defer><\/script><script src="\/ask\.js" defer><\/script>/);
   assert.match(home, /id="askInput"[^>]*maxlength="500"/);
-  // Nothing of the conversation is kept by the page, and it only talks to closedhand.com's two routes.
-  assert.doesNotMatch(script, /localStorage|sessionStorage|document\.cookie|indexedDB/);
+  // The conversation is kept in this browser only, under one key, to be carried into Closedhand
+  // (test/carry.js); nothing else is stored, and the page only talks to closedhand.com's two routes.
+  assert.deepEqual([...new Set(script.match(/localStorage\.\w+\(\w+/g))].sort(), ['localStorage.getItem(KEY', 'localStorage.removeItem(KEY', 'localStorage.setItem(KEY']);
+  assert.doesNotMatch(script, /sessionStorage|document\.cookie|indexedDB/);
   assert.deepEqual([...new Set(script.match(/fetch\('[^']+'/g))].sort(), ["fetch('/api/ask'", "fetch('/api/ask/went'"]);
   // Each example is one the LLM can answer with nothing of the person's.
   const tries = [...home.matchAll(/<button type="button">([^<]+)<\/button>/g)].map(m => m[1]).filter(t => /\?|\.$/.test(t));

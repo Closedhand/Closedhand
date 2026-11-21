@@ -269,7 +269,7 @@ test('the website sizes everything in rem, so computers get their density from o
 // address) and the maintainer's own figures, where it would only be in the way.
 test('every page people browse carries the one message button, and no one-time step does', () => {
   const site = path.join(__dirname, '..', 'closedhand-com');
-  const away = ['pair.html', 'assistant-email-confirm.html', 'insights.html'];
+  const away = ['pair.html', 'carry.html', 'assistant-email-confirm.html', 'insights.html'];
   for (const view of fs.readdirSync(path.join(site, 'views')).filter(f => f.endsWith('.html'))) {
     const html = fs.readFileSync(path.join(site, 'views', view), 'utf8');
     if (away.includes(view)) assert.doesNotMatch(html, /message-us\.js/, view);

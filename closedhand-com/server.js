@@ -136,6 +136,7 @@ function createApp({ db, env = process.env, request = fetch, startMailWorker = r
   app.get('/open', page('open.html'));
   app.get('/account', page('account.html'));
   app.get('/phone-access/pair', page('pair.html'));
+  app.get('/carry', page('carry.html'));
   // Older links to a dashboard on closedhand.com lead to the finder instead.
   app.get(['/dashboard', '/keep'], (req, res) => {
     const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';

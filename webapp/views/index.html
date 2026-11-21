@@ -3604,6 +3604,8 @@
           if (_holding && /^(status|stream_start|stream_token|message|file|error)$/.test(msg.type)) talkHandover();
           // Background progress is not a reply, so it never touches the reply watchdog.
           if (msg.type === 'agent_progress') { agentLiveLine(msg); return; }
+          // The home page's conversation went in (or did not): carryFirst goes on.
+          if (msg.type === 'carried') { if (window._onCarried) window._onCarried(msg.count); return; }
           // Conversation history was cleared (/clear, lib/clear-command.js): what is shown goes too.
           if (msg.type === 'cleared') { messagesEl.querySelectorAll('.message').forEach(function(m) { m.remove(); }); loadActivityFeed(); return; }
           // A turn or a message in another app: shown here too, live.
@@ -4392,7 +4394,7 @@
 
   // One chat in every app (lib/one-chat.js). The names of the apps a
   // message can come from; the web chat is this one, so it needs none.
-  var VIA_NAMES = { whatsapp_linked: 'WhatsApp', telegram: 'Telegram' };
+  var VIA_NAMES = { whatsapp_linked: 'WhatsApp', telegram: 'Telegram', site: 'closedhand.com' };
   // Shown already: the same words, just above.
   function shownJustNow(content, role) {
     var shown = messagesEl.querySelectorAll('.message.' + role);
@@ -4981,18 +4983,67 @@
     }, 200);
   }
 
-  // Setup's hello, with no chat app, ends with "Say hello back": the words
-  // come over in this tab and go as the first message, once.
-  var firstWords = null;
-  try { firstWords = sessionStorage.getItem('ch-first-words'); sessionStorage.removeItem('ch-first-words'); } catch (e) {}
-  if (firstWords) {
-    var firstWordsWait = setInterval(function() {
+  // The conversation from closedhand.com's home page, carried on
+  // (lib/carry-over.js). The first time the web chat opens on the computer
+  // running Closedhand, with nothing in its conversation yet, it passes once
+  // through closedhand.com/carry, which hands back whatever the home page
+  // kept in this browser, after "#" so it is never sent anywhere, and
+  // forgets it there. Only when closedhand.com answers, so nobody is ever
+  // left on a page that won't load, and never twice in this browser.
+  var carried = null;
+  try {
+    var carryState = sessionStorage.getItem('ch-carry-state');
+    if (carryState && location.hash.length > 1) {
+      var carryBack = new URLSearchParams(location.hash.slice(1));
+      if (carryBack.get('state') === carryState) {
+        sessionStorage.removeItem('ch-carry-state');
+        try { carried = JSON.parse(carryBack.get('carry') || 'null'); } catch (e) {}
+        window.history.replaceState({}, '', location.pathname + location.search);
+      }
+    }
+  } catch (e) {}
+  function carryFirst(then) {
+    var waitAuth = setInterval(function() {
       if (!isAuthenticated) return;
-      clearInterval(firstWordsWait);
-      input.value = firstWords;
-      sendMessage();
+      clearInterval(waitAuth);
+      if (Array.isArray(carried) && carried.length) {
+        window._onCarried = function(count) {
+          window._onCarried = null;
+          if (count > 0) window.openConversation(null);
+          then();
+        };
+        var frame = { type: 'carry', turns: carried };
+        if (chatWs && chatWs.readyState === 1) chatWs.send(JSON.stringify(frame)); else { pendingMessages.push(frame); connectChat(); }
+        return;
+      }
+      var local = ['localhost', '127.0.0.1', '[::1]'].indexOf(location.hostname) >= 0;
+      var asked = true;
+      try { asked = !!localStorage.getItem('ch-carry'); } catch (e) {}
+      if (!local || asked) return then();
+      fetch('/api/conversations').then(function(r) { return r.json(); }).then(function(data) {
+        if (!data || !data.chat || Number(data.chat.message_count) > 0) return then();
+        var state = Array.from(crypto.getRandomValues(new Uint8Array(16)), function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+        var away = new AbortController();
+        setTimeout(function() { away.abort(); }, 3000);
+        return fetch('https://closedhand.com/carry', { mode: 'no-cors', cache: 'no-store', signal: away.signal }).then(function() {
+          localStorage.setItem('ch-carry', 'asked');
+          sessionStorage.setItem('ch-carry-state', state);
+          location.replace('https://closedhand.com/carry#' + new URLSearchParams({ back: location.origin + '/', state: state }));
+        });
+      }).catch(function() { then(); });
     }, 200);
   }
+
+  // Setup's hello, with no chat app, ends with "Say hello back": the words
+  // come over in this tab and go as the first message, once, after anything
+  // carried from closedhand.com.
+  carryFirst(function() {
+    var firstWords = null;
+    try { firstWords = sessionStorage.getItem('ch-first-words'); sessionStorage.removeItem('ch-first-words'); } catch (e) {}
+    if (!firstWords) return;
+    input.value = firstWords;
+    sendMessage();
+  });
 
 })();
 </script>

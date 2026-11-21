@@ -4,7 +4,10 @@
 // the answer comes back encrypted to a key made here for that question, a
 // few words at a time as it is written, so closedhand.com carries both and
 // can read neither (lib/ask.js). The
-// conversation lives in this page only: closing the page forgets it.
+// conversation is kept in this browser for 7 days (KEY below), shown again
+// when the page is opened, so that Closedhand, once set up on this computer,
+// can carry it on: its web chat fetches it once through /carry (carry.js),
+// which forgets it here.
 (function () {
   var box = document.getElementById('ask');
   if (!box) return;
@@ -19,7 +22,22 @@
   var noise = function () { return NOISE[Math.floor(Math.random() * NOISE.length)]; };
   // A phone's box is too narrow for the whole invitation.
   if (handheld) input.placeholder = 'Ask what others refuse to answer';
-  var state = { key: null, left: null, of: 5, name: '', turns: [], busy: false, told: false, unanswered: [] };
+  var state = { key: null, left: null, of: 3, name: '', turns: [], busy: false, told: false, unanswered: [] };
+  // The conversation, kept in this browser only, for 7 days.
+  var KEY = 'ch-ask', KEPT = 7 * 24 * 3600 * 1000;
+  function keep() {
+    try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), turns: state.turns.map(function (t) { return { role: t.role, text: t.text }; }) })); } catch (e) {}
+  }
+  function kept() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (saved && Array.isArray(saved.turns) && saved.turns.length && Date.now() - saved.at < KEPT) return saved.turns.filter(function (t) {
+        return t && (t.role === 'user' || t.role === 'assistant') && typeof t.text === 'string' && t.text;
+      });
+      localStorage.removeItem(KEY);
+    } catch (e) {}
+    return [];
+  }
 
   // The sealed hardware's key, and how many questions are left here today.
   // Asked for as the page settles, so the connection is ready for the question.
@@ -164,7 +182,8 @@
     box.classList.add('done');
     tries.hidden = true;
     var lead = state.of === 1 ? 'That’s your question here for today.' : 'That’s your ' + state.of + ' questions here for today.';
-    say(lead, handheld ? 'Closedhand runs on a computer. Carry on there: ' + FREE.charAt(0).toLowerCase() + FREE.slice(1) : 'Download Closedhand below to carry on. ' + FREE);
+    say(lead, handheld ? 'Closedhand runs on a computer. Carry on there: ' + FREE.charAt(0).toLowerCase() + FREE.slice(1)
+      : 'Download Closedhand below to carry on: this conversation will be waiting in the web chat. ' + FREE);
     note.hidden = true;
     call();
     if (asked) next.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
@@ -293,6 +312,7 @@
       if (!out) throw new Error('busy');
       state.turns = turns.concat([{ role: 'assistant', text: out.end() }]);
       state.told = true;
+      keep();
       after();
       // A long answer starts under its question, at the top of the screen.
       if (!box.classList.contains('done') && form.getBoundingClientRect().bottom > window.innerHeight) mine.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
@@ -306,6 +326,20 @@
       if (!input.value) { input.value = question; fit(); }
       if (state.turns.length) hush(false);
     }).then(function () { state.busy = false; ready(); });
+  }
+
+  // A conversation from an earlier visit is shown as it was left, with what
+  // comes next under it once the page knows how many questions are left.
+  var earlier = kept();
+  if (earlier.length) {
+    earlier.forEach(function (t) {
+      var li = add(t.role === 'user' ? 'user' : 'bot');
+      li.style.whiteSpace = 'pre-wrap';
+      li.textContent = t.text;
+    });
+    state.turns = earlier; state.told = true;
+    tries.hidden = true;
+    hello().then(function () { if (state.left === 0) over(); else after(); }, function () {});
   }
 
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value); });
