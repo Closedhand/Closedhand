@@ -34,7 +34,9 @@ after(async () => {
   await admin?.end();
 });
 
-const ENV = { TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER };
+// Five questions a visitor here, set outright: these tests are of how the box
+// works, not of its default (three, test/carry.js).
+const ENV = { TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, ASK_PER_VISITOR_DAY: '5' };
 // The sealed hardware: a key of its own, everything it was sent, and what it
 // does next (answer, fail, or have a newer key).
 function hardware() {
