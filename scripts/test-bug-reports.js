@@ -18,7 +18,13 @@ function tables({ threads = [], archive = [] } = {}) {
     const q = {
       select: () => q, order: () => q,
       eq: (k, v) => { if (k === "source") filters.push((r) => r.source === v); return q; },
-      ilike: (k, v) => { const needle = v.slice(1, -1).replace(/\\(.)/g, "$1").toLowerCase(); filters.push((r) => String(r.data.text).toLowerCase().includes(needle)); return q; },
+      // As Postgres reads it: % is anything, _ any one character, \ escapes.
+      ilike: (k, v) => {
+        let re = "";
+        for (let i = 0; i < v.length; i++) { const c = v[i]; if (c === "\\") { re += v[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); } else if (c === "%") re += "[\\s\\S]*"; else if (c === "_") re += "[\\s\\S]"; else re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+        const rx = new RegExp("^" + re + "$", "i");
+        filters.push((r) => rx.test(String(r.data.text))); return q;
+      },
       in: (k, ids) => { filters.push((r) => ids.includes(r.external_id)); return q; },
       limit: (n) => { cap = n; return q; },
       then: (ok) => ok({ data: (name === "conversation_threads" ? threads : archive).filter((r) => filters.every((f) => f(r))).slice(0, cap), error: null }),

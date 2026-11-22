@@ -18,7 +18,13 @@ function archive(rows) {
     const q = {
       select: () => q,
       eq: (k, v) => { filters.push((r) => (k === "source" ? r.source === v : k === "user_id" ? r.user_id === v : true)); return q; },
-      ilike: (k, v) => { const needle = v.slice(1, -1).replace(/\\(.)/g, "$1").toLowerCase(); filters.push((r) => String(r.data.text).toLowerCase().includes(needle)); return q; },
+      // As Postgres reads it: % is anything, _ any one character, \ escapes.
+      ilike: (k, v) => {
+        let re = "";
+        for (let i = 0; i < v.length; i++) { const c = v[i]; if (c === "\\") { re += v[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); } else if (c === "%") re += "[\\s\\S]*"; else if (c === "_") re += "[\\s\\S]"; else re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+        const rx = new RegExp("^" + re + "$", "i");
+        filters.push((r) => rx.test(String(r.data.text))); return q;
+      },
       in: (k, ids) => { filters.push((r) => ids.includes(r.external_id)); return q; },
       limit: (n) => { cap = n; return q; },
       then: (ok) => ok({ data: rows.filter((r) => filters.every((f) => f(r))).slice(0, cap), error: null }),
@@ -105,4 +111,58 @@ test("deleting a project takes its whole conversation, its Context Notes and the
   assert.deepEqual(notes && { op: notes.op, filters: notes.filters }, { op: "delete", filters: [["user_id", "u1"], ["item_type", "conversation_summary"], ["source_metadata->>thread_id", ["t9"]]] }, "and the Context Notes made from it, so Chat recalls nothing of it");
   assert.ok(!done.some((c) => c.table === "facts" || c.table === "documents"), "Pinned Facts and files stay");
   assert.ok(done.findIndex((c) => c.table === "conversation_threads") < done.findIndex((c) => c.table === "projects" && c.op === "delete"), "its threads are found before the project (and they with it) are gone");
+});
+
+// A reply in the main chat to a message from a project's conversation (a
+// task's answer there, delivered to the same chat app) found nothing: the
+// LLM saw only the quote, and not that the search behind that answer had
+// failed. The project's conversation is looked in too, and the note says
+// whose it is.
+test("a reply to a message from a project's conversation brings back the exchange it was in, named", async () => {
+  const project = { id: "p1", user_id: "u1", name: "Plane wifi refund" };
+  const thread = { user_id: "u1", project_id: "p1", messages: [
+    { role: "user", content: "Why does the plane wifi say I used 1.3GB?" },
+    { role: "assistant", content: "I couldn't search just now: the search engines were blocked.\n\n*How it can show 1.3GB when you barely got on.* The counters are on their side." },
+    { role: "user", content: "ok" },
+  ] };
+  const empty = { then: (ok) => ok({ data: [], error: null }) };
+  const db = { from: (table) => {
+    const q = { select: () => q, eq: () => q, not: () => q, order: () => q, ilike: () => q, in: () => q,
+      limit: () => (table === "conversation_threads" ? { then: (ok) => ok({ data: [thread], error: null }) } : table === "projects" ? { then: (ok) => ok({ data: [project], error: null }) } : empty) };
+    return q;
+  } };
+  const note = await noteFor("u1", '[replying to Closedhand\'s message: "*How it can show 1.3GB when you barely got on.* The counters are on their side."]\nThe search engine should be available to you now', { conversation: [], supabase: db });
+  assert.match(note, /^\[The user is replying to a message from the conversation of their project "Plane wifi refund", which this conversation does not hold\./);
+  assert.match(note, /You \(Closedhand\) \(the message being replied to\): I couldn't search just now: the search engines were blocked\./, "so the LLM knows what stopped that answer");
+  assert.match(note, /The user: Why does the plane wifi say I used 1\.3GB\?/);
+});
+
+// WhatsApp shows bold with one asterisk where the reply as kept has two, so a
+// quote of a reply that opened in bold never matched it.
+test("a quote matches its message whatever the formatting, in the conversation and the archive", async () => {
+  const { holds, quoteKey } = require("../lib/reply-context");
+  const key = quoteKey("*How it can show 1.3GB when you barely got on.* The counters are on their side.");
+  assert.ok(holds({ role: "assistant", content: "**How it can show 1.3GB when you barely got on.**\nThe counters are on their side." }, key));
+  assert.ok(!holds({ role: "assistant", content: "Something else entirely about plane wifi." }, key));
+  const db = archive([{ user_id: "u1", source: "conversation", external_id: "conv-t1-4", data: { chat: "t1", sender: "Closedhand", text: "**How it can show 1.3GB when you barely got on.**\nThe counters are on their side." } }]);
+  const note = await noteFor("u1", '[replying to Closedhand\'s message: "*How it can show 1.3GB when you barely got on.* The counters are on their side."]\nok', { conversation: [], supabase: db });
+  assert.match(note || "", /You \(Closedhand\) \(the message being replied to\): \*\*How it can show 1\.3GB/);
+});
+
+// A /bug sent as a reply to a message quotes it too; it is not the message,
+// and counting it as still in view left the LLM with only the quote.
+test("a message of theirs that quoted the same message is not the message", async () => {
+  const quote = "Three fit: Rua das Flores 12 at 850, Cais da Ribeira 4 at 880, and Miragaia 9 at 790. Miragaia has a balcony.";
+  const conversation = [{ role: "user", content: `[replying to Closedhand's message: "${quote}"]\n/bug it listed flats over budget` }];
+  const note = await noteFor("u1", `[replying to Closedhand's message: "${quote}"]\nIs the balcony south facing?`, { conversation, supabase: archive(rows) });
+  assert.match(note || "", /the message being replied to\): Three fit: Rua das Flores 12/);
+});
+
+test("a reply to Closedhand's message is looked for among Closedhand's messages only", async () => {
+  const quote = "Three fit: Rua das Flores 12 at 850, Cais da Ribeira 4 at 880, and Miragaia 9 at 790. Miragaia has a balcony.";
+  // How a /bug about it is kept: the quote moved to the end.
+  const conversation = [{ role: "user", content: `/bug it listed flats over budget (in reply to Closedhand's message: "${quote}")` }];
+  const note = await noteFor("u1", `[replying to Closedhand's message: "${quote}"]\nIs the balcony south facing?`, { conversation, supabase: archive(rows) });
+  assert.match(note || "", /the message being replied to\): Three fit: Rua das Flores 12/);
+  assert.equal(await noteFor("u1", `[replying to Closedhand's message: "${quote}"]\nok`, { conversation: [{ role: "assistant", content: quote }], supabase: archive(rows) }), null, "still in view: nothing more");
 });

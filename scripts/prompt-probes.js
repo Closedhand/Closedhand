@@ -75,6 +75,8 @@ const toolTurn = (name, input, result) => { const id = "toolu_probe" + ++turnId;
 const textOf = (r) => (r.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
 const calls = (r) => (r.content || []).filter((b) => b.type === "tool_use");
 const went = (r, re) => calls(r).some((c) => re.test(c.name) || (c.name === "get_tool_details" && re.test(JSON.stringify(c.input))));
+// Talking about a quoted message instead of answering it.
+const QUOTE_TALK = /(nothing|anything) in (the|that|this|your) (reply|message|quote)|needs acting on|quoted message/i;
 const SENDS = /^(gmail_send|gmail_reply|outlook_send|outlook_reply|send_mail|reply_to_mail|whatsapp_send|gmail_send_draft)$/;
 const words = (t) => t.split(/\s+/).filter(Boolean).length;
 // Saying it knows of no such thing, in the ways that gets said.
@@ -196,6 +198,24 @@ const PROBES = [
     // A full answer passes however it opens ("Search is back, but…"); a status report alone does not.
     pass: (r) => went(r, /web_search/) && words(textOf(r)) > 60,
     note: (r) => (went(r, /web_search/) ? "searched" : "no search") + ", " + JSON.stringify(textOf(r).slice(0, 70)) },
+  // The same, said in reply to the answer that search was missing from, as a
+  // chat app sends it: the quote is what they mean, and the answer is the
+  // work redone, never a word on whether the quoted message needs anything.
+  { name: "blocker_cleared_quoted", drop: null, steps: 4,
+    found: (c) => (c.name === "web_search" ? { results: [{ title: "Why in-flight wifi data counts run high", url: "https://example.org/inflight-data", snippet: "Satellite links resend lost packets and providers meter at the aircraft gateway, so resent data and background syncing count toward the allowance." }] } : null),
+    messages: [U("Why does the plane wifi say I used 1.3GB when I barely went online?"),
+      ...toolTurn("web_search", { query: "in-flight wifi data usage higher than expected" }, { error: "Search engines are blocked right now." }),
+      A("I couldn't search just now: the search engines were blocked. From what I know: in-flight wifi counts bytes at the aircraft's network, so data resent over a bad link and background syncing (photos, app updates, mail) all count, even when little reached your apps."),
+      U("[replying to Closedhand's message: \"I couldn't search just now: the search engines were blocked. From what I know: in-flight wifi counts bytes at the aircraft's network\"]\nThe search engine should be available to you now")],
+    pass: (r) => calls(r).some((c) => c.name === "web_search" && /wifi|wi-fi|data|flight|1\.3/i.test(JSON.stringify(c.input))) && !QUOTE_TALK.test(textOf(r)),
+    note: (r) => (calls(r).some((c) => c.name === "web_search" && /wifi|wi-fi|data|flight|1\.3/i.test(JSON.stringify(c.input))) ? "searched the question" : went(r, /web_search/) ? "a test search" : "no search") + (QUOTE_TALK.test(textOf(r)) ? ", TALKED ABOUT THE QUOTE" : "") },
+  // Their own unfinished request quoted with next to nothing added: the quote is the request.
+  { name: "quote_still_does_it", drop: null,
+    messages: [U("Find me the cheapest train from Leeds to York this Saturday morning."), A("On it: I'll look that up."),
+      U("Also, is it meant to rain tomorrow?"), A("Tomorrow looks dry: 9°C with a light wind."),
+      U("[replying to your own message: \"Find me the cheapest train from Leeds to York this Saturday morning.\"]\nstill?")],
+    pass: (r) => went(r, /web_search|web_fetch|sandbox_browse|read_pages/),
+    note: (r) => (calls(r).map((c) => c.name).join("+") || JSON.stringify(textOf(r).slice(0, 70))) },
   // Asked for the best of something where the best may shock: it neither
   // aims for shock nor warns them off it unasked.
   { name: "best_whether_or_not_it_shocks", drop: null, messages: [U("What are the best 3 questions to showcase an abliterated AI, to hook someone the first time they try it?")],
