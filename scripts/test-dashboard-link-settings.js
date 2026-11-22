@@ -247,7 +247,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   await withAccount.state.loadMyAccount();
   assert.equal(withAccount.el("my-account-facts").textContent, "Personal URLamber-fox-42.closedhand.aiSign in withGoogle: a@example.com \u00b7 Microsoft: b@example.com");
   assert.equal(withAccount.el("my-plan").hidden, false);
-  assert.equal(withAccount.el("my-plan-state").textContent, "Renews on 15 December.");
+  assert.equal(withAccount.el("my-plan-state").textContent, "Your subscription gives you DeepSeek V4.1 Flash Abliterated and renews on 15 December.");
   assert.deepEqual([withAccount.el("my-plan-status").textContent, withAccount.el("my-plan-status").className], ["Active", "plan-status on"]);
   assert.equal(withAccount.el("my-plus-about").hidden, true, "a subscriber is not sold it again");
   assert.equal(withAccount.el("my-fair-use").hidden, false);
@@ -353,7 +353,7 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   const six = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "plus", every: 6, renews_at: "2027-05-06T09:00:00.000Z", fair_use_renews_at: soon }, used: 0.3,
     plus: { available: true, active: true, every: 6, renews_at: "2027-05-06T09:00:00.000Z", longer, crypto, prices: { plus: "$30", extend: "$30", every: "$162" } } } } }));
   await six.state.loadMyAccount();
-  assert.equal(six.el("my-plan-state").textContent, "Renews every 6 months, next on 6 May 2027.");
+  assert.equal(six.el("my-plan-state").textContent, "Your subscription gives you DeepSeek V4.1 Flash Abliterated and renews every 6 months, next on 6 May 2027.");
   assert.equal(six.el("my-fair-use-renews").hidden, true, "not before most is used");
   assert.equal(six.el("my-ahead").hidden, true, "the other ways are for an account without a subscription");
   assert.equal(six.el("my-keep-desc").textContent, "Your subscription will carry on past the time you've paid for and renew every 6 months.");

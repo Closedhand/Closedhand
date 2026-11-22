@@ -98,7 +98,7 @@
       for (const id of ['plus-about', 'plus-get', 'plus-extend', 'plus-manage', 'plus-fine']) $(id).hidden = true;
       // Its state says when the fair use renews, always.
       if (typeof data.used === 'number') bar({}); else $('fair-use').hidden = true;
-      $('plus-state').textContent = model + ' is on for your account as the maintainer, with no charge.' + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + '.' : '');
+      $('plus-state').textContent = model + " is free for you as Closedhand's creator." + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + '.' : '');
       $('plus-state').hidden = false;
       return;
     }
@@ -130,7 +130,7 @@
     if (p.active && p.trial && p.ends_at) state.push('Your free 7 days run until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
     else if (p.active && p.trial && p.renews_at) state.push('Your free 7 days run until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
     else if (p.active && p.ends_at) state.push('Ends on ' + when(p.ends_at) + '.');
-    else if (p.active && p.renews_at) state.push((p.every ? 'Renews every ' + p.every + ' months, next on ' : 'Renews on ') + when(p.renews_at) + '.');
+    else if (p.active) state.push('Your subscription gives you ' + model + (p.renews_at ? (p.every ? ' and renews every ' + p.every + ' months, next on ' : ' and renews on ') + when(p.renews_at) : '') + '.');
     if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
     showState();
     // Carrying on, the way the plan is paid: by card, or in crypto.

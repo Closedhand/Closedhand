@@ -441,7 +441,10 @@ test("Settings says in one sentence what the person's plan means for Managed Mod
   assert.equal(plan({ state: "in-use", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" } }),
     "DeepSeek V4.1 Flash Abliterated comes with your subscription, which you cancelled: it ends on 27 November. After that Closedhand needs your own LLM provider to reply. Resume it in [My Account](#account).", "cancelled but running: what it means, and where to resume");
   assert.equal(plan({ state: "available", plan: { name: "plus", ends_at: "2026-11-27T14:19:56.000Z" } }), "DeepSeek V4.1 Flash Abliterated comes with your subscription, which you cancelled: it ends on 27 November. Resume it in [My Account](#account).");
-  assert.equal(plan({ state: "available", plan: { name: "plus" } }), "DeepSeek V4.1 Flash Abliterated comes with your subscription." + link);
+  assert.equal(plan({ state: "in-use", plan: { name: "plus" } }), "DeepSeek V4.1 Flash Abliterated comes with your subscription." + link);
+  // Paid for while their own LLM provider runs: said plainly, with where to cancel.
+  assert.equal(plan({ state: "available", plan: { name: "plus", renews_at: "2026-12-05T12:00:00Z" } }), "Your subscription is still active and renews on 5 December, while Closedhand uses your own LLM provider. You can cancel it in [My Account](#account).");
+  assert.equal(plan({ state: "available", plan: { name: "plus" } }), "Your subscription is still active, while Closedhand uses your own LLM provider. You can cancel it in [My Account](#account).");
   assert.equal(plan({ plan: { name: "first-month", ends_at: day(5) } }), "DeepSeek V4.1 Flash Abliterated comes with your free 7 days." + link, "the free days' end only in their last three days");
   assert.match(plan({ plan: { name: "first-month", ends_at: day(2) } }), /^DeepSeek V4.1 Flash Abliterated comes with your free 7 days, until \d+ \w+\./);
   assert.equal(plan({ state: "in-use", plan: { name: "ended", was: "plus" } }), "Your plan has ended. Subscribe again in [My Account](#account), or use your own LLM provider (free ones work too).", "an ended plan is said here too: Closedhand stops answering with it");
@@ -527,7 +530,7 @@ test("the uncensored LLM is shown by its name, with what it means for the person
   const setup = read("webapp/views/setup.html"), dash = read("webapp/views/dashboard.html");
   assert.ok(setup.includes('<strong id="model-included-name">DeepSeek V4.1 Flash Abliterated</strong>') && setup.includes(`<p class="note">${line}</p>`), "setup");
   assert.ok(dash.includes('<h3 id="llm-managed-name"><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h3>'), "Settings names it");
-  assert.ok(dash.includes(`${line} <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">About the subscription</a>`), "Settings links the subscription, as a link in a sentence looks");
+  assert.ok(dash.includes(`${line} <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">Pricing</a>`), "Settings links the pricing page by its name, as a link in a sentence looks");
   for (const page of [setup, dash]) assert.doesNotMatch(page, /llmHint\(|Managed Models<|sealed hardware/, "no hover naming the LLM, and no old name");
   assert.match(read("webapp/setup-state.js"), /modelIncludedName: settings\.included_ai\?\.name \|\| null/, "setup shows the name closedhand.com gave");
   assert.match(read("webapp/server.js"), /name: settings\.included_ai\?\.name \|\| null/, "and so does Settings");
@@ -776,11 +779,15 @@ test("the maintainer's plan: kept by the computer, told about fair use like a su
   assert.equal(await job.check(), 0, "once a month");
   const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   assert.match(read("webapp/included-ai-setup.js"), /const PLANS = \["first-month", "plus", "ended", "none", "maintainer", "ahead"\];/);
-  assert.equal(settingsPlan()({ state: "in-use", plan }), "DeepSeek V4.1 Flash Abliterated is on for your account as the maintainer, with no charge: this month's fair use renews on 1 December. This month's use is in [My Account](#account).");
+  assert.equal(settingsPlan()({ state: "in-use", plan }), "Free for you as Closedhand's creator: this month's fair use renews on 1 December. This month's use is in [My Account](#account).");
+  // Theirs whether or not it runs, said apart from the In use / Not in use beside the name.
+  assert.equal(settingsPlan()({ state: "available", plan }), "Free for you as Closedhand's creator, ready whenever you switch to it. This month's use is in [My Account](#account).");
   const page = read("webapp/views/dashboard.html");
-  assert.match(page, /llmName\(\) \+ " is on for your account as the maintainer, with no charge\." \+ \(plan\.renews_at \? " This month's fair use renews on "/, "My Account, with no buttons");
-  assert.match(page, /if \(plan\.name === "maintainer"\) \{\n\s+\$\("my-plan-status"\)\.hidden = true;\n\s+for \(const id of \["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways"/);
-  assert.match(read("closedhand-com/public/account.js"), /model \+ ' is on for your account as the maintainer, with no charge\.'/);
+  assert.match(page, /llmName\(\) \+ " is free for you as Closedhand's creator\." \+ \(plan\.renews_at \? " This month's fair use renews on "/, "My Account, with no buttons");
+  assert.match(page, /if \(plan\.name === "maintainer"\) \{\n\s+\$\("my-plan-status"\)\.textContent = "Free"; \$\("my-plan-status"\)\.className = "plan-status on"; \$\("my-plan-status"\)\.hidden = false;\n\s+for \(const id of \["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways"/);
+  assert.match(read("closedhand-com/public/account.js"), /model \+ " is free for you as Closedhand's creator\."/);
+  // "Maintainer" is the code's word, never one people read.
+  for (const f of ["webapp/views/dashboard.html", "closedhand-com/public/account.js", "closedhand-com/public/insights.js"]) assert.doesNotMatch(read(f), /as the maintainer|the maintainer,/, f);
   assert.match(read("lib/engine.js"), /plan\.name === "maintainer" \? `\$\{userName\} runs closedhand\.com, so their account has the LLM with no charge/);
 });
 

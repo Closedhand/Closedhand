@@ -2182,7 +2182,7 @@
                 </section>
                 <section class="choice-card" id="llm-managed" aria-labelledby="llm-managed-name" hidden>
                   <header class="choice-head"><h3 id="llm-managed-name"><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h3><span class="plan-status" id="llm-managed-status"></span></header>
-                  <p class="account-action-desc">Uncensored and running in a TEE, so nobody but you can read what goes in or comes out. <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">About the subscription</a></p>
+                  <p class="account-action-desc">Uncensored and running in a TEE, so nobody but you can read what goes in or comes out. <a class="text-link" href="https://closedhand.com/pricing" target="_blank" rel="noopener">Pricing</a></p>
                   <!-- What the person's plan means for them, in one sentence; the
                        plan itself, Resume included, is in My Account. -->
                   <p class="account-action-desc" id="included-ai-plan"></p>
@@ -2309,7 +2309,7 @@
                  keeping it, and what was paid with its invoices. -->
             <div class="settings-group" id="my-plan" hidden>
               <div class="settings-group-header">
-                <div class="plan-title"><h2><span data-llm-name>DeepSeek V4.1 Flash Abliterated</span></h2><span class="plan-status" id="my-plan-status" hidden></span></div>
+                <div class="plan-title"><h2>Closedhand subscription</h2><span class="plan-status" id="my-plan-status" hidden></span></div>
                 <p class="section-desc" id="my-plan-state"></p>
               </div>
               <div class="settings-group-body">
@@ -3996,12 +3996,16 @@
       var said, tail = " Your plan and this month's use are in ", end = '.';
       // Most of this month's fair use used: in how many days it renews, as My Account says.
       var renew = data.nearly && plan.fair_use_renews_at ? ' ' + fairUseRenewsIn(plan.fair_use_renews_at) : '';
-      if (plan.name === 'maintainer') { said = llmName() + ' is on for your account as the maintainer, with no charge' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.'; tail = " This month's use is in "; }
+      // Whether the plan is theirs is said apart from whether it runs: the
+      // status beside the name says that (In use, Not in use).
+      if (plan.name === 'maintainer') { said = inUse ? 'Free for you as Closedhand\'s creator' + (plan.renews_at ? ': this month\'s fair use renews on ' + planDay(plan.renews_at) : '') + '.' : 'Free for you as Closedhand\'s creator, ready whenever you switch to it.'; tail = " This month's use is in "; }
       else if (plan.name === 'ahead') { said = llmName() + ' is paid ahead until ' + planDay(plan.ends_at) + '.' + renew + after; }
       else if (plan.name === 'ended') { said = 'Your plan has ended. ' + (plan.was === 'ahead' ? 'Pay ahead again' : 'Subscribe again') + ' in '; tail = ''; end = ', or use your own LLM provider (free ones work too).'; }
       else if (plan.name === 'plus' && plan.trial && plan.ends_at) { said = llmName() + ' comes with your free 7 days, which end on ' + planDay(plan.ends_at) + ' with nothing charged.' + after; tail = ' Resume your subscription in '; }
       else if (plan.name === 'plus' && plan.trial) { said = plan.renews_at ? llmName() + ' comes with your free 7 days, until ' + planDay(plan.renews_at) + ', then your subscription renews at ' + (data.price || 'its monthly price') + ' a month unless you cancel.' : llmName() + ' comes with your free 7 days.'; }
       else if (plan.name === 'plus' && plan.ends_at) { said = llmName() + ' comes with your subscription, which you cancelled: it ends on ' + planDay(plan.ends_at) + '.' + renew + after; tail = ' Resume it in '; }
+      // Paid for while their own LLM provider runs: said, with where to cancel.
+      else if (plan.name === 'plus' && !inUse) { said = 'Your subscription is still active' + (plan.renews_at ? ' and renews on ' + planDay(plan.renews_at) : '') + ', while Closedhand uses your own LLM provider.'; tail = ' You can cancel it in '; }
       else if (plan.name === 'plus') { said = llmName() + ' comes with your subscription' + (plan.renews_at ? ', renewing on ' + planDay(plan.renews_at) : '') + '.' + renew; }
       else {
         var left = Date.parse(plan.ends_at) - Date.now();
@@ -4455,11 +4459,11 @@
       // The maintainer's own account: Managed Models with no charge and this
       // month's fair use, with nothing to buy, cancel or carry on.
       if (plan.name === "maintainer") {
-        $("my-plan-status").hidden = true;
+        $("my-plan-status").textContent = "Free"; $("my-plan-status").className = "plan-status on"; $("my-plan-status").hidden = false;
         for (const id of ["my-plus-about", "my-plus-fine", "my-plus-get", "my-plus-extend", "my-plus-ways", "my-card-divider", "my-card-row", "my-plus-divider", "action-plus-cancel", "action-plus-keep"]) $(id).hidden = true;
         // Its state says when the fair use renews, always.
         bar(null);
-        $("my-plan-state").textContent = llmName() + " is on for your account as the maintainer, with no charge." + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + "." : "");
+        $("my-plan-state").textContent = llmName() + " is free for you as Closedhand's creator." + (plan.renews_at ? " This month's fair use renews on " + day(plan.renews_at) + "." : "");
         $("my-plan-state").hidden = false;
         await loadMyPayments(false);
         return;
@@ -4480,7 +4484,7 @@
       } else if (wasPlus) {
         status("Ended", "over");
         state.push(plan.ended_at ? "Your subscription ended on " + day(plan.ended_at) + "." : "Your subscription has ended.");
-      } else if (plan.name === "ended") state.push("You no longer have " + llmName() + ".");
+      } else if (plan.name === "ended") { status("Ended", "over"); state.push("You no longer have " + llmName() + "."); }
       if (["first-month", "plus", "ahead"].includes(plan.name)) bar(plan.fair_use_renews_at); else $("my-fair-use").hidden = true;
       $("my-plus-about").hidden = $("my-plus-fine").hidden = !p.available;
       $("my-plus-get").hidden = !p.available || p.active || crypto || !!account.anonymous;
@@ -4527,7 +4531,7 @@
         if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free 7 days run until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
         else if (p.active && p.trial) { status("Free 7 days", "on"); if (p.renews_at) state.push("Your free 7 days run until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
         else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + when(p.ends_at) + ", then ends."); }
-        else if (p.active) { status("Active", "on"); if (p.renews_at) state.push((p.every ? "Renews every " + p.every + " months, next on " : "Renews on ") + when(p.renews_at) + "."); }
+        else if (p.active) { status("Active", "on"); state.push("Your subscription gives you " + llmName() + (p.renews_at ? (p.every ? " and renews every " + p.every + " months, next on " : " and renews on ") + when(p.renews_at) : "") + "."); }
         if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
         $("my-plus-fine").textContent = p.active || crypto || account.anonymous ? "" : "Cancel any time.";
         $("my-plus-fine").hidden = !$("my-plus-fine").textContent;

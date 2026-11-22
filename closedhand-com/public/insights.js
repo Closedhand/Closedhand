@@ -109,7 +109,7 @@
       : c.days > 365 ? "Over a year at the last 30 days' pace."
       : `About ${n(c.days)} ${c.days === 1 ? 'day' : 'days'} at the last 30 days' pace, to around ${day(runsOut)}.`;
     const y = m.you || {}, on = (m.running || 0) + ((m.plus && m.plus.active) || 0) + (m.ahead || 0);
-    const how = y.maintainer ? 'as the maintainer' : y.running ? 'free days' : (y.plus && y.plus.active) ? 'subscribed' : '';
+    const how = y.maintainer ? "as Closedhand's creator" : y.running ? 'free days' : (y.plus && y.plus.active) ? 'subscribed' : '';
     const tiles = [
       tile({ label: `${provider} credit left`, value: c ? usd(Math.max(0, c.left)) : 'n/a', tone: low ? 'warn' : '', sub: lasts }),
       tile({ label: 'On it now', value: n(on), you: how ? 'too, ' + how : '',
@@ -360,7 +360,7 @@
       if (p.claimed) chips.append(el('span', 'chip', 'claimed ' + day(p.claimed)));
       if (p.renames) chips.append(el('span', 'chip', `renamed ${p.renames}x`));
       if (p.assistant_email) chips.append(el('span', 'chip', `${p.assistant_email}: ${n(p.email_sent)} sent, ${n(p.email_received)} received this month`));
-      if (p.maintainer) chips.append(el('span', 'chip', 'Uncensored LLM as the maintainer'));
+      if (p.maintainer) chips.append(el('span', 'chip', "Uncensored LLM free as Closedhand's creator"));
       else if (p.ahead_until) chips.append(el('span', 'chip up', 'paid ahead in crypto to ' + day(p.ahead_until)));
       else if (p.plus_status) chips.append(el('span', 'chip' + (p.plus_status === 'active' ? ' up' : ''), 'Subscription ' + p.plus_status));
       else if (p.first_month_usd != null && !p.first_month_stopped && new Date(p.first_month_until) > Date.now()) chips.append(el('span', 'chip', 'free days to ' + day(p.first_month_until)));
