@@ -7141,8 +7141,8 @@ function jsq(s) {
   });
   // Away for a moment (another app, a code to copy) the phone shape stays,
   // and the sandbox computer gives it up by itself after a minute and a
-  // half without being asked (agent PHONE_FOR_MS). Going laptop-shaped at
-  // once and back reloaded every open page, and with it whatever was typed.
+  // half without being asked (agent PHONE_FOR_MS), so the screen is not
+  // reshaped for every glance away.
   document.addEventListener('visibilitychange', function () { if (!document.hidden) monPhoneShape(); });
   window.addEventListener('pagehide', function () { monLaptopShape(true); });
   // With the phone's keyboard up the view fits above it, and the sandbox's

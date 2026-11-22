@@ -472,8 +472,11 @@ async function fitWindows(size) {
 // their phone version by the device, not the width. Its pages are the
 // phone's width and height in CSS pixels at the phone's text size (drawn
 // scale times larger, filling the screen), with a phone's user agent and
-// touch; mouse presses arrive as touches (so a drag scrolls), and the open
-// pages reload as their phone versions. A page that names no viewport of its
+// touch; mouse presses arrive as touches (so a drag scrolls). The pages
+// already open take the phone's width where they are, never reloaded: a
+// reload of every page looked like the computer restarting each time the
+// phone came back, and lost what was typed. A site that picks its phone
+// version only as a page loads changes at its next page. A page that names no viewport of its
 // own gets the phone's width (PHONE_VIEWPORT): a phone's own fallback, 980
 // wide and shrunk to the screen, left pages made only for computers
 // unreadable here, with no pinch to zoom in. The overrides last as long as
@@ -535,9 +538,6 @@ async function phoneMode(metrics) {
       send("Page.addScriptToEvaluateOnNewDocument", { source: PHONE_VIEWPORT }, sessionId);
     }
     if (waitingForDebugger) send("Runtime.runIfWaitingForDebugger", {}, sessionId);
-    // A page already loading or loaded (one open before, or one Chrome
-    // starts loading before it waits) loads again as its phone version.
-    if (targetInfo.type === "page" && /^https?:/.test(targetInfo.url)) send("Page.reload", {}, sessionId);
   });
   ws.on("close", () => { if (phoneSession === ws) { phoneSession = null; phonePages.clear(); } });
   ws.on("error", () => {});

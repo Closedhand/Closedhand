@@ -177,8 +177,8 @@ test("full screen on a phone shows the picture once it has the phone's shape, fi
   assert.match(page, /if \(measure === true \|\| !monShapeSize\) \{ monShapeSize = \{ width: frame\.clientWidth, height: frame\.clientHeight \};/);
   assert.match(page, /body: JSON\.stringify\(monShapeSize\) \}\)/);
   assert.match(page, /if \(monShaped && height >= 200 && Math\.abs\(height - monShapeSize\.height\) > 100\) monPhoneShape\(true\);/, "the keyboard coming or going reshapes it, Safari's own bar does not");
-  // A moment in another app leaves it as it was: going laptop-shaped and
-  // back reloaded every open page, and what was typed in it.
+  // A moment in another app leaves it as it was: the screen is not
+  // reshaped for every glance away.
   assert.match(page, /document\.addEventListener\('visibilitychange', function \(\) \{ if \(!document\.hidden\) monPhoneShape\(\); \}\);/);
   assert.doesNotMatch(page, /if \(document\.hidden\) monLaptopShape\(true\)/);
   const agent = read("sandbox-image/agent/server.js");
@@ -199,7 +199,13 @@ test("in the phone shape Chrome acts as the phone watching, so sites pick their 
   assert.match(agent, /return \{ width, height, deviceScaleFactor: scale, scale, dontSetVisibleSize: true, mobile: true, screenWidth: width, screenHeight: height \};/, "the phone's CSS width at its text size, filling the screen");
   assert.match(agent, /send\("Page\.enable", \{\}, sessionId\);\n\s*send\("Page\.addScriptToEvaluateOnNewDocument"/, "the page agent on, or the default viewport is never added");
   assert.match(agent, /Mobile Safari\/537\.36/);
-  assert.match(agent, /if \(targetInfo\.type === "page" && \/\^https\?:\/\.test\(targetInfo\.url\)\) send\("Page\.reload", \{\}, sessionId\);/, "a page already loading loads again as its phone version");
+  // The pages already open are never reloaded: a reload of every page looked
+  // like the computer restarting each time the phone came back, and lost what
+  // was typed. The person's own reload button still reloads.
+  const phoneModeCode = agent.slice(agent.indexOf("async function phoneMode("), agent.indexOf("function goAddress("));
+  assert.ok(phoneModeCode.length > 500);
+  assert.doesNotMatch(phoneModeCode, /Page\.reload/, "the phone shape never reloads a page");
+  assert.match(agent, /\} else if \(action === "reload" && front\) \{\n\s*await cdpCall\(front\.webSocketDebuggerUrl, "Page\.reload"\);/);
 });
 
 // A phone's own fallback for a page that names no viewport is a 980-wide
