@@ -146,10 +146,27 @@ test("a file a site gives is downloaded and kept, and only the person's own file
   assert.match(handlers, /if \(action === "download"\) \{ step\.link = browseUrl \|\| null; step\.url = null; \}/, "the file's link is fetched, not opened first");
   assert.match(handlers, /parsed\.attachment_id = require\("\.\.\/attachments"\)\.saveAttachment\(userId, \{ buffer, fileName: name, mediaType: f\.mimeType, ext,/);
   assert.match(handlers, /const f = parsed\.file;\n\s*delete parsed\.file;/, "its bytes never go to the LLM");
-  assert.match(handlers, /const made = attachments\.filter\(\(a\) => a\.direction === "chat"\);/, "a file Closedhand sent is never uploaded as theirs");
-  const plants = new RegExp(handlers.match(/const PLANTS_FILE = \/(.+)\/;/)[1]);
-  for (const s of ["const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files;", "input.files = list", "new File([blob], 'receipt.jpg')"]) assert.ok(plants.test(s), s);
-  for (const s of ["document.title", "[...document.querySelectorAll('a')].map(a => a.href)", "input.files.length === 0", "x.files == null"]) assert.ok(!plants.test(s), s);
+  // A file Closedhand made, or one a script sets into a page, is put to the
+  // person first, never refused: a CV it wrote for them is theirs to upload.
+  const gate = require("../lib/send-gate");
+  const made = (id) => (id === "att_made" ? "booking_confirmation.png" : null);
+  for (const s of ["const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files;", "input.files = list", "new File([blob], 'receipt.jpg')"]) assert.ok(gate.PLANTS_FILE.test(s), s);
+  for (const s of ["document.title", "[...document.querySelectorAll('a')].map(a => a.href)", "input.files.length === 0", "x.files == null"]) assert.ok(!gate.PLANTS_FILE.test(s), s);
+  assert.deepEqual(gate.fileHandover("sandbox_browse", { action: "upload", ref: 41, attachment_ids: ["att_made"] }, made), { made: ["booking_confirmation.png"] });
+  assert.equal(gate.fileHandover("sandbox_browse", { action: "upload", ref: 41, attachment_ids: ["att_theirs"] }, made), null, "their own file goes without a question");
+  assert.deepEqual(gate.fileHandover("sandbox_browse", { action: "batch", steps: [{ action: "click", ref: 3 }, { action: "eval_js", script: "input.files = dt.files" }] }, made), { script: true });
+  assert.equal(gate.fileHandover("sandbox_browse", { action: "eval_js", script: "document.title" }, made), null);
+  assert.equal(gate.fileHandoverCard({ made: ["booking_confirmation.png"] }, "delayrepay.example"),
+    'I\'m about to upload booking_confirmation.png on delayrepay.example. I made this file myself, so it is not a document anyone else issued.\n\nReply "yes" to upload or "no" to leave it.');
+  assert.match(gate.fileHandoverCard({ script: true }, null), /^I'm about to put a file into the page with a script, rather than one of your own files\./);
+  assert.doesNotMatch(handlers, /PLANTS_FILE|a\.direction === "chat"/, "nothing is refused in the tool itself");
+  assert.match(read("lib/engine.js"), /const fileHandover = !needsConfirmation\n\s*\? require\("\.\/send-gate"\)\.fileHandover\(block\.name, block\.input, \(id\) => require\("\.\/attachments"\)\.madeName\(userId, id\)\) : null;\n\s*if \(fileHandover\) needsConfirmation = true;/, "asked in the chat, tick box or not");
+  assert.match(read("lib/engine.js"), /\} else if \(fileHandover\) \{\n\s*confirmSummary = require\("\.\/send-gate"\)\.fileHandoverCard\(/);
+  const agents = read("lib/agents.js");
+  assert.match(agents, /if \(sendGate\.fileHandover\(block\.name, block\.input, \(id\) => require\("\.\/attachments"\)\.madeName\(userId, id\)\)\) return \{ error: HAND_BACK \};/, "a job nobody is watching hands it back");
+  assert.match(agents, /: sendAt \? sendGate\.browserSendCard\(sendAt\) : handover \? sendGate\.fileHandoverCard\(handover, sendGate\.siteNow\(userId\)\) : null;/, "a job asks in the chat");
+  assert.match(read("lib/send-gate.js"), /const handover = fileHandover\(toolName, input, \(id\) => require\("\.\/attachments"\)\.madeName\(userId, id\)\);\n\s*if \(handover\) return \{ card: fileHandoverCard\(handover, siteNow\(userId\)\), isInternal: true \};/, "and so do schedules and automations");
+  assert.match(read("lib/attachments.js"), /return a && a\.direction === "chat" \? a\.fileName \|\| attachmentId : null;/);
   assert.match(read("lib/attachments.js"), /direction: att\.direction \|\| "in" \};/);
   assert.match(read("lib/attachments.js"), /direction: fileData\.direction \|\| "in",/);
   assert.match(helper, /if action == "download":/);
