@@ -71,10 +71,38 @@
         // Idle proxies drop the websocket after a while even though the
         // remote desktop is still running, so always try to reconnect.
         // Tokens expire after 5 minutes, so fetch a fresh one first.
+        // The last picture stays on screen until the new connection draws
+        // its first frame: coming back to a phone, whose browser had dropped
+        // the connection while away, showed grey for about five seconds.
+        // Away, nothing is asked; back, it connects again at once.
+        let retry = null, restarting = false, awaySince = 0;
         function disconnectedFromServer(e) {
+            // Only the connection in use: one replaced by a newer one is done.
+            if (e && e.target && e.target !== rfb) return;
             status("Reconnecting…");
-            setTimeout(reconnect, 3000);
+            showPicture();
+            if (restarting) return;
+            clearTimeout(retry);
+            if (!document.hidden) retry = setTimeout(reconnect, 3000);
         }
+        let lastPicture = null;
+        function keepPicture() {
+            const c = document.querySelector('#screen canvas');
+            if (!c || !c.width || !c.height) return;
+            try {
+                const b = c.getBoundingClientRect();
+                lastPicture = { url: c.toDataURL('image/jpeg', 0.7), left: b.left + window.scrollX, top: b.top + window.scrollY, width: b.width, height: b.height };
+            } catch (err) { /* nothing kept */ }
+        }
+        function showPicture() {
+            if (!lastPicture || document.getElementById('lastPicture')) return;
+            const img = new Image();
+            img.id = 'lastPicture'; img.alt = ''; img.src = lastPicture.url;
+            Object.assign(img.style, { position: 'absolute', left: lastPicture.left + 'px', top: lastPicture.top + 'px',
+                width: lastPicture.width + 'px', height: lastPicture.height + 'px', zIndex: 10, pointerEvents: 'none' });
+            document.body.appendChild(img);
+        }
+        function dropPicture() { const img = document.getElementById('lastPicture'); if (img) img.remove(); }
 
         async function reconnect() {
             try {
@@ -162,6 +190,10 @@
             rfb = new Screen(document.getElementById('screen'), url,
                              { credentials: { password: password } });
             rfb.onScreenSize = tellScreenSize;
+            rfb.onFrame = function () { restarting = false; dropPicture(); };
+            rfb.dragScrolls = fit === 'width';
+            rfb.onTap = tapped;
+            rfb.onScrolled = function () { setTimeout(loadEditables, 400); };
 
             // Add listeners to important events from the RFB module
             rfb.addEventListener("connect",  connectedToServer);
@@ -193,6 +225,7 @@
         // only once it has the phone's shape.
         let fit = 'contain', screenSize = null;
         function fitScreen() {
+            if (rfb) rfb.dragScrolls = fit === 'width';
             const byWidth = fit === 'width' && screenSize;
             document.body.classList.toggle('fit-width', !!byWidth);
             document.getElementById('screen').style.height = byWidth ? (window.innerWidth * screenSize.height / screenSize.width) + 'px' : '';
@@ -221,7 +254,39 @@
 
         document.addEventListener('visibilitychange', function() {
           try { rfb.focusOnClick = !document.hidden; } catch (e) {}
+          if (document.hidden) { keepPicture(); awaySince = Date.now(); return; }
+          // Back after more than a moment: a phone's browser has usually
+          // dropped the connection without saying so yet, so a new one
+          // starts now, over the last picture.
+          if (!rfb) return;
+          if (rfb._rfbConnectionState === 'disconnected' || Date.now() - awaySince > 5000) {
+            clearTimeout(retry);
+            restarting = true;
+            showPicture();
+            try { if (rfb._rfbConnectionState !== 'disconnected') rfb.disconnect(); } catch (e) {}
+            reconnect();
+          }
+          loadEditables();
         });
+
+        // A text box tapped opens the phone's keyboard, and anything else
+        // tapped closes it (the page around this one, monTypeHere). Where
+        // the page in front can be typed into comes from the sandbox
+        // computer (agent /desktop/editables), asked now and then while full
+        // screen on a phone, and again after a tap or a scroll.
+        let editables = [];
+        function loadEditables() {
+            if (fit !== 'width' || document.hidden) return;
+            fetch('/api/sandbox/editables', { cache: 'no-store' }).then((r) => r.json())
+                .then((d) => { editables = Array.isArray(d.rects) ? d.rects : []; }).catch(() => {});
+        }
+        setInterval(loadEditables, 1500);
+        function tapped(x, y) {
+            if (fit !== 'width') return;
+            const onBox = editables.some((r) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]);
+            try { if (window.parent !== window && window.parent.monTypeHere) window.parent.monTypeHere(onBox); } catch (e) {}
+            setTimeout(loadEditables, 700);
+        }
     </script>
 </head>
 

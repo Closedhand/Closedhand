@@ -7060,7 +7060,7 @@ function jsq(s) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var own = !!(d && !d.busy && d.width < 1280);
-        document.getElementById('monFullHint').textContent = d && d.busy ? 'Closedhand is using this browser, so it stays laptop-sized until it\'s done.' : '';
+        document.getElementById('monFullHint').textContent = d && d.busy ? 'Closedhand is using this browser. The phone view comes back once Closedhand is done.' : '';
         monOwnBar(own);
         monSetFit(own ? 'width' : 'contain');
         if (d && d.width && d.height) monAwait({ width: d.width, height: d.height }); else monRevealScreen();
@@ -7188,6 +7188,17 @@ function jsq(s) {
     keys.focus();
     keys.setSelectionRange(1, 1);
   }
+  // Full screen on a phone, a text box tapped on the sandbox computer's
+  // screen opens the phone's keyboard, and anything else tapped closes it,
+  // as in a phone's own browser (novnc/vnc_lite.html says which, while the
+  // tap is still the person's, which is when a phone lets a keyboard open).
+  // The keyboard button stays for a box the screen can't see into.
+  window.monTypeHere = function (onBox) {
+    var keys = document.getElementById('monKeys');
+    if (!keys || !document.body.classList.contains('mon-full')) return;
+    if (onBox && document.activeElement !== keys) { keys.value = ' '; keys.focus(); keys.setSelectionRange(1, 1); }
+    else if (!onBox && document.activeElement === keys) keys.blur();
+  };
   (function () {
     var keys = document.getElementById('monKeys'), btn = document.getElementById('monKeysBtn');
     if (!keys) return;

@@ -587,6 +587,40 @@ app.post("/desktop/phone-browser", auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Where on the screen the page in front can be typed into, in the screen's
+// own pixels: a phone full screen opens its keyboard when one of these is
+// tapped, and closes it when anything else is (web chat monTypeHere).
+// Without it the keyboard had its own button, and a tapped text box did
+// nothing a phone would. Boxes in the page itself; a box inside another
+// site's frame is not reachable from here and keeps the button.
+const EDITABLE_RECTS = `(() => {
+  const SKIP = /^(hidden|checkbox|radio|button|submit|reset|file|image|range|color)$/i;
+  const out = [];
+  for (const el of document.querySelectorAll('input, textarea, [contenteditable=""], [contenteditable="true"]')) {
+    if (el.tagName === 'INPUT' && SKIP.test(el.type || '')) continue;
+    if (el.disabled || el.readOnly) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
+    out.push([r.left, r.top, r.width, r.height]);
+    if (out.length >= 200) break;
+  }
+  return { rects: out, sx: screenX, sy: screenY, frame: (outerWidth - innerWidth) / 2, bars: outerHeight - innerHeight };
+})()`;
+app.get("/desktop/editables", auth, async (req, res) => {
+  if (DESKTOP) return res.json({ rects: [] });
+  try {
+    const tab = await frontTab();
+    if (!tab) return res.json({ rects: [] });
+    const got = await cdpCall(tab.webSocketDebuggerUrl, "Runtime.evaluate", { expression: EDITABLE_RECTS, returnByValue: true });
+    const v = got?.result?.value || { rects: [] };
+    // In the phone shape the page fills the screen, drawn scale times
+    // larger (phoneMode); otherwise it sits in Chrome's window below its bars.
+    const scale = shape.phone ? shape.width / shape.phone.width : 1;
+    const left = shape.phone ? 0 : (v.sx || 0) + (v.frame || 0), top = shape.phone ? 0 : (v.sy || 0) + Math.max(0, (v.bars || 0) - (v.frame || 0));
+    res.json({ rects: (v.rects || []).map(([x, y, w, h]) => [Math.round(left + x * scale), Math.round(top + y * scale), Math.round(w * scale), Math.round(h * scale)]) });
+  } catch (e) { res.json({ rects: [], error: e.message }); }
+});
+
 // { width, height }: the phone's view in CSS pixels; anything else: laptop.
 app.post("/desktop/shape", auth, async (req, res) => {
   if (DESKTOP) return res.status(409).json({ error: "This browser has no screen of its own to reshape." });

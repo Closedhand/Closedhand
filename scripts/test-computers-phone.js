@@ -294,3 +294,102 @@ test("full screen on a computer has a way back beside Esc, and its hint shows in
   assert.match(page, /#monDesktop:fullscreen \.mon-exit-full \{ display:inline-flex; \}/, "only while the view fills the screen");
   assert.match(page, /hint\.textContent = 'Press Esc to exit full screen';\n\s*desktop\.appendChild\(hint\);/, "outside the full-screen view it was never seen");
 });
+
+// Full screen on a phone a finger dragged scrolled by holding the mouse
+// button down, one round trip at a time: laggy, with a grey pointer drawn as
+// if the mouse was meant. It scrolls by the wheel now, with a flick carrying
+// on, and a phone gets no pointer. A tap says where it landed, in the
+// screen's pixels, so a text box tapped opens the keyboard.
+test("on a phone a dragged finger scrolls by the wheel, a flick carries on, and no pointer is drawn", async () => {
+  const { pathToFileURL } = require("node:url");
+  const { makeScreen, SCROLL_STEP } = await import(pathToFileURL(path.join(__dirname, "..", "webapp/public/novnc/closedhand-screen.js")));
+  const events = [];
+  let detached = 0;
+  class Base {
+    constructor() {
+      this._rfbConnectionState = "connected"; this._fbWidth = 508; this._fbHeight = 900; this._sock = {};
+      this._canvas = { getBoundingClientRect: () => ({ left: 0, top: 100, width: 390, height: 690 }) };
+      this._display = { absX: (x) => Math.round(x * 508 / 390), absY: (y) => Math.round(y * 508 / 390) };
+      this._cursor = { detach: () => { detached++; } };
+    }
+    _handleGesture(ev) { events.push(`drag-as-mouse ${ev.type}`); }
+    _handleMouseMove(x, y) { events.push(`move ${Math.round(x)},${Math.round(y)}`); }
+    _handleMouseButton(x, y, down, mask) { if (down) events.push(mask === 0x10 ? "wheel down" : mask === 0x8 ? "wheel up" : `button ${mask}`); }
+    _framebufferUpdate() { return true; }
+  }
+  let now = 0;
+  const Screen = makeScreen(Base, {}, { clock: () => now, visible: () => true, every: () => 0, coarse: () => true });
+  const screen = new Screen();
+  assert.equal(detached, 1, "a phone gets no stand-in pointer");
+  const g = (type, kind, x, y) => screen._handleGesture({ type, detail: { type: kind, clientX: x, clientY: y } });
+
+  g("gesturestart", "drag", 200, 600);
+  assert.deepEqual(events, ["drag-as-mouse gesturestart"], "not full screen on a phone: noVNC's own drag");
+  events.length = 0;
+
+  screen.dragScrolls = true;
+  g("gesturestart", "drag", 200, 600);
+  assert.deepEqual(events, ["move 200,500"], "the wheel turns where the finger is");
+  now = 100; g("gesturemove", "drag", 200, 600 - SCROLL_STEP * 2 - 5);
+  assert.deepEqual(events.slice(1), ["wheel down", "wheel down"], "finger up: the page goes down, a step per SCROLL_STEP pixels");
+  events.length = 0;
+  let scrolled = 0; screen.onScrolled = () => scrolled++;
+  now = 120; g("gesturemove", "drag", 200, 600 - SCROLL_STEP * 2 - 45);
+  now = 130; g("gestureend", "drag", 200, 600 - SCROLL_STEP * 2 - 45);
+  assert.ok(events.filter((e) => e === "wheel down").length >= 4, "a flick carries on: " + events.join(", "));
+  assert.equal(scrolled, 1, "told the scroll ended, so where to type is looked at again");
+  events.length = 0;
+  g("gesturestart", "drag", 200, 300); now = 400; g("gesturemove", "drag", 200, 300 + SCROLL_STEP + 1); now = 900; g("gestureend", "drag", 200, 300 + SCROLL_STEP + 1);
+  assert.deepEqual(events.slice(1), ["wheel up"], "finger down: the page goes up; a slow drag has no flick");
+
+  const taps = [];
+  screen.onTap = (x, y) => taps.push([x, y]);
+  events.length = 0;
+  g("gesturestart", "onetap", 195, 300);
+  assert.deepEqual(taps, [[254, 261]], "a tap says where it landed, in the screen's pixels");
+  assert.deepEqual(events, ["drag-as-mouse gesturestart"], "and is still a click");
+
+  let drawn = 0; screen.onFrame = () => drawn++;
+  screen._framebufferUpdate(); screen._framebufferUpdate();
+  assert.equal(drawn, 1, "told once, when the first frame is drawn");
+});
+
+// Coming back to the phone showed grey for about five seconds while the
+// screen connected again. The last picture stays until the new connection
+// draws, and coming back starts a new one at once.
+test("coming back, the last picture stays and the screen connects again at once", () => {
+  const lite = read("webapp/public/novnc/vnc_lite.html");
+  assert.match(lite, /if \(document\.hidden\) \{ keepPicture\(\); awaySince = Date\.now\(\); return; \}/);
+  assert.match(lite, /if \(rfb\._rfbConnectionState === 'disconnected' \|\| Date\.now\(\) - awaySince > 5000\) \{[\s\S]{0,300}showPicture\(\);[\s\S]{0,200}reconnect\(\);/);
+  assert.match(lite, /rfb\.onFrame = function \(\) \{ restarting = false; dropPicture\(\); \};/);
+  assert.match(lite, /if \(e && e\.target && e\.target !== rfb\) return;/, "a replaced connection does not start another");
+  assert.match(lite, /if \(!document\.hidden\) retry = setTimeout\(reconnect, 3000\);/, "nothing is asked while away");
+});
+
+// A text box tapped full screen on a phone opens its keyboard, and anything
+// else tapped closes it. Where the page can be typed into comes from the
+// sandbox computer, in its screen's pixels.
+test("a tapped text box opens the phone's keyboard, and a tap elsewhere closes it", () => {
+  const lite = read("webapp/public/novnc/vnc_lite.html");
+  assert.match(lite, /const onBox = editables\.some\(\(r\) => x >= r\[0\] && x <= r\[0\] \+ r\[2\] && y >= r\[1\] && y <= r\[1\] \+ r\[3\]\);/);
+  assert.match(lite, /window\.parent\.monTypeHere\(onBox\)/);
+  assert.match(lite, /fetch\('\/api\/sandbox\/editables', \{ cache: 'no-store' \}\)/);
+  assert.match(page, /window\.monTypeHere = function \(onBox\) \{[\s\S]{0,200}if \(!keys \|\| !document\.body\.classList\.contains\('mon-full'\)\) return;\n\s*if \(onBox && document\.activeElement !== keys\) \{ keys\.value = ' '; keys\.focus\(\); keys\.setSelectionRange\(1, 1\); \}\n\s*else if \(!onBox && document\.activeElement === keys\) keys\.blur\(\);/);
+  const agent = read("sandbox-image/agent/server.js");
+  assert.match(agent, /app\.get\("\/desktop\/editables", auth, async \(req, res\) => \{/);
+  assert.match(agent, /const scale = shape\.phone \? shape\.width \/ shape\.phone\.width : 1;/, "the phone shape draws the page scale times larger");
+  assert.match(read("webapp/server.js"), /app\.get\("\/api\/sandbox\/editables", async \(req, res\) => \{/);
+  // Run on a page: boxes to type into, not buttons, hidden ones or ones out of sight.
+  const expr = agent.match(/const EDITABLE_RECTS = `([\s\S]*?)`;/)[1];
+  const els = [
+    { tagName: "INPUT", type: "text", rect: [10, 20, 200, 30] },
+    { tagName: "INPUT", type: "checkbox", rect: [10, 60, 20, 20] },
+    { tagName: "TEXTAREA", rect: [10, 90, 300, 80] },
+    { tagName: "INPUT", type: "text", disabled: true, rect: [10, 200, 200, 30] },
+    { tagName: "INPUT", type: "email", rect: [10, 2000, 200, 30] },
+  ].map((e) => ({ ...e, getBoundingClientRect: () => ({ left: e.rect[0], top: e.rect[1], width: e.rect[2], height: e.rect[3], right: e.rect[0] + e.rect[2], bottom: e.rect[1] + e.rect[3] }) }));
+  const vm = require("node:vm");
+  const got = vm.runInNewContext(expr, { document: { querySelectorAll: () => els }, innerWidth: 390, innerHeight: 700, screenX: 0, screenY: 0, outerWidth: 390, outerHeight: 785 });
+  assert.deepEqual(JSON.parse(JSON.stringify(got.rects)), [[10, 20, 200, 30], [10, 90, 300, 80]]);
+  assert.equal(got.bars, 85);
+});

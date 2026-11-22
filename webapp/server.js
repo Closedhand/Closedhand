@@ -8399,6 +8399,17 @@ app.post("/api/sandbox/screen", async (req, res) => {
   catch (e) { res.status(503).json({ error: "The sandbox computer couldn't change its screen just now." }); }
 });
 
+// Where the page in front can be typed into (agent /desktop/editables), so
+// a phone full screen opens its keyboard for a tapped text box.
+app.get("/api/sandbox/editables", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  const info = await getSandboxInfo(userId).catch(() => null);
+  if (!info) return res.status(404).json({ rects: [] });
+  res.set("Cache-Control", "no-store");
+  try { res.json(await sandboxFetch(info, "GET", "/desktop/editables", null, 8000)); }
+  catch (e) { res.json({ rects: [] }); }
+});
+
 // The phone's own browser bar, standing in for Chrome's while the screen is
 // phone-shaped (agent /desktop/phone-browser).
 app.post("/api/sandbox/phone-browser", async (req, res) => {
