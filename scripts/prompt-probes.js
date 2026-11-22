@@ -84,7 +84,10 @@ const DENIES = /no record|can't find|cannot find|couldn't find|could not find|no
 // What a lookup the probe has no answer for comes back with.
 const NOTHING = { results: [], source_counts: {} };
 const INVENTORY = { results: [{ id: "m_640", from: "Fixture Lettings <hello@fixturelettings.example>", subject: "Inventory form for 14 Sample Road", date: "2026-11-17", body: "Hi Robin, please find the check-out inventory form attached. The deposit will be returned within 10 working days of both parties signing. Kind regards, Fixture Lettings" }], source_counts: { gmail: 1 }, note: "Full message shown; nothing more to read." };
-const TOMORROW = { events: [{ summary: "Dentist", start: "2026-11-18T09:40:00+00:00", location: "Sample Dental, Fixture Road" }, { summary: "Lunch with Priya", start: "2026-11-18T13:00:00+00:00", location: "Sample Cafe", canceled: true }, { summary: "Flour supplier call", start: "2026-11-18T15:30:00+00:00" }] };
+// Dated tomorrow whenever the probes run: fixed on one day, they went stale,
+// and asked what is on tomorrow the LLM rightly kept looking.
+const DAY_AFTER = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const TOMORROW = { events: [{ summary: "Dentist", start: `${DAY_AFTER}T09:40:00+00:00`, location: "Sample Dental, Fixture Road" }, { summary: "Lunch with Priya", start: `${DAY_AFTER}T13:00:00+00:00`, location: "Sample Cafe", canceled: true }, { summary: "Flour supplier call", start: `${DAY_AFTER}T15:30:00+00:00` }] };
 const FLIGHT = [{ label: "Email: Your booking FX204 to Lisbon (from Fixture Airlines, 2026-11-02)", text: "Your flight FX204 to Lisbon departs 12 March at 07:15 from London Gatwick. Booking reference QX7R2." }];
 
 // A background job, started.
@@ -92,6 +95,8 @@ const STARTED = { success: true, task_id: "t_probe1", dashboard_url: "https://fi
 
 // Unasked advice to keep away from shock, as the LLM has written it.
 const STEERS = /\b(skip|avoid|don'?t (open|lead) with|not the ones where|rather than (showing off|leading with)|keep it)\b[^.\n]{0,60}\b(shock|gore|edgy|slurs?|rude|crude|swear\w*|erotica|vulgar|gimmick|clean|filth\w*|smut\w*)\b|safe to (demo|show)|without being crude|reads? as a (toy|gimmick|novelty)|look like a toy|edgy ones|isn'?t (the |about )?(rudeness|filth|smut|shock|swearing|rude words|"it says rude words")|aren'?t the (filthiest|rudest|edgiest)|porn bot|not something shocking|for shock'?s sake|shock (gets|value)/i;
+// drop: null on a probe whose rule was taken out because the LLM did as well
+// without it (pruning run, 22 Nov 2026): the probe stays, watching the behaviour.
 const PROBES = [
   { name: "view_not_action", drop: { line: "A question is not an instruction." }, steps: 2, found: (c) => (/search_cache|read_cached_record/.test(c.name) ? INVENTORY : null),
     messages: [U("The letting agency finally sent the inventory form. Should I chase them about the deposit as well?"), ...toolTurn("search_cache", { query: "letting agency deposit inventory", type: "email" }, INVENTORY)],
@@ -121,7 +126,7 @@ const PROBES = [
     pass: (r) => textOf(r).length > 10 && /\b(back|post|send|let you know|tell you|here)\b/i.test(textOf(r)), note: (r) => JSON.stringify(textOf(r).slice(-200)) },
   { name: "own_words_answered_here", drop: { section: "NEVER delegate when:" }, messages: [U("How does a tracker mortgage work?"), A("A tracker follows the Bank of England base rate plus a set margin, so your payment moves when the base rate does. Some have a collar, and most have no early repayment charge."), U("What did you mean by collar?")],
     pass: (r) => !went(r, /agent_start/) && textOf(r).length > 20 },
-  { name: "pins_a_fact_in_passing", drop: { line: "Pinned Facts: pin a durable truth" }, steps: 2, found: (c) => (c.name === "get_facts" ? { facts: [{ key: "family-partner", value: "Robin's partner is Ana Fixture." }, { key: "profile-work", value: "Robin runs a small bakery, Sample Loaf, in Hackney." }] } : null),
+  { name: "pins_a_fact_in_passing", drop: null, steps: 2, found: (c) => (c.name === "get_facts" ? { facts: [{ key: "family-partner", value: "Robin's partner is Ana Fixture." }, { key: "profile-work", value: "Robin runs a small bakery, Sample Loaf, in Hackney." }] } : null),
     messages: [U("My sister Mei's birthday is 3 March and I always forget it. What kind of restaurant works for a birthday dinner for two?")],
     pass: (r) => went(r, /pin_fact/), note: (r) => (went(r, /pin_fact/) ? "pinned" : went(r, /get_facts/) ? "looked at facts, did not pin" : "neither") },
   { name: "saves_a_preference", drop: { line: "Preferences: when the user says how" }, messages: [U("Stop using emojis with me.")],
@@ -153,9 +158,9 @@ const PROBES = [
     pass: (r) => /connect/i.test(textOf(r)) && !went(r, /api_request|sandbox|web_search|search_cache|agent_start/) },
   { name: "promise_has_a_watch", drop: { line: "A promise to tell them about something yet to happen" }, messages: [U("Let me know when the refund email from Fixture Airlines arrives.")],
     pass: (r) => went(r, /automation_create/) },
-  { name: "stays_on_the_new_topic", drop: { line: "Respond to their latest message" }, messages: [U("When's my dentist appointment?"), A("Tuesday 24 November at 9:40am, at Sample Dental on Fixture Road."), U("What's a good name for a ginger cat?")],
+  { name: "stays_on_the_new_topic", drop: null, messages: [U("When's my dentist appointment?"), A("Tuesday 24 November at 9:40am, at Sample Dental on Fixture Road."), U("What's a good name for a ginger cat?")],
     pass: (r) => !/dentist|appointment/i.test(textOf(r)) && textOf(r).length > 3 },
-  { name: "says_it_can_see_mail", drop: { line: "NEVER say you \"can't access\"" }, messages: [U("Can you actually see my emails?")],
+  { name: "says_it_can_see_mail", drop: null, messages: [U("Can you actually see my emails?")],
     pass: (r) => (/\b(yes|yep|i can)\b/i.test(textOf(r)) || calls(r).length > 0) && !/can't access|cannot access|don't have access|unable to access/i.test(textOf(r)) },
   { name: "answer_first", drop: { section: "RESPONSE PRESENTATION:" }, messages: [U("Is it OK to put a cast iron pan in the dishwasher?")],
     pass: (r) => /^\W*(short answer: )?(no|don't|never|nope|not\b)/i.test(textOf(r)), note: (r) => words(textOf(r)) + " words" },
@@ -163,7 +168,7 @@ const PROBES = [
     pass: (r) => words(textOf(r)) <= 230 || /\[\[next\]\]/.test(textOf(r)), note: (r) => words(textOf(r)) + " words" + (/\[\[next\]\]/.test(textOf(r)) ? ", in parts" : "") },
   { name: "no_emdash", drop: { line: "Never write the emdash" }, messages: [U("Write a two-line toast for my brother's 40th.")],
     pass: (r) => !/\u2014/.test(textOf(r)) },
-  { name: "failed_tool_tried_again", drop: { line: "When a tool fails, retry it" }, extraTools: ["gcal_create_event"], messages: [U("Add the dentist to my calendar for Tuesday at 9:40am."),
+  { name: "failed_tool_tried_again", drop: null, extraTools: ["gcal_create_event"], messages: [U("Add the dentist to my calendar for Tuesday at 9:40am."),
     ...toolTurn("gcal_create_event", { summary: "Dentist", start: "Tuesday 9:40am" }, { error: "Invalid start: expected an RFC3339 date-time such as 2026-11-24T09:40:00+00:00" })],
     pass: (r) => went(r, /gcal_create_event/) },
   { name: "no_narration_before_tools", drop: { line: "Chain multi-step tasks into one flow" }, messages: [U("Has the plumber replied about Thursday?")],
@@ -214,7 +219,8 @@ const PROBES = [
     messages: [U("Find me the cheapest train from Leeds to York this Saturday morning."), A("On it: I'll look that up."),
       U("Also, is it meant to rain tomorrow?"), A("Tomorrow looks dry: 9°C with a light wind."),
       U("[replying to your own message: \"Find me the cheapest train from Leeds to York this Saturday morning.\"]\nstill?")],
-    pass: (r) => went(r, /web_search|web_fetch|sandbox_browse|read_pages/),
+    // Handing the search to a background task is doing it too.
+    pass: (r) => went(r, /web_search|web_fetch|sandbox_browse|read_pages|agent_start/),
     note: (r) => (calls(r).map((c) => c.name).join("+") || JSON.stringify(textOf(r).slice(0, 70))) },
   // Asked for the best of something where the best may shock: it neither
   // aims for shock nor warns them off it unasked.
