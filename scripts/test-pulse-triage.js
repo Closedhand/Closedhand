@@ -124,3 +124,28 @@ test('mail sent to a list is marked, and noticing knows what that means', async 
   assert.match(pulse, /its "call me" is not a request waiting on \$\{userName\}/, 'the writer holds the same line');
   assert.match(pulse, /filter\(e => !JUNK_SENDER\.test\(e\.from \|\| ""\) && !sortedAsBulk\(e\.labels\) && unclaimed\(e\) && !facts\.seenAsItCame\(e, wrote\) && !facts\.partOfBooking\(e, bookingMail\)\)/, 'what Gmail filed as bulk never reaches noticing');
 });
+
+// A WhatsApp group the person has never written in is read like a mailing
+// list: a plane-spotting group's news that a flight had moved reached them as
+// a change to a plan they did not have. Marked, and noticing knows what that
+// means; measured on the real LLM: such news 0 of 6 told, while a message
+// there that names them, or cancels their own flight, 3 of 3 each.
+test('a message from a group they have never written in is marked, and noticing knows what that means', async () => {
+  const facts = require('../lib/pulse-facts');
+  const group = { type: 'message', data: { chat: '120363000000000001@g.us', text: 'The A330 has moved to Monday' } };
+  const spoken = { type: 'message', data: { chat: '120363000000000002@g.us', text: 'Bring the ladder?' } };
+  const person = { type: 'message', data: { chat: '447700900123@s.whatsapp.net', text: 'see you at 7' } };
+  const asked = [];
+  const quiet = await facts.quietGroups([group, spoken, person, group], async (chat) => { asked.push(chat); return chat === spoken.data.chat; });
+  assert.deepEqual(asked, [group.data.chat, spoken.data.chat], 'each group once, and never a chat with one person');
+  assert.equal(facts.groupNote(group, quiet), 'a group they have never written in');
+  assert.equal(facts.groupNote(spoken, quiet), '');
+  assert.equal(facts.groupNote(person, quiet), '');
+  let system = '';
+  await notice({ items, level: 'medium', ask: async (s) => { system = s; return '{"pulse":false,"flagged":[]}'; } });
+  assert.match(system, /A message marked as from a group they have never written in is the same: it went to everyone in the group, and that they never take part there is their choice, not something they missed/);
+  assert.match(pulse, /const quiet = await facts\.quietGroups\(\[\.\.\.otherItems, \.\.\.waitingRows\], async \(chat\) => \{/);
+  assert.match(pulse, /\.eq\("data->>chat", chat\)\.eq\("data->>sender", "me"\)\.limit\(1\);/);
+  assert.match(pulse, /noted\(line\(r\), facts\.groupNote\(r, quiet\), facts\.replyNote\(r, wrote\)\)/);
+  assert.match(pulse, /: line\(r\), facts\.groupNote\(r, quiet\), facts\.replyNote\(r, wrote\)\)\);/);
+});
