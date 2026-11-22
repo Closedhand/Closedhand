@@ -41,6 +41,8 @@ CDP_URLS = {"visible": CDP_URL, "headless": os.environ.get("HEADLESS_CDP_URL", "
 TAB_MARKER = "closedhand-bot"
 # The pages Closedhand's tab can be (_page).
 _OURS = re.compile(r"^(https?:|about:blank)")
+# The largest file a download keeps.
+DOWNLOAD_MAX_BYTES = 25 * 1000 * 1000
 
 # Set by serve(): connections are kept between requests instead of closed,
 # one per browser, on one Playwright.
@@ -510,6 +512,76 @@ def _do(page, context, step):
         except (TypeError, ValueError):
             value = str(value)
         return dict({"ok": True, "result": value}, **_where(page, context))
+    if action == "download":
+        # A file a site gives (a ticket, a receipt, an invoice), kept whole:
+        # by a link to it (link), or by the button or link on the page that
+        # downloads it (ref). A ticket behind an email's "View tickets"
+        # button was never an attachment, so Closedhand thought it had none,
+        # and drew one of its own for a claim form.
+        def got(body, name, mime, src):
+            if not body:
+                return dict({"downloaded": False, "error": "The file came back empty."}, **_where(page, context))
+            if len(body) > DOWNLOAD_MAX_BYTES:
+                return dict({"downloaded": False, "error": f"The file is {len(body) // 1000000} MB; at most {DOWNLOAD_MAX_BYTES // 1000000} MB is kept."}, **_where(page, context))
+            return dict({"downloaded": True, "file": {"name": name or "file", "mimeType": mime or "application/octet-stream",
+                                                       "base64": base64.b64encode(body).decode("ascii"), "from": src}}, **_where(page, context))
+        link = step.get("link")
+        try:
+            if link:
+                resp = context.request.get(link, timeout=30000)
+                mime = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+                if not resp.ok:
+                    return dict({"downloaded": False, "error": f"The link answered {resp.status}."}, **_where(page, context))
+                if mime in ("text/html", "application/xhtml+xml", ""):
+                    # A page, not the file: open it, so its download button can be given.
+                    _goto(page, link)
+                    _mark(page)
+                    return dict({"downloaded": False, "page": True, "outline": _outline(page),
+                                 "hint": "The link opens a page, not a file. Download with ref: the [number] of its download button or link."}, **_where(page, context))
+                disp = resp.headers.get("content-disposition") or ""
+                m = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)', disp)
+                name = m.group(1) if m else (link.split("?")[0].rstrip("/").split("/")[-1] or "file")
+                return got(resp.body(), name, mime, resp.url)
+            if not selector:
+                return dict({"downloaded": False, "error": "download needs a link (url) or the [number] of the download button (ref)."}, **_where(page, context))
+            target = page.locator(selector).nth(int(step.get("index") or 0))
+            target.scroll_into_view_if_needed(timeout=timeout)
+            try:
+                with page.expect_download(timeout=20000) as dl:
+                    target.click(timeout=timeout)
+                d = dl.value
+                # Attached to a browser already running, Playwright does not
+                # keep a download itself ("canceled"): the file is fetched
+                # from where it came, with the same sign-in.
+                body, mime = b"", None
+                try:
+                    path = d.path()
+                    body = open(path, "rb").read() if path else b""
+                except Exception:
+                    pass
+                if not body and (d.url or "").startswith("data:"):
+                    head, _, data = d.url.partition(",")
+                    mime = head[5:].split(";")[0] or None
+                    body = base64.b64decode(data) if ";base64" in head else data.encode("utf-8")
+                elif not body and (d.url or "").startswith("http"):
+                    resp = context.request.get(d.url, timeout=30000)
+                    if not resp.ok:
+                        return dict({"downloaded": False, "error": f"The file's link answered {resp.status}."}, **_where(page, context))
+                    body, mime = resp.body(), (resp.headers.get("content-type") or "").split(";")[0].strip() or None
+                return got(body, d.suggested_filename, mime, d.url)
+            except Exception:
+                # A link that shows the file instead of downloading it (a PDF
+                # opened in its own tab, or in this one): the file it shows.
+                page.wait_for_timeout(1500)
+                shown = [p for p in context.pages if _OURS.match(p.url or "") and not p.url.startswith("about:")]
+                for p in [page] + [p for p in reversed(shown) if p is not page]:
+                    resp = context.request.get(p.url, timeout=30000)
+                    mime = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+                    if resp.ok and mime not in ("text/html", "application/xhtml+xml", ""):
+                        return got(resp.body(), p.url.split("?")[0].rstrip("/").split("/")[-1] or "file", mime, resp.url)
+                raise
+        except Exception as e:
+            return dict({"downloaded": False, "error": f"{type(e).__name__}: {e}", "outline": _outline(page)}, **_where(page, context))
     if action == "upload":
         # A file the person has (an attachment of theirs) put into the page's
         # file box: a delay claim stopped at "upload your receipt" with the

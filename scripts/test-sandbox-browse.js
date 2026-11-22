@@ -83,7 +83,7 @@ test("the bot sends every step but a card fill through the lasting connection, a
   assert.equal((browse.match(/sandboxExec\(/g) || []).length, 1, "only the card and address fills run as a one-off script");
   assert.match(browse, /code = wallet\.fillScript\(secret, [^\n]+\);[\s\S]*?code = wallet\.addressScript\(address, [^\n]+\);[\s\S]*?await sandboxExec\(userId, "python", code, 60000\);/);
   const defs = read("lib/tools/definitions.js");
-  assert.match(defs, /enum: \["outline", "read_pages", "batch", "screenshot", "scrape_text", "extract_data", "click", "fill", "press", "wait_for", "eval_js", "upload", "fill_card", "fill_address"\]/);
+  assert.match(defs, /enum: \["outline", "read_pages", "batch", "screenshot", "scrape_text", "extract_data", "click", "fill", "press", "wait_for", "eval_js", "upload", "download", "fill_card", "fill_address"\]/);
   assert.match(defs, /ref: \{\n\s*type: "number",\n\s*description: "For click, fill, press, wait_for and upload: the \[number\] of the element in the latest outline\./);
   assert.match(read("lib/sandbox.js"), /async function sandboxBrowse\(userId, body, timeoutMs = 60000\) \{/);
 });
@@ -124,7 +124,7 @@ test("finding Closedhand's tab asks only web and blank pages", () => {
 // into the page's file box, answering the file picker a button opens.
 test("upload puts the person's attachments into the page's file box", () => {
   const handlers = read("lib/tools/handlers.js");
-  assert.match(handlers, /const STEP = \[[^\]]*"upload"\];/);
+  assert.match(handlers, /const STEP = \[[^\]]*"upload", "download"\];/);
   assert.match(handlers, /const \{ attachments, missing \} = await resolveOutgoingAttachments\(toolInput\.attachment_ids\);/);
   assert.match(handlers, /step\.files = attachments\.map\(\(a\) => \(\{ name: a\.fileName, mimeType: a\.mimeType, base64: a\.buffer\.toString\("base64"\) \}\)\);/);
   assert.match(handlers, /if \(bytes > UPLOAD_MAX_BYTES\)/);
@@ -133,4 +133,29 @@ test("upload puts the person's attachments into the page's file box", () => {
   assert.match(read("lib/tools/definitions.js"), /attachment_ids: \{\n\s*type: "array",\n\s*items: \{ type: "string" \},\n\s*description: "For upload: the person's files/);
   assert.match(helper, /with page\.expect_file_chooser\(timeout=8000\) as chooser:\n\s*target\.click\(timeout=timeout\)\n\s*chooser\.value\.set_files\(files\)/);
   assert.match(helper, /_CHANGES_PAGE = \("goto", "click", "press", "upload"\)/);
+});
+
+// A ticket behind an email's "View tickets" button was never an attachment,
+// so Closedhand had none to upload, and drew one of its own, styled as the
+// seller's booking confirmation, for a delay claim. A file a site gives is
+// downloaded whole and kept as the person's; a file goes into a page only by
+// upload, from their own files; and the rule says why.
+test("a file a site gives is downloaded and kept, and only the person's own files go into a page", () => {
+  const handlers = read("lib/tools/handlers.js");
+  assert.match(handlers, /"eval_js", "upload", "download"\];/);
+  assert.match(handlers, /if \(action === "download"\) \{ step\.link = browseUrl \|\| null; step\.url = null; \}/, "the file's link is fetched, not opened first");
+  assert.match(handlers, /parsed\.attachment_id = require\("\.\.\/attachments"\)\.saveAttachment\(userId, \{ buffer, fileName: name, mediaType: f\.mimeType, ext,/);
+  assert.match(handlers, /const f = parsed\.file;\n\s*delete parsed\.file;/, "its bytes never go to the LLM");
+  assert.match(handlers, /const made = attachments\.filter\(\(a\) => a\.direction === "chat"\);/, "a file Closedhand sent is never uploaded as theirs");
+  const plants = new RegExp(handlers.match(/const PLANTS_FILE = \/(.+)\/;/)[1]);
+  for (const s of ["const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files;", "input.files = list", "new File([blob], 'receipt.jpg')"]) assert.ok(plants.test(s), s);
+  for (const s of ["document.title", "[...document.querySelectorAll('a')].map(a => a.href)", "input.files.length === 0", "x.files == null"]) assert.ok(!plants.test(s), s);
+  assert.match(read("lib/attachments.js"), /direction: att\.direction \|\| "in" \};/);
+  assert.match(read("lib/attachments.js"), /direction: fileData\.direction \|\| "in",/);
+  assert.match(helper, /if action == "download":/);
+  assert.match(helper, /resp = context\.request\.get\(link, timeout=30000\)/, "a link to the file is fetched with the browser's own sign-ins");
+  assert.match(helper, /with page\.expect_download\(timeout=20000\) as dl:/);
+  assert.match(helper, /"hint": "The link opens a page, not a file\. Download with ref: the \[number\] of its download button or link\."/);
+  assert.match(read("lib/agents.js"), /- A document someone else issued \(a ticket, receipt, invoice, statement, letter, ID\) is only ever the real one: an attachment, the file a link in their mail leads to \(sandbox_browse download, then upload\), or one the person sends you when asked\. Never make, draw, edit or piece one together, however true its details: handed to a company, a stand-in is a forgery\./);
+  assert.match(read("lib/engine.js"), /never invent a fact, a figure, a detail or a document \(a ticket, receipt or letter someone else issued is only ever the one they sent\)/);
 });
