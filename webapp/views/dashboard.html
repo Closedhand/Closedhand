@@ -5859,7 +5859,7 @@
       if (ownChat.calls) {
         const avg = (ownChat.tin + ownChat.tout) / ownChat.calls;
         const inShare = ownChat.tin / (ownChat.tin + ownChat.tout);
-        if (avg >= 10000 && inShare >= 0.9) notes.push('Most of your chat spend is what each message carries with it, the conversation so far and what Closedhand recalls for you, about ' + fmtTokens(Math.round(avg)) + ' tokens a message. Starting a new conversation once a topic is done keeps that down.');
+        if (avg >= 10000 && inShare >= 0.9) notes.push('Most of your chat spend is what each message carries with it: the conversation so far and what Closedhand recalls for you, about ' + fmtTokens(Math.round(avg)) + ' tokens a message. That is what lets Closedhand pick up anything you said earlier.');
       }
       const ownDays = {};
       for (const r of own) ownDays[r.day] = (ownDays[r.day] || 0) + r.tokens_in + r.tokens_out;
