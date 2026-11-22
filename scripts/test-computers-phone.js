@@ -33,10 +33,12 @@ test("on a phone a tap opens a folder, or a file's actions as a sheet", () => {
   for (const draw of ["_monCloudView==='grid'&&!monPhone()", "_monLocalView==='grid'&&!monPhone()", "view === 'grid' && !monPhone()"]) assert.ok(page.includes(draw), draw);
 });
 
-test("the browser opens full screen without the Fullscreen API, with Keyboard and Close", () => {
+test("the browser opens full screen without the Fullscreen API, with Keyboard and Exit full screen", () => {
   assert.match(page, /<button type="button" class="mon-open-full" id="monOpenFull" onclick="monFullOpen\(\)">Tap to open full screen<\/button>/);
   assert.match(page, /id="monKeysBtn" aria-pressed="false" aria-label="Keyboard" onclick="monKeyboard\(\)"/);
-  assert.match(page, /onclick="monFullClose\(\)">[\s\S]{0,300}Close<\/button>/);
+  // It leaves full screen; "Close" read as ending the browser.
+  assert.match(page, /onclick="monFullClose\(\)">[\s\S]{0,400}>Exit full screen<\/button>/);
+  assert.doesNotMatch(page, /onclick="monFullClose\(\)">[^\n]*>Close<\/button>/);
   assert.match(page, /body\.mon-full \.mon \{ container-type:normal; overflow:visible; \}/, "the pane no longer holds the fixed view");
   assert.match(page, /body\.mon-full \.mon-area \{ animation:none; opacity:1; transform:none; z-index:auto; \}/, "nothing on the page sits above it");
   assert.doesNotMatch(page, /body\.mon-full \{ overflow:hidden; \}/, "a body scroll lock made iPhone Safari clip it to the page's height");
@@ -61,7 +63,7 @@ test("an i opens on a tap (Closedhand's one, llm-hint.js), and the sign-in marks
   assert.doesNotMatch(page, /'\/logos\/' \+ site\.id/, "a content blocker stopped the Facebook file on an iPhone");
 });
 
-test("full screen on a phone, the sandbox computer's screen takes the phone's shape, and the laptop shape after", () => {
+test("full screen on a phone, the sandbox computer's screen takes the phone's shape, which lapses after", () => {
   const entry = read("sandbox-image/entrypoint.sh");
   assert.match(entry, /gosu sandbox Xvnc :99 -geometry 1280x800 /, "laptop-shaped unless a phone asks");
   assert.match(entry, /rm -f \/home\/sandbox\/\.config\/openbox\/rc\.xml\nopenbox_supervisor\(\)/, "openbox runs on the image's own settings");
@@ -82,7 +84,11 @@ test("full screen on a phone, the sandbox computer's screen takes the phone's sh
   const server = read("webapp/server.js");
   assert.match(server, /app\.post\("\/api\/sandbox\/screen",[\s\S]{0,600}sandboxFetch\(info, "POST", "\/desktop\/shape", phone \? \{ width, height \} : \{\}, 15000\)/);
   assert.match(page, /function monFullOpen\(\) \{[\s\S]{0,200}monPhoneShape\(true\);/);
-  assert.match(page, /function monFullClose\(\) \{[\s\S]{0,400}monLaptopShape\(\);/);
+  // Leaving full screen stops asking and the shape lapses by itself: reshaping
+  // at once redrew the whole screen on the way out and again on the way in.
+  assert.match(page, /function monFullClose\(\) \{[\s\S]{0,800}monStopAsking\(\);\n  \}/);
+  assert.doesNotMatch(page.slice(page.indexOf("function monFullClose() {"), page.indexOf("function monFullClose() {") + 900), /monLaptopShape\(/);
+  assert.match(page, /function monStopAsking\(\) \{\n\s*clearTimeout\(monShapeTimer\);\n\s*monOwnBar\(false\);\n\s*monShaped = false; monShapeSize = null;\n\s*\}/);
   assert.match(page, /monShapeTimer = setTimeout\(monPhoneShape, 30000\);/);
   assert.match(page, /window\.addEventListener\('pagehide', function \(\) \{ monLaptopShape\(true\); \}\);/);
 });

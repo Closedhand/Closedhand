@@ -2285,7 +2285,7 @@
                 <button type="button" class="mon-icon-btn mon-own-only" onclick="monBrowser('forward')" aria-label="Forward"><svg width="1.375rem" height="1.375rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
                 <button type="button" class="mon-icon-btn" id="monKeysBtn" aria-pressed="false" aria-label="Keyboard" onclick="monKeyboard()"><svg width="1.375rem" height="1.375rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg></button>
                 <button type="button" class="mon-icon-btn mon-own-only" id="monTabsBtn" aria-label="Tabs" aria-expanded="false" onclick="monToggleTabs()"><span class="mon-tab-count" id="monTabCount">1</span></button>
-                <button type="button" class="mon-full-btn mon-full-close" onclick="monFullClose()"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Close</button>
+                <button type="button" class="mon-full-btn mon-full-close" onclick="monFullClose()"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>Exit full screen</button>
               </div>
               <input type="text" class="mon-keys" id="monKeys" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter" aria-label="Type into the sandbox computer's browser">
             </div>
@@ -6985,7 +6985,12 @@ function jsq(s) {
     desk.style.top = ''; desk.style.height = '';
     monRevealScreen();
     monSetFit('contain');
-    monLaptopShape();
+    // The phone shape stays for now, as it does for a glance at another app:
+    // reshaping at once redrew the whole screen on the way out, and again on
+    // the way back in. The sandbox computer gives it up by itself after a
+    // minute and a half without being asked, and at once when Closedhand
+    // browses (agent PHONE_FOR_MS).
+    monStopAsking();
   }
   // The sandbox computer's screen as last drawn in the frame
   // (/novnc/vnc_lite.html tells each new size once a frame of it is drawn).
@@ -7124,6 +7129,12 @@ function jsq(s) {
     input.addEventListener('focus', function () { if (input.dataset.url) input.value = input.dataset.url; setTimeout(function () { input.select(); }, 0); });
     input.addEventListener('blur', function () { setTimeout(function () { if (document.activeElement !== input) input.value = monShortAddress(input.dataset.url); }, 150); });
   })();
+  // Full screen left: no more asking for the phone shape, which then lapses.
+  function monStopAsking() {
+    clearTimeout(monShapeTimer);
+    monOwnBar(false);
+    monShaped = false; monShapeSize = null;
+  }
   function monLaptopShape(leaving) {
     clearTimeout(monShapeTimer);
     monOwnBar(false);
