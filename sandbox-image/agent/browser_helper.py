@@ -23,6 +23,7 @@ Usage:
 """
 
 import base64
+import re
 import json
 import time
 
@@ -38,6 +39,8 @@ CDP_URLS = {"visible": CDP_URL, "headless": os.environ.get("HEADLESS_CDP_URL", "
 # The bot's tab is marked in the page itself, so it is found again whether the
 # connection was kept (serve) or made fresh for a one-off call.
 TAB_MARKER = "closedhand-bot"
+# The pages Closedhand's tab can be (_page).
+_OURS = re.compile(r"^(https?:|about:blank)")
 
 # Set by serve(): connections are kept between requests instead of closed,
 # one per browser, on one Playwright.
@@ -207,6 +210,13 @@ def _page(context, url=None):
     """
     mine = None
     for page in context.pages:
+        # Only a web page or a blank one can be Closedhand's tab. Asking any
+        # other anything can wait for good: Playwright listed a page it never
+        # finished attaching to with no address at all, its evaluate never
+        # returned, and every step in the visible browser stopped at its
+        # 60 seconds, so a sign-in page could not even be opened there.
+        if not _OURS.match(page.url or ""):
+            continue
         try:
             if page.evaluate("window.name") == TAB_MARKER:
                 mine = page

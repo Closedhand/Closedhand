@@ -93,3 +93,28 @@ test("running code on the sandbox computer has no daily cap: it is part of the p
   assert.doesNotMatch(sandbox, /Daily execution limit|daily_exec/);
   assert.match(sandbox, /total_exec_count: \(sandbox\?\.total_exec_count \|\| 0\) \+ 1,\n\s*last_used_at: new Date\(\)\.toISOString\(\),/);
 });
+
+// A page Playwright never finished attaching to is listed with no address,
+// and asking it anything never returns: looking through the visible
+// browser's pages for Closedhand's tab asked it, and every step there stopped
+// at its 60 seconds, so a sign-in page could not even be opened for the
+// person. Only web and blank pages are asked.
+test("finding Closedhand's tab asks only web and blank pages", () => {
+  const { spawnSync } = require("node:child_process");
+  const script = [
+    "import sys; sys.path.insert(0, 'sandbox-image/agent')",
+    "import browser_helper as h",
+    "class Page:",
+    "    def __init__(s, url, name=None): s.url, s.name = url, name",
+    "    def evaluate(s, js):",
+    "        if not s.url.startswith(('http', 'about:blank')): raise SystemExit('asked a page with no address: ' + repr(s.url))",
+    "        return s.name",
+    "    def bring_to_front(s): pass",
+    "class Context:",
+    "    pages = [Page(''), Page('chrome://top-chrome/'), Page('https://shop.example/', 'someone else'), Page('https://shop.example/claim', h.TAB_MARKER)]",
+    "print(h._page(Context()).url)",
+  ].join("\n");
+  const out = spawnSync("python3", ["-c", script], { cwd: path.join(__dirname, ".."), encoding: "utf8" });
+  assert.equal(out.status, 0, out.stderr || out.stdout);
+  assert.equal(out.stdout.trim(), "https://shop.example/claim");
+});

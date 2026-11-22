@@ -33,6 +33,15 @@ test('the browser tool attaches the note on both of its return paths, and says s
   assert.match(handlers, /const opened = engine === "headless" \? await wall\.openForPerson\(userId, page\.url\) : true;\n\s+return \{ sign_in_needed: await wall\.signInNote\(page, \{ opened \}\), sign_in_site: wall\.siteOf\(page\.url\), sign_in_url: page\.url, sign_in_opened: opened \};/, "the page waits in the visible browser, where the person signs in, and is said to be there only when it is");
   const defs = fs.readFileSync(path.join(__dirname, '..', 'lib', 'tools', 'definitions.js'), 'utf8');
   assert.match(defs, /A page that asks to sign in means the person signs in there themselves, once, on the Computers tab of the web chat/);
+  // The site the person signs in to is worked where they signed in from then on.
+  assert.match(handlers, /const wall = require\("\.\.\/sign-in-wall"\), engines = require\("\.\.\/browse-engine"\);\n\s+engines\.moveToVisible\(userId, engines\.hostOf\(page\.url\)\);\n\s+const opened = /);
+  const engines = require('../lib/browse-engine');
+  engines._reset();
+  assert.equal(engines.choose('u-sign', { url: 'https://claims.example.com/login' }), 'headless');
+  engines.moveToVisible('u-sign', engines.hostOf('https://claims.example.com/login'));
+  assert.equal(engines.choose('u-sign', { url: 'https://claims.example.com/claim' }), 'visible', 'after the sign-in, the same site stays visible');
+  assert.equal(engines.choose('u-sign', { url: 'https://news.example.org/' }), 'headless', 'other sites are read hidden as before');
+  engines._reset();
   const agents = fs.readFileSync(path.join(__dirname, '..', 'lib', 'agents.js'), 'utf8');
   assert.match(agents, /the job stops and asks them to, as the first way forward, and you carry on once they have/);
 });
