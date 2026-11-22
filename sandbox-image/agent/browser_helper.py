@@ -510,6 +510,41 @@ def _do(page, context, step):
         except (TypeError, ValueError):
             value = str(value)
         return dict({"ok": True, "result": value}, **_where(page, context))
+    if action == "upload":
+        # A file the person has (an attachment of theirs) put into the page's
+        # file box: a delay claim stopped at "upload your receipt" with the
+        # receipt in their mail, as nothing here could choose a file.
+        files = [{"name": f.get("name") or "file", "mimeType": f.get("mimeType") or "application/octet-stream",
+                  "buffer": base64.b64decode(f.get("base64") or "")} for f in (step.get("files") or [])]
+        if not files:
+            return dict({"uploaded": False, "error": "No file came with the step."}, **_where(page, context))
+        boxes = page.locator("input[type=file]")
+        try:
+            target = page.locator(selector).nth(int(step.get("index") or 0)) if selector else None
+            if target is not None and target.evaluate("el => el.tagName === 'INPUT' && el.type === 'file'"):
+                target.set_input_files(files, timeout=timeout)
+            elif target is not None:
+                # A button or label that opens the file picker: the picker is
+                # answered with the files and never shows. One that opens none
+                # leaves the page's only file box, if it has just one.
+                try:
+                    target.scroll_into_view_if_needed(timeout=timeout)
+                    with page.expect_file_chooser(timeout=8000) as chooser:
+                        target.click(timeout=timeout)
+                    chooser.value.set_files(files)
+                except Exception:
+                    if boxes.count() != 1:
+                        raise
+                    boxes.first.set_input_files(files, timeout=timeout)
+            elif boxes.count() == 1:
+                boxes.first.set_input_files(files, timeout=timeout)
+            else:
+                return dict({"uploaded": False, "error": f"The page has {boxes.count()} file boxes: give the [number] of the upload button or box with ref.",
+                             "outline": _outline(page)}, **_where(page, context))
+        except Exception as e:
+            return dict({"uploaded": False, "error": f"{type(e).__name__}: {e}", "outline": _outline(page)}, **_where(page, context))
+        page.wait_for_timeout(1200)
+        return dict({"uploaded": [f["name"] for f in files]}, **_where(page, context))
     if action in ("click", "fill"):
         try:
             page.wait_for_selector(selector, timeout=timeout, state="visible")
@@ -557,7 +592,7 @@ def _do(page, context, step):
 
 # After these the page has usually changed, so the step brings back its
 # outline: the next step can act on a number without a separate look.
-_CHANGES_PAGE = ("goto", "click", "press")
+_CHANGES_PAGE = ("goto", "click", "press", "upload")
 
 
 def _with_outline(page, res, step):

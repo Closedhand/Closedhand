@@ -83,8 +83,8 @@ test("the bot sends every step but a card fill through the lasting connection, a
   assert.equal((browse.match(/sandboxExec\(/g) || []).length, 1, "only the card and address fills run as a one-off script");
   assert.match(browse, /code = wallet\.fillScript\(secret, [^\n]+\);[\s\S]*?code = wallet\.addressScript\(address, [^\n]+\);[\s\S]*?await sandboxExec\(userId, "python", code, 60000\);/);
   const defs = read("lib/tools/definitions.js");
-  assert.match(defs, /enum: \["outline", "read_pages", "batch", "screenshot", "scrape_text", "extract_data", "click", "fill", "press", "wait_for", "eval_js", "fill_card", "fill_address"\]/);
-  assert.match(defs, /ref: \{\n\s*type: "number",\n\s*description: "For click, fill, press and wait_for: the \[number\] of the element in the latest outline\./);
+  assert.match(defs, /enum: \["outline", "read_pages", "batch", "screenshot", "scrape_text", "extract_data", "click", "fill", "press", "wait_for", "eval_js", "upload", "fill_card", "fill_address"\]/);
+  assert.match(defs, /ref: \{\n\s*type: "number",\n\s*description: "For click, fill, press, wait_for and upload: the \[number\] of the element in the latest outline\./);
   assert.match(read("lib/sandbox.js"), /async function sandboxBrowse\(userId, body, timeoutMs = 60000\) \{/);
 });
 
@@ -117,4 +117,20 @@ test("finding Closedhand's tab asks only web and blank pages", () => {
   const out = spawnSync("python3", ["-c", script], { cwd: path.join(__dirname, ".."), encoding: "utf8" });
   assert.equal(out.status, 0, out.stderr || out.stdout);
   assert.equal(out.stdout.trim(), "https://shop.example/claim");
+});
+
+// A delay claim stopped at "upload your receipt" with the receipt in the
+// person's mail: nothing could choose a file. upload puts their attachments
+// into the page's file box, answering the file picker a button opens.
+test("upload puts the person's attachments into the page's file box", () => {
+  const handlers = read("lib/tools/handlers.js");
+  assert.match(handlers, /const STEP = \[[^\]]*"upload"\];/);
+  assert.match(handlers, /const \{ attachments, missing \} = await resolveOutgoingAttachments\(toolInput\.attachment_ids\);/);
+  assert.match(handlers, /step\.files = attachments\.map\(\(a\) => \(\{ name: a\.fileName, mimeType: a\.mimeType, base64: a\.buffer\.toString\("base64"\) \}\)\);/);
+  assert.match(handlers, /if \(bytes > UPLOAD_MAX_BYTES\)/);
+  assert.match(handlers, /upload is a step of its own, not part of a batch/);
+  assert.match(read("lib/browse-engine.js"), /const ACTS = new Set\(\["click", "fill", "press", "upload"\]\);/, "done where the person watches");
+  assert.match(read("lib/tools/definitions.js"), /attachment_ids: \{\n\s*type: "array",\n\s*items: \{ type: "string" \},\n\s*description: "For upload: the person's files/);
+  assert.match(helper, /with page\.expect_file_chooser\(timeout=8000\) as chooser:\n\s*target\.click\(timeout=timeout\)\n\s*chooser\.value\.set_files\(files\)/);
+  assert.match(helper, /_CHANGES_PAGE = \("goto", "click", "press", "upload"\)/);
 });
