@@ -130,6 +130,15 @@ test("facts follow at most once an hour, and are kept through pin_fact", async (
     await mod.review("u1", deps);
     assert.equal(read, 1, "once an hour");
   } finally { restore(); }
+  // What is new is read twice; catching up on a full share, more behind it, once.
+  for (const [more, times] of [[false, 2], [true, 1]]) {
+    const { mod, restore: undo } = followHarness({});
+    try {
+      let judged = 0;
+      await mod.review("u1", { now: NOW, items: items(words, CURSOR), judge: async () => { judged++; return []; }, pin: async () => {}, fit: keep, confirm: async () => true, ...(more ? { items: async () => ({ items: words, cursor: CURSOR, more: true }) } : {}) });
+      assert.equal(judged, times, more ? "a full share is read once" : "what is new is read twice");
+    } finally { undo(); }
+  }
   const src = read("lib/facts-follow.js");
   assert.match(src, /require\("\.\/tools\/handlers"\)\.handleInternalTool\("pin_fact", \{ key: held\.key, value: held\.value, category: held\.category, subject: held\.subject, _userId: userId \}\);/, "one note per subject, as pin_fact keeps it");
   assert.match(src, /kept\.source = held\.own \? "own words" : "connected"; kept\.from = held\.from;/, "and says where it came from");
@@ -172,12 +181,20 @@ test("a look reads every connection's items in the order they reached Closedhand
       "mail, the person's own mail and any connection's items; not a promotion, nor their chat with Closedhand");
     assert.match(first.items[2].text, /Plot 14 at Harbour Lane allotments/);
     assert.deepEqual(first.cursor, { at: "2026-11-01T08:00:02.000Z", id: "p1" });
+    assert.equal(first.more, false, "it reached the present");
     const next = await newItems("u1", first.cursor);
     assert.deepEqual(next.items, [], "the next look goes on after where this one stopped");
     // Two items that reached Closedhand in one millisecond: the look that
     // stopped between them goes on with the second.
     const between = await newItems("u1", { at: "2026-11-01T08:00:00.120Z", id: "e1" });
     assert.deepEqual(between.items.map((m) => m.where), ["email to Ana", "a page"]);
+    // More than one share holds: the look stops when it is full, and says so.
+    for (let i = 0; i < 60; i++) rows.push({ source: "mcp:notes-1", type: "page", external_id: `q${String(i).padStart(2, "0")}`, created_at: new Date(Date.parse("2026-11-02T08:00:00.000Z") + i * 1000).toISOString(), received_at: "2026-11-02T08:00:00.000Z", data: { title: "Allotment log", content: "Plot 14 watered and weeded. ".repeat(40) } });
+    const full = await newItems("u1", first.cursor);
+    assert.equal(full.more, true, "a full share, more behind it");
+    assert.ok(full.items.length > 0 && full.items.length < 60);
+    const rest = await newItems("u1", full.cursor);
+    assert.equal(rest.more, false, "and the look that reaches the present says so");
   } finally {
     if (saved) require.cache[dbPath] = saved; else delete require.cache[dbPath];
     delete require.cache[mPath];
