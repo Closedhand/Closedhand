@@ -66,6 +66,35 @@ test("the word search finds the words inside an email or web address, not the ma
   assert.deepEqual(await found(["fixture"]), ["e-1"], "the sender by name, as before");
 });
 
+// Mail search ranked all of a person's mail whatever stretch was asked, and a
+// draft saved minutes earlier lost to older mail by words and by meaning
+// (migration 096). Invented mail: an old email full of the word, a new one
+// with it once and a second piece.
+test("both searches can rank a stretch of time by itself, and rank everything as before without one", async () => {
+  const me = "44444444-4444-4444-4444-444444444444";
+  await pool.query("INSERT INTO profiles (id) VALUES ($1) ON CONFLICT DO NOTHING", [me]);
+  await pool.query(`INSERT INTO data_cache (user_id, source, type, external_id, data, received_at) VALUES
+    ($1, 'gmail', 'email', 'old-1', $2, now() - interval '40 days'), ($1, 'gmail', 'email', 'new-1', $3, now() - interval '1 day')`,
+    [me, { subject: "Proforma", body: "proforma proforma proforma proforma" }, { subject: "Holding reply", body: "the proforma follows" }]);
+  const vec = (a, b) => "[" + [a, b].concat(Array(1534).fill(0)).join(",") + "]";
+  const item = async (ext, v) => (await pool.query("INSERT INTO data_vectors (user_id, service, item_type, external_id, content, embedding) VALUES ($1, 'email', 'email', $2, $2, $3::vector) RETURNING id", [me, ext, v])).rows[0].id;
+  await item("old-1", vec(1, 0));
+  const newId = await item("new-1", vec(0.6, 0.8));
+  await pool.query("INSERT INTO data_vectors (user_id, service, item_type, external_id, content, embedding, piece_of, source_metadata) VALUES ($1, 'email', 'email', 'new-1#1', 'new, piece 2', $2::vector, $3, $4)",
+    [me, vec(0.8, 0.6), newId, { _piece_of: "new-1", _piece: 1 }]);
+  const since = new Date(Date.now() - 3 * 86400000).toISOString();
+  const words = async (s) => (await pool.query("SELECT external_id FROM search_data_cache_lexical(match_user_id => $1, query_tokens => $2, match_count => 20, filter_type => 'email', filter_since => $3)", [me, ["proforma"], s])).rows.map((r) => r.external_id);
+  const meaning = async (s) => (await pool.query("SELECT external_id FROM search_data_vectors(query_embedding => $1::vector, match_user_id => $2, match_threshold => 0.3, match_count => 10, filter_service => 'email', filter_since => $3)", [vec(1, 0), me, s])).rows.map((r) => r.external_id);
+  assert.deepEqual(await words(null), ["old-1", "new-1"], "everything, the old one first by its words");
+  assert.deepEqual(await words(since), ["new-1"], "the last 3 days only");
+  assert.deepEqual(await meaning(null), ["old-1", "new-1#1", "new-1"], "everything, the old one first by meaning");
+  assert.deepEqual(await meaning(since), ["new-1#1", "new-1"], "the last 3 days: the new one and its piece");
+  assert.deepEqual((await pool.query("SELECT external_id FROM search_data_cache_lexical($1, $2, 20, 'email')", [me, ["proforma"]])).rows.map((r) => r.external_id), ["old-1", "new-1"], "callers that pass no stretch work as before");
+  await pool.query("DELETE FROM data_vectors WHERE user_id = $1", [me]);
+  await pool.query("DELETE FROM data_cache WHERE user_id = $1", [me]);
+  await pool.query("DELETE FROM profiles WHERE id = $1", [me]);
+});
+
 // "Delete account" and "Wipe all data" kept their lists of tables by hand, and
 // both fell behind the schema: goals, pages made in chat, how far back mail
 // was read and what the person pays for outlived a deleted account.

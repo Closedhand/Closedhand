@@ -83,3 +83,53 @@ test("a search reads one timestamp for freshness, and whole emails only when it 
   assert.deepEqual(reads.map((r) => [r.cols, r.limit]), [["synced_at", 1], ["source, data", 500]], "the newest mail, without the columns nothing reads");
   assert.doesNotMatch(read("lib/services/data-sync.js"), /from\("data_cache"\)\s*\.select\("\*"\)/, "no read of the synced copy takes every column");
 });
+
+// Asked for the last 3 days, mail search ranked all of a person's mail and kept
+// the best 30 of each arm: a draft saved minutes earlier, holding every word
+// searched for, came 68th by words and 63rd by meaning and was never seen.
+// The stretch asked for is ranked by itself and comes first. Invented mail.
+test("a stretch of time asked for is ranked by itself and comes first, then the best of everything", async () => {
+  const src = read("lib/services/usi.js");
+  const now = Date.now(), day = 86400000;
+  const mail = [
+    { id: "old-1", at: now - 40 * day, words: 0.9, meaning: 0.9 },
+    { id: "old-2", at: now - 30 * day, words: 0.8, meaning: 0.8 },
+    { id: "new-1", at: now - 1 * day, words: 0.2, meaning: 0.5 },
+  ];
+  const calls = [];
+  let embeds = 0;
+  const supabase = { rpc: async (name, args) => {
+    calls.push({ name, since: args.filter_since || null });
+    const inside = mail.filter((m) => !args.filter_since || m.at >= Date.parse(args.filter_since));
+    if (name === "search_data_cache_lexical") return { data: [...inside].sort((a, b) => b.words - a.words).map((m) => ({ external_id: m.id, source: "gmail", type: "email", data: { subject: m.id, body: "" } })) };
+    return { data: [...inside].sort((a, b) => b.meaning - a.meaning).map((m) => ({ service: "email", item_type: "email", external_id: m.id, content: m.id, source_metadata: {}, similarity: m.meaning })) };
+  } };
+  const box = { supabase, console: { log() {} }, RRF_K: 60, MEDIA_MATCH: 0.5, _lexUnavailableReported: false,
+    lexicalTokens: (q) => q.split(" "), matchWindow: () => "", embedWithinBudget: async () => { embeds++; return [1]; },
+    require: (n) => n === "../people" ? { load: async () => ({ expand: () => [] }) } : n === "../otp-guard" ? { redactRecall: (r) => r } : assert.fail(`unexpected ${n}`) };
+  const plain = (name) => { const s = src.indexOf(`async function ${name}(`); return src.slice(s, src.indexOf("\n}\n", s) + 2); };
+  vm.runInNewContext(plain("lexicalSearch") + plain("search") + plain("fuseArms") + "\nthis.search = search;", box);
+  const ids = (r) => Array.from(r.results, (x) => x.id);
+
+  assert.deepEqual(ids(await box.search("u", "proforma freight", { cacheType: "email", service: "email" })), ["old-1", "old-2", "new-1"], "with no stretch asked, all of it by relevance, as before");
+  assert.deepEqual(Array.from(calls, (c) => c.since), [null, null]);
+
+  calls.length = 0; embeds = 0;
+  const since = new Date(now - 3 * day).toISOString();
+  assert.deepEqual(ids(await box.search("u", "proforma freight", { cacheType: "email", service: "email", since })), ["new-1", "old-1", "old-2"], "the last 3 days first, then the rest");
+  assert.equal(embeds, 1, "the query is embedded once for both rankings");
+  assert.deepEqual(calls.map((c) => `${c.name} ${c.since ? "stretch" : "all"}`).sort(),
+    ["search_data_cache_lexical all", "search_data_cache_lexical stretch", "search_data_vectors all", "search_data_vectors stretch"]);
+
+  mail.pop();
+  assert.deepEqual(ids(await box.search("u", "proforma freight", { cacheType: "email", service: "email", since })), ["old-1", "old-2"], "nothing in the stretch: the best of everything");
+
+  // Only days the LLM asked for are a stretch: the default 7 is not, so a
+  // search for an old email asked with no days still finds it first.
+  assert.match(read("lib/tools/handlers.js"), /days: toolInput\.days \|\| 7,\n\s*\/\/ [^\n]*\n\s*window: !!toolInput\.days,/);
+  assert.match(read("lib/services/data-access.js"), /queryCacheEmails\(userId, query, days, \{ window \}\)/);
+  assert.match(read("lib/services/data-sync.js"), /search\(userId, query, \{ cacheType: "email", service: "email", maxResults: 30, \.\.\.\(window \? \{ since \} : \{\}\) \}\)/);
+  const sql = read("migrations/096_search_window.sql");
+  assert.match(sql, /AND \(filter_since IS NULL OR dc\.received_at >= filter_since\)/, "the word search filters inside its query");
+  assert.match(sql, /IF filter_since IS NULL THEN[\s\S]+ORDER BY sv\.embedding <=> query_embedding[\s\S]+AND dc\.received_at >= filter_since[\s\S]+LIMIT 2000/, "the meaning search measures the stretch's own items");
+});
