@@ -42,6 +42,12 @@ test("what came minutes after their own message was seen as it came, and says so
   assert.equal(f.replyNote(msg("aurora", "Clinica Aurora", "2026-10-24T11:45:00Z"), justWrote, now), "nothing from you in this chat since, under an hour");
   // Like what they sent, never news: it does not wake a look or count as new.
   assert.match(pulse, /const realEmails = \(newEmails \|\| \[\]\)\.filter\(e => [^\n]*&& !facts\.seenAsItCame\(e, wrote\)[^\n]*\);/);
+  // Nor what they sent or drafted: an unsent draft read as a reply gone out.
+  assert.match(pulse, /const realEmails = \(newEmails \|\| \[\]\)\.filter\(e => !watches\.ignored\(e\) && /);
+  const w = require("../lib/watches");
+  assert.equal(w.ignored({ type: "email", data: { is_draft: true, labels: ["DRAFT"], subject: "Re: Order for spring", body: "Thanks for the order" } }), true, "a draft");
+  assert.equal(w.ignored({ type: "email", data: { labels: ["SENT"], subject: "Re: Order for spring" } }), true, "what they sent");
+  assert.equal(w.ignored({ type: "email", data: { labels: ["INBOX"], subject: "Order for spring", body: "Please find our order" } }), false, "mail that came in");
   assert.match(pulse, /const otherItems = \(newOther \|\| \[\]\)\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !facts\.seenAsItCame\(r, wrote\)\)/);
   assert.match(pulse, /if \(realEmails\.length === 0 && otherItems\.length === 0 && !world\.length && !enteringSoon && !lookDue\)/);
   // The other side owes the next word for half a day; after that it can
