@@ -85,3 +85,49 @@ test("the question before sending names who is copied, a reply's included", () =
   assert.match(read("lib/send-gate.js"), /if \(i\.to\) lines\.push\(`To: \$\{i\.to\}`\);\n\s*if \(i\.cc\) lines\.push\(`Cc: \$\{i\.cc\}`\);/);
   assert.match(read("lib/agents.js"), /if \(d && !d\.error\) \{ if \(d\.to\) pendingSend\.input\.to = d\.to; if \(d\.cc\) pendingSend\.input\.cc = d\.cc; \}/);
 });
+
+// Nothing asked about is cut short: an email shown to "Could you confirm t..."
+// was sent unseen to its end, and later written out again from the card with
+// its last line guessed.
+test("the question before sending shows all of what goes, never cut short", () => {
+  process.env.CTX_STRICT = "off";
+  const body = "Hi Rosa,\n\n" + "Thanks for the order, received. ".repeat(40) + "\n\nCould you confirm the delivery address is the same as last time?\n\nBest,\nSam";
+  const q = require("../lib/send-gate").mailSendQuestion("gmail_reply", { to: "rosa@shop.example", cc: "dana@shop.example", body });
+  assert.ok(q.includes(body), "the whole body");
+  assert.match(q, /Cc: dana@shop\.example/);
+  assert.doesNotMatch(q, /\.\.\.$/m);
+  const engine = read("lib/engine.js");
+  assert.match(engine, /if \(block\.input\.body && typeof block\.input\.body === "string"\) confirmSummary \+= `Body: \$\{block\.input\.body\}\\n`;/);
+  assert.match(engine, /confirmSummary \+= `Content: \$\{String\(bodyStr\)\}\\n`;/);
+  assert.match(engine, /if \(input\.description\) lines \+= `Description: \$\{String\(input\.description\)\}\\n`;/);
+  assert.doesNotMatch(engine, /`\$\{k\}: \$\{typeof v === "string" \? v : JSON\.stringify\(v\)\}`\.slice\(/, "a connected tool's arguments in full");
+  const spend = read("lib/spend-guard.js");
+  assert.doesNotMatch(spend, /String\(page\.title\)\.slice\(0, 60\)|\.slice\(0, 4\)\.join/, "the page and every amount on it");
+});
+
+// What was just sent is in the synced mail within seconds, so the next
+// message can pass it on word for word: a minute after sending, Closedhand
+// could not find a reply it had sent and wrote it out again from its card.
+test("the mailbox a message went from is synced straight after the send", async () => {
+  const sync = read("lib/services/data-sync.js");
+  const at = sync.indexOf("async function syncMailboxNow(");
+  const synced = [];
+  const syncMailboxNow = new Function("require", "listGoogleAccounts", "listMicrosoftAccounts", "syncGmail", "syncOutlookMail", "withTimeout",
+    sync.slice(at, sync.indexOf("\n}\n", at) + 2) + "\nreturn syncMailboxNow;")(
+    (m) => (m === "./google" ? { resolveGoogleAccount: (s, a) => (a ? "google_extra_shop" : "google") } : { resolveMicrosoftAccount: () => "microsoft" }),
+    () => [{ serviceKey: "google", slug: "", primary: true }, { serviceKey: "google_extra_shop", slug: "shop", primary: false }],
+    () => [{ serviceKey: "microsoft", slug: "", primary: true }],
+    async (...a) => { synced.push(["gmail", ...a.slice(2)]); },
+    async (...a) => { synced.push(["outlook", ...a.slice(2)]); },
+    (p) => p);
+  await syncMailboxNow("u1", {}, "gmail", "hello@shop.example");
+  await syncMailboxNow("u1", {}, "gmail", null);
+  await syncMailboxNow("u1", {}, "outlook", null);
+  assert.deepEqual(synced, [["gmail", "google_extra_shop", "gmail_shop"], ["gmail"], ["outlook"]], "the account it went from, and only that one");
+  assert.match(fnSrc("sendGmailDraft"), /syncSentSoon\("gmail", account\);/);
+  assert.match(fnSrc("sendOutlookDraft"), /syncSentSoon\("outlook", account\);/);
+  for (const tool of ["gmail_send", "gmail_reply"]) {
+    const c = handlers.indexOf(`case "${tool}": {`);
+    assert.match(handlers.slice(c, handlers.indexOf('\n    case "', c + 10)), /syncSentSoon\("gmail", toolInput\.account\);/, tool);
+  }
+});

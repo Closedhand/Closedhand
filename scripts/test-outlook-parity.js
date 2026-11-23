@@ -39,6 +39,8 @@ function outlook({ failAttach = false, failSend = false } = {}) {
     outlookAddresses: (list) => (list || []).map((r) => r.emailAddress?.address).filter(Boolean).join(", "),
     // Who a reply copies is scripts/test-reply-all.js's: nobody else here.
     outlookReplyCc: async () => "",
+    // Syncing the mailbox after a send is scripts/test-reply-all.js's.
+    syncSentSoon: () => {},
     fetch,
   };
   const names = Object.keys(deps);
