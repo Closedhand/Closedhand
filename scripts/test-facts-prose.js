@@ -130,13 +130,30 @@ test("facts follow at most once an hour, and are kept through pin_fact", async (
     await mod.review("u1", deps);
     assert.equal(read, 1, "once an hour");
   } finally { restore(); }
-  // What is new is read twice; catching up on a full share, more behind it, once.
-  for (const [more, times] of [[false, 2], [true, 1]]) {
-    const { mod, restore: undo } = followHarness({});
+  // What is new is read twice. Catching up on what was there before (full
+  // shares, more behind them) reads each once, up to three a look, and asks
+  // for the next look soon rather than in an hour.
+  {
+    const facts = {};
+    const { mod, restore: undo } = followHarness(facts);
     try {
-      let judged = 0;
-      await mod.review("u1", { now: NOW, items: items(words, CURSOR), judge: async () => { judged++; return []; }, pin: async () => {}, fit: keep, confirm: async () => true, ...(more ? { items: async () => ({ items: words, cursor: CURSOR, more: true }) } : {}) });
-      assert.equal(judged, times, more ? "a full share is read once" : "what is new is read twice");
+      const shares = [1, 2, 3, 4, 5].map((n) => ({ items: words, cursor: { at: new Date(NOW - (10 - n) * 60000).toISOString(), id: `s${n}` }, more: n < 5 }));
+      const next = async (u, cursor) => shares.find((s) => !cursor.id || s.cursor.id > cursor.id);
+      let judged = 0, soon = 0;
+      const deps = { items: next, judge: async () => { judged++; return []; }, pin: async () => {}, fit: keep, confirm: async () => true, soon: () => { soon++; } };
+      await mod.review("u1", { ...deps, now: NOW });
+      assert.deepEqual([judged, soon, mod.readRecord(facts).cursor.id, mod.readRecord(facts).more], [3, 1, "s3", true], "three full shares, once each, and the next look soon");
+      judged = 0;
+      await mod.review("u1", { ...deps, now: NOW + 600000 });
+      assert.deepEqual([judged, soon, mod.readRecord(facts).cursor.id, mod.readRecord(facts).more], [3, 1, "s5", false], "the last full share once, then what is new twice, and no early look after");
+      // While catching up, the next look comes after minutes, not an hour.
+      const at = (minutes, more) => { facts["_facts-follow"] = { value: JSON.stringify({ v: 3, looked: new Date(Date.now() - minutes * 60000).toISOString(), cursor: { at: "2026-12-01T00:00:00Z", id: "s1" }, more }) }; };
+      let looked = 0;
+      const count = { ...deps, items: async () => { looked++; return { items: [], cursor: {} }; } };
+      at(9, true); await mod.review("u1", count);
+      at(7, true); await mod.review("u1", count);
+      at(30, false); await mod.review("u1", count);
+      assert.equal(looked, 1, "after 9 minutes while catching up; not after 7, nor after 30 once caught up");
     } finally { undo(); }
   }
   const src = read("lib/facts-follow.js");
