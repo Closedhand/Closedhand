@@ -838,7 +838,15 @@ test("the web chat and Search Chat leave out the note of what came earlier", asy
   } };
   const routes = {};
   const app = new Proxy({}, { get: (_, verb) => (route, ...handlers) => { routes[`${String(verb).toUpperCase()} ${route}`] = handlers.at(-1); } });
-  require("../webapp/projects").register(app, { db, userId: () => "u1", withAppearance: (x) => x });
+  // Uploads are not used here, and CI installs no webapp packages.
+  const Module = require("node:module");
+  const load = Module._load;
+  Module._load = function (request) {
+    if (request === "multer") return Object.assign(() => ({ array: () => (q, r, next) => next(), single: () => (q, r, next) => next() }), { memoryStorage: () => ({}) });
+    return load.apply(this, arguments);
+  };
+  try { require("../webapp/projects").register(app, { db, userId: () => "u1", withAppearance: (x) => x }); }
+  finally { Module._load = load; }
   const call = (route, query) => new Promise((resolve) => {
     const res = { status() { return res; }, set() { return res; }, json: resolve, send: resolve };
     routes[route]({ query, params: {} }, res);
