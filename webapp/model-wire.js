@@ -326,21 +326,32 @@ function enrichToolResults(messages) {
 const CACHE_MARK = { type: "ephemeral" };
 function markCache(body) {
   const marked = b => !!b?.cache_control;
-  let marks = (Array.isArray(body.system) ? body.system.filter(marked).length : 0) +
-    body.messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter(marked).length : 0), 0);
-  if (typeof body.system === "string" && body.system) { body.system = [{ type: "text", text: body.system, cache_control: CACHE_MARK }]; marks++; }
+  if (typeof body.system === "string" && body.system) body.system = [{ type: "text", text: body.system, cache_control: CACHE_MARK }];
   else if (Array.isArray(body.system) && body.system.length && !body.system.some(marked)) {
-    body.system = body.system.map((b, i) => i === body.system.length - 1 ? { ...b, cache_control: CACHE_MARK } : b); marks++;
+    body.system = body.system.map((b, i) => i === body.system.length - 1 ? { ...b, cache_control: CACHE_MARK } : b);
   }
   const last = body.messages[body.messages.length - 1];
-  if (marks < 4 && last?.role === "user" && Array.isArray(last.content) && last.content.some(b => b.type === "tool_result") && !last.content.some(marked)) {
+  if (last?.role === "user" && Array.isArray(last.content) && last.content.some(b => b.type === "tool_result") && !last.content.some(marked)) {
     const i = last.content.length - 1;
     last.content[i] = { ...last.content[i], cache_control: CACHE_MARK };
-    marks++;
   }
-  if (marks < 4 && Array.isArray(body.tools) && body.tools.length && !body.tools.some(marked)) {
+  if (Array.isArray(body.tools) && body.tools.length && !body.tools.some(marked)) {
     body.tools = body.tools.map((t, i) => i === body.tools.length - 1 ? { ...t, cache_control: CACHE_MARK } : t);
   }
+  // Never more than four. A request carried on from the last reply keeps the
+  // marks it was sent with, one more each time, and the fourth quick follow-up
+  // in a row had five and was refused. The conversation's earliest marks go
+  // first, as the newest are what the next step reads; then the tools'.
+  const inMessages = [];
+  body.messages.forEach((m, mi) => { if (Array.isArray(m.content)) m.content.forEach((b, bi) => { if (marked(b)) inMessages.push([mi, bi]); }); });
+  let over = (Array.isArray(body.system) ? body.system.filter(marked).length : 0) + inMessages.length + (body.tools || []).filter(marked).length - 4;
+  for (const [mi, bi] of inMessages) {
+    if (over <= 0) break;
+    const { cache_control, ...plain } = body.messages[mi].content[bi];
+    body.messages[mi].content[bi] = plain;
+    over--;
+  }
+  if (over > 0 && Array.isArray(body.tools)) body.tools = body.tools.map(({ cache_control, ...t }) => t);
 }
 function identity(conn, model) {
   return createHash("sha256").update([conn.baseUrl, conn.apiKey || "", model].join("|")).digest("hex");

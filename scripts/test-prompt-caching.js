@@ -122,3 +122,27 @@ test('two messages in a row share the system prompt and the earlier conversation
     if (conn.backend !== 'anthropic') assert.equal(marks(b), 0, conn.backend);
   }
 });
+
+// A reply that follows the last closely carries on from what that reply sent
+// (lib/last-turn.js), marks and all, and each placement adds one. The fourth
+// quick follow-up in a row went with five and Anthropic refused it ("A
+// maximum of 4 blocks with cache_control may be provided"). Never more than
+// four, the newest kept.
+test('a run of carried-on follow-ups never sends more than four marks, and keeps the newest', async () => {
+  const sent = capture({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: {} });
+  let conversation = [{ role: 'user', content: 'The order for Sam Fixture' }, { role: 'assistant', content: 'Noted.' }];
+  let last = null;
+  for (let t = 1; t <= 6; t++) {
+    conversation.push({ role: 'user', content: `follow-up ${t}` });
+    let messages = last ? [...last, ...conversation.slice(-2)] : [...conversation];
+    await wire.request(anthropic, { system: SYSTEM, messages: box.place(messages, contextFor(t % 10)), tools });
+    messages = [...messages, { role: 'assistant', content: [{ type: 'tool_use', id: `t${t}`, name: 'search_cache', input: {} }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${t}`, content: '{}' }] }];
+    await wire.request(anthropic, { system: SYSTEM, messages: box.place(messages, contextFor(t % 10)), tools });
+    const body = sent.at(-1).body;
+    assert.ok(marks(body) <= 4, `follow-up ${t}: ${marks(body)} marks`);
+    assert.deepEqual(body.messages.at(-1).content.at(-1).cache_control, { type: 'ephemeral' }, 'the step so far stays marked');
+    last = box.place(messages, contextFor(t % 10));
+    conversation.push({ role: 'assistant', content: `answer ${t}` });
+  }
+  assert.ok(sent.every((s) => marks(s.body) <= 4), "every request");
+});
