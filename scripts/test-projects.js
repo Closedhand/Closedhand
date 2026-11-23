@@ -418,6 +418,8 @@ test("the engine, tools and claims check use projects", () => {
   const handlers = read("lib/tools/handlers.js");
   assert.match(handlers, /if \(toolInput\.add_item\) \{\n\s*\/\/ Kept from the stored record itself[\s\S]{0,700}add\.push\(rules\.synced\(rows\[0\]\)\);/, "an app item is read from the stored record, not taken from the model");
   assert.match(read("lib/tools/handlers.js"), /case "project_create": \{[\s\S]{0,900}closedhandLink\(toolInput\._platform \|\| ctx\.activePlatform \|\| "web", `\/page\/project\/\$\{p\.id\}`\)/);
+  // Its emoji alone read as its name ("🎾 is set up as a project"): it is named.
+  assert.match(read("lib/tools/handlers.js"), /say: `Tell them in a sentence or two that the project \$\{p\.emoji\} \$\{p\.name\} is set up and \$\{p\.emoji\} is now the way into it/);
   // A project's conversation never becomes the open one, nor shows as a thread.
   assert.match(read("user-store.js"), /\.eq\("user_id", userId\)\n\s*\.is\("project_id", null\)\n\s*\.order\("updated_at", \{ ascending: false \}\)\n\s*\.limit\(1\)/);
   // Threads are not listed, switched or archived by hand any more: the web

@@ -244,10 +244,11 @@ test("each turn reads what it made as it is now: sent, replied to, moved, gone, 
   });
   const line = await made.nowLine("u1", { tz: "UTC", db });
   assert.match(line, /^WHAT YOU MADE IN THEIR ACCOUNTS LATELY, AS IT IS NOW/);
-  assert.match(line, /Mail draft "Viewing at Harbour Hall" \(sam\.fixture@example\.com\), made \w{3} \d+ \w{3}, \d\d:\d\d: sent from their account \w{3} \d+ \w{3}, \d\d:\d\d, so it is no longer a draft; a reply since, last from Harbour Homes/);
-  assert.match(line, /Calendar event "Boiler service", made .+?: moved: now Wed 11 Nov, 09:00 \(was Tue 10 Nov, 09:00\)\./);
-  assert.match(line, /Calendar event "Dentist", made .+?: no longer in their calendar\./, "gone, once their calendar has synced since");
-  assert.match(line, /Mail draft "Quote for the roof", made .+?: not synced yet\./, "never \"gone\" before their mail has caught up");
+  assert.match(line, /Mail draft "Viewing at Harbour Hall" \(sam\.fixture@example\.com, draft_id r-77\), made \w{3} \d+ \w{3}, \d\d:\d\d: sent from their account \w{3} \d+ \w{3}, \d\d:\d\d, so it is no longer a draft; a reply since, last from Harbour Homes/);
+  assert.match(line, /Calendar event "Boiler service" \(event_id ev-1\), made .+?: moved: now Wed 11 Nov, 09:00 \(was Tue 10 Nov, 09:00\)\./);
+  assert.match(line, /Calendar event "Dentist" \(event_id ev-2\), made .+?: no longer in their calendar\./, "gone, once their calendar has synced since");
+  // With its id: a later reply changes it without having to find it again.
+  assert.match(line, /Mail draft "Quote for the roof" \(draft_id r-90\), made .+?: not synced yet\./, "never \"gone\" before their mail has caught up");
   assert.equal(await made.nowLine("u2", { db }), "", "nothing made, nothing said");
   assert.match(read("lib/engine.js"), /require\("\.\/made"\)\.nowLine\(userId, \{ tz: require\("\.\/time-context"\)\.personZone\(ctx\.store\) \}\)/, "the chat sees it every turn");
   assert.match(read("lib/pulse.js"), /\$\{madeNow \? `\\n\\n\$\{madeNow\}` : ""\}/, "and so does Pulse");
