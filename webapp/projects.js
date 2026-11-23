@@ -15,6 +15,10 @@ const page = require("./report-page");
 const COLUMNS = "id, name, emoji, about, instructions, summary, state, context, status, expected_end, last_touched, created_at, archived_at";
 // Instructions, one a line, as written.
 const lines = (x) => String(x || "").split(/\n+/).map((l) => l.trim()).filter(Boolean).join("\n").slice(0, 4000);
+// A conversation as the person sees it: without Closedhand's note of what
+// came earlier, which leads a long thread once its oldest part is folded away
+// (lib/conversation.js) and is never something they said.
+const shown = (list) => (Array.isArray(list) ? list : []).filter((m) => !(m && m.earlier === true));
 const PAGE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; form-action 'self'; frame-ancestors 'self'";
 // What a search of the person's synced items looks in, across kinds.
 const SEARCHED = ["data->>subject", "data->>summary", "data->>title", "data->>from", "data->>chat_name", "data->>text"];
@@ -78,20 +82,20 @@ function register(app, { db, userId: who, withAppearance }) {
       const { data: threads } = projects.length ? await db.from("conversation_threads").select("project_id, messages, updated_at").eq("user_id", userId).in("project_id", projects.map((p) => p.id)) : { data: [] };
       const list = projects.map((p) => {
         const t = (threads || []).find((x) => x.project_id === p.id);
-        return { id: p.id, emoji: p.emoji, name: p.name, updated_at: (t && t.updated_at) || p.last_touched, message_count: t && Array.isArray(t.messages) ? t.messages.length : 0 };
+        return { id: p.id, emoji: p.emoji, name: p.name, updated_at: (t && t.updated_at) || p.last_touched, message_count: shown(t && t.messages).length };
       }).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
-      res.json({ chat: { updated_at: general ? general.updated_at : null, message_count: general && Array.isArray(general.messages) ? general.messages.length : 0 }, projects: list });
+      res.json({ chat: { updated_at: general ? general.updated_at : null, message_count: shown(general && general.messages).length }, projects: list });
     } catch (e) { fail(res, e); }
   });
   app.get("/api/conversation", async (req, res) => {
     const userId = owner(req, res); if (!userId) return;
     try {
       const projectId = String(req.query.project || "");
-      if (!projectId) { const t = await generalThread(userId); return res.json({ messages: (t && t.messages) || [] }); }
+      if (!projectId) { const t = await generalThread(userId); return res.json({ messages: shown(t && t.messages) }); }
       const p = (await mine(userId)).find((x) => x.id === projectId);
       if (!p) return fail(res, new Error("That project is not here any more."), 404);
       const { data } = await db.from("conversation_threads").select("messages").eq("user_id", userId).eq("project_id", p.id).limit(1);
-      res.json({ project: { id: p.id, emoji: p.emoji, name: p.name }, messages: (data && data[0] && data[0].messages) || [] });
+      res.json({ project: { id: p.id, emoji: p.emoji, name: p.name }, messages: shown(data && data[0] && data[0].messages) });
     } catch (e) { fail(res, e); }
   });
 
@@ -115,7 +119,7 @@ function register(app, { db, userId: who, withAppearance }) {
       if (q.length < 2) return res.json({ results: [] });
       const needle = q.toLowerCase();
       const t = await generalThread(userId);
-      const live = ((t && t.messages) || []).map((m) => ({ who: m.role === "assistant" ? "closedhand" : "me", text: said(m.content), at: m.ts || null }))
+      const live = shown(t && t.messages).map((m) => ({ who: m.role === "assistant" ? "closedhand" : "me", text: said(m.content), at: m.ts || null }))
         .filter((m) => m.text && m.text.toLowerCase().includes(needle)).reverse();
       const { data: projectThreads } = await db.from("conversation_threads").select("id").eq("user_id", userId).not("project_id", "is", null);
       const skip = new Set((projectThreads || []).map((x) => String(x.id)));
@@ -277,7 +281,7 @@ function register(app, { db, userId: who, withAppearance }) {
       const { data: routines } = await db.from("automations").select("name, status, members, trigger_type, trigger_human_schedule, trigger_event_source, trigger_event_condition, trigger_when, trigger_offset_minutes")
         .eq("user_id", userId).eq("project_id", p.id).order("created_at", { ascending: true });
       const live = (routines || []).filter((r) => r.status !== "done" && r.status !== "expired");
-      res.send(withAppearance(projectHtml(p, Date.now(), (threads && threads[0] && threads[0].messages) || [], await goalOf(userId, p.id), live)));
+      res.send(withAppearance(projectHtml(p, Date.now(), shown(threads && threads[0] && threads[0].messages), await goalOf(userId, p.id), live)));
     } catch (e) {
       console.error("Project page error:", e.message);
       res.status(500).send("Could not show this project.");

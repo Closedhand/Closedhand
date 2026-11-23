@@ -150,6 +150,71 @@ test("condensing trims the history a reply holds, so the reply that follows is k
     assert.equal(getConversation("fixture").at(-1).content, "The lease runs to March.", "the reply lands in the saved history");
   } finally { Module._load = load; }
 });
+// A model with a window of a million tokens never folded anything, and each
+// message after a pause sent the whole long thread again at full price. Past
+// a ceiling the oldest part folds into a note of what came earlier, kept
+// first, with the specifics a Context Note of 400 tokens had lost.
+test("a long conversation folds at its ceiling whatever the window, into a note of what came earlier that stays first", async () => {
+  const Module = require("node:module");
+  const at = (f) => require.resolve(require("node:path").join(__dirname, "..", f));
+  const archived = [], asked = [];
+  let noteFails = false;
+  const supabase = { from() {
+    const q = { select() { return q; }, eq() { return q; }, upsert(rows) { archived.push(...[].concat(rows)); return q; },
+      then(resolve, reject) { return Promise.resolve({ count: 0, error: null }).then(resolve, reject); } };
+    return q;
+  } };
+  const create = async (p) => {
+    const text = p.messages[0].content;
+    if (!text.startsWith("You keep the note")) return { content: [{ type: "text", text: "You went over the Harbour Street lease." }] };
+    asked.push(text);
+    if (noteFails) throw new Error("provider down");
+    return { content: [{ type: "text", text: `You went over the Harbour Street lease.\nSpecifics:\n- Lease ends 31 March, deposit £900 (note ${asked.length}).` }] };
+  };
+  const stubs = new Map([
+    [at("lib/context.js"), { store: { conversations: {} }, activeThreadId: null }],
+    [at("lib/storage.js"), { saveStore() {} }],
+    [at("lib/llm.js"), { getInternalClient: () => ({ model: "fixture", client: { messages: { create } } }) }],
+    [at("user-store.js"), { supabase }],
+    [at("lib/services/usi.js"), { embedDocument: async () => null }],
+  ]);
+  const load = Module._load;
+  Module._load = function (request, parent) { return stubs.get(Module._resolveFilename(request, parent)) || load.apply(this, arguments); };
+  try {
+    delete require.cache[at("lib/conversation.js")];
+    delete require.cache[at("lib/token-tracker.js")];
+    const { getConversation, vectoriseOldMessages } = require("../lib/conversation");
+    const { estimateMessageTokens, shouldSummarise, HISTORY_CEILING, HISTORY_FLOOR } = require("../lib/token-tracker");
+    const big = { contextWindow: 1000000 };
+    const size = (list) => list.reduce((n, m) => n + estimateMessageTokens(m), 0);
+    assert.equal(shouldSummarise({ fillRate: 0.05, breakdown: { messages: HISTORY_CEILING + 1 } }), true, "past the ceiling, however big the window");
+    assert.equal(shouldSummarise({ fillRate: 0.05, breakdown: { messages: HISTORY_CEILING } }), false);
+    const held = getConversation("fold");
+    held.push(...harbour(100));
+    await vectoriseOldMessages("fold", "Read sources carefully.", [], big);
+    assert.equal(held.length, 100, "under the ceiling nothing folds");
+    held.push(...harbour(140));
+    await vectoriseOldMessages("fold", "Read sources carefully.", [], big);
+    assert.equal(held[0].earlier, true);
+    assert.match(held[0].content, /^\[Closedhand's note of what came earlier[^\]]*search_cache with source "conversation" finds them\.\]\nYou went over the Harbour Street lease\.\nSpecifics:\n- Lease ends 31 March, deposit £900 \(note 1\)\./);
+    assert.deepEqual([held[0].role, held[1].role, held[1].content, held[2].role], ["user", "assistant", "Noted.", "user"], "the note, its reply, then the person's own words");
+    assert.ok(size(held.slice(2)) <= HISTORY_FLOOR, "down to the floor in one go");
+    assert.equal(archived.length, 240 - (held.length - 2), "every folded turn archived word for word");
+    held.push(...harbour(120));
+    archived.length = 0;
+    await vectoriseOldMessages("fold", "Read sources carefully.", [], big);
+    assert.match(asked[1], /NOTE SO FAR:\nYou went over the Harbour Street lease\.\nSpecifics:\n- Lease ends 31 March, deposit £900 \(note 1\)\./, "the note so far is carried into the next");
+    assert.doesNotMatch(asked[1], /MESSAGES BEING FOLDED AWAY:\nPerson: \[Closedhand's note/, "and is not folded as a message");
+    assert.equal(held.filter((m) => m.earlier).length, 2, "one note, first");
+    assert.match(held[0].content, /\(note 2\)/);
+    assert.ok(archived.every((r) => !String(r.data.text).startsWith("[Closedhand's note")), "the note is not archived as something said");
+    noteFails = true;
+    held.push(...harbour(120));
+    await vectoriseOldMessages("fold", "Read sources carefully.", [], big);
+    assert.match(held[0].content, /\(note 2\)/, "a note that could not be written keeps the one there was");
+    assert.equal(held[2].role, "user");
+  } finally { Module._load = load; }
+});
 test("a long file is read in parts that each fit whole in one tool result", () => {
   const { textPart, RESULT_PART } = require("../lib/file-reader");
   const text = Array.from({ length: 3000 }, (_, i) => `Line ${i}: the Harbour Street "lease" schedule`).join("\n");

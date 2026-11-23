@@ -820,3 +820,33 @@ test("a project follows what comes in: whole conversations with someone its reco
   assert.match(read("index.js"), /require\("\.\/lib\/projects"\)\.startFollowing\(\);/);
   assert.match(read("lib/projects.js"), /- Return the FULL updated state for a touched project[^\n]*\n- \$\{SETTLED\}/, "a chat turn closes what it settled too");
 });
+
+// A long thread's oldest part folds into Closedhand's note of what came
+// earlier (lib/conversation.js), kept as its first two messages. The web chat,
+// Search Chat and a project's page show what was said, never that note.
+test("the web chat and Search Chat leave out the note of what came earlier", async () => {
+  const thread = { id: "t1", updated_at: "2026-11-23T10:00:00Z", messages: [
+    { role: "user", content: "[Closedhand's note of what came earlier in this conversation]\nSpecifics:\n- Lease ends 31 March.", earlier: true },
+    { role: "assistant", content: "Noted.", earlier: true },
+    { role: "user", content: "When does the lease end?" },
+    { role: "assistant", content: "On 31 March." },
+  ] };
+  const db = { from(table) {
+    const q = { select() { return q; }, eq() { return q; }, is() { return q; }, in() { return q; }, not() { return q; }, or() { return q; }, ilike() { return q; }, order() { return q; }, limit() { return q; },
+      then(ok, bad) { return Promise.resolve({ data: table === "conversation_threads" ? [thread] : [], error: null }).then(ok, bad); } };
+    return q;
+  } };
+  const routes = {};
+  const app = new Proxy({}, { get: (_, verb) => (route, ...handlers) => { routes[`${String(verb).toUpperCase()} ${route}`] = handlers.at(-1); } });
+  require("../webapp/projects").register(app, { db, userId: () => "u1", withAppearance: (x) => x });
+  const call = (route, query) => new Promise((resolve) => {
+    const res = { status() { return res; }, set() { return res; }, json: resolve, send: resolve };
+    routes[route]({ query, params: {} }, res);
+  });
+  const shown = await call("GET /api/conversation", {});
+  assert.deepEqual(shown.messages.map((m) => m.content), ["When does the lease end?", "On 31 March."]);
+  const found = await call("GET /api/conversation/search", { q: "lease" });
+  assert.ok(found.results.length >= 1 && found.results.every((r) => !/note of what came earlier|Specifics/.test(r.text)), "Search Chat finds what was said, not the note");
+  const listed = await call("GET /api/conversations", {});
+  assert.equal(listed.chat.message_count, 2);
+});
