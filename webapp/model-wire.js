@@ -339,6 +339,18 @@ function markCache(body) {
 function identity(conn, model) {
   return createHash("sha256").update([conn.baseUrl, conn.apiKey || "", model].join("|")).digest("hex");
 }
+// The system prompt and tools a reply was written under, as Anthropic binds
+// its reasoning to them: the words, and the tools in any order. Cache marks
+// are not part of it.
+function writtenUnder(system, tools) {
+  const words = typeof system === "string" ? [system] : (system || []).map(b => b?.text ?? "");
+  const set = (tools || []).map(({ cache_control, ...t }) => JSON.stringify(t)).sort();
+  return createHash("sha256").update(JSON.stringify([words, set])).digest("hex");
+}
+function withoutThinking(messages) {
+  return (messages || []).map(m => Array.isArray(m.content)
+    ? { ...m, content: m.content.filter(b => !["thinking", "redacted_thinking"].includes(b?.type)) } : m);
+}
 // API keys have shapes model IDs never have: a provider's key prefix, or a
 // long unbroken run of letters and digits. A key pasted where a model ID goes
 // is never sent as a model name (providers repeat the name in their errors),
@@ -558,10 +570,14 @@ async function request(conn, params, options = {}) {
   if (conn.backend === "anthropic") {
     headers["x-api-key"] = conn.apiKey;
     headers["anthropic-version"] = "2023-06-01";
+    // Claude's reasoning holds only under the system prompt and tools it was
+    // written with: Anthropic refuses it once either changes ("bound to a
+    // different conversation"), as when a reply loads another tool midway.
+    const bound = id + "|" + writtenUnder(params.system, params.tools);
     // Only what the API defines: a saved turn can carry Closedhand's own
     // fields (what a nudge was about), which Anthropic refuses.
     const messages = (params.messages || []).map(m => ({ role: m.role, content: Array.isArray(m.content) ? m.content.filter(b =>
-      b.type !== "provider_state" && (!["thinking", "redacted_thinking"].includes(b.type) || b._identity === id)
+      b.type !== "provider_state" && (!["thinking", "redacted_thinking"].includes(b.type) || b._identity === bound)
     ).map(b => {
       const { _geminiPart, _identity, ...clean } = b; return clean;
     }) : m.content }));
@@ -572,7 +588,7 @@ async function request(conn, params, options = {}) {
     markCache(body);
     url = conn.baseUrl + "/messages";
     if (onText) { body.stream = true; live = anthropicPieces(onText); }
-    convert = data => ({ ...data, content: data.content?.map(b => ["thinking", "redacted_thinking"].includes(b.type) ? { ...b, _identity: id } : b) });
+    convert = data => ({ ...data, content: data.content?.map(b => ["thinking", "redacted_thinking"].includes(b.type) ? { ...b, _identity: bound } : b) });
   } else if (conn.backend === "gemini") {
     const source = structuredClone(params.messages || []);
     enrichToolResults(source);
@@ -623,6 +639,14 @@ async function request(conn, params, options = {}) {
       const limit = Number(detail.error?.n_ctx) || Number((said.match(/context size \((\d+) tokens\)/i) || [])[1]) || null;
       const used = Number(detail.error?.n_prompt_tokens) || Number((said.match(/request \((\d+) tokens\)/i) || [])[1]) || null;
       throw Object.assign(new Error("The model context window was exceeded."), { status: 400, code: "context_length_exceeded", limit, used });
+    }
+    // Anything else earlier in the reply that changed since Claude reasoned:
+    // asked once more without that reasoning, as Anthropic says to, and the
+    // change is logged with the message Anthropic names, to be found.
+    if (response.status === 400 && conn.backend === "anthropic" && /bound to a different conversation/i.test(said)
+      && body.messages.some(m => Array.isArray(m.content) && m.content.some(b => ["thinking", "redacted_thinking"].includes(b.type)))) {
+      console.warn(`[model-wire] anthropic refused earlier reasoning, sent again without it: ${hideKeys(said, conn).slice(0, 400)}`);
+      return request(conn, { ...params, messages: withoutThinking(params.messages) }, options);
     }
     if (response.status === 400 && body.reasoning?.enabled === false && /reasoning is mandatory/i.test(said)) {
       mustThink.add(model);

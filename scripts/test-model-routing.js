@@ -67,6 +67,56 @@ test("Anthropic thinking signatures stay bound to their original model", async (
   assert.equal(calls[2].messages[0].content.some(b => b.type === "thinking"), false);
   assert.equal(wire.responseText(result), "ready");
 });
+
+test("Anthropic reasoning is not sent back once the reply's tools or system prompt changed", async () => {
+  const calls = [];
+  global.fetch = async (url, opts) => {
+    calls.push(JSON.parse(opts.body));
+    return Response.json({ stop_reason: "tool_use", content: [{ type: "thinking", thinking: "", signature: "signed" }, { type: "tool_use", id: "t1", name: "look_up", input: {} }] });
+  };
+  const conn = policy.connection({ provider: "anthropic", apiKey: "key" });
+  const lookUp = { name: "look_up", description: "Look something up", input_schema: { type: "object", properties: {} } };
+  const other = { name: "add_note", description: "Add a note", input_schema: { type: "object", properties: {} } };
+  const system = [{ type: "text", text: "You are Closedhand.", cache_control: { type: "ephemeral" } }];
+  const first = await wire.request(conn, { ...params, model: "claude-opus-5-5", system, tools: [lookUp, other] });
+  const messages = [{ role: "user", content: "hello" }, { role: "assistant", content: first.content },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "found" }] }];
+  const thinks = (call) => call.messages[1].content.some(b => b.type === "thinking");
+  // Same tools in another order, same words without the cache mark: kept.
+  await wire.request(conn, { ...params, model: "claude-opus-5-5", system: [{ type: "text", text: "You are Closedhand." }], tools: [other, lookUp], messages });
+  assert.equal(thinks(calls[1]), true);
+  // A tool loaded midway, or other words: left out, the tool call kept.
+  const added = { name: "send_mail", description: "Send mail", input_schema: { type: "object", properties: {} } };
+  await wire.request(conn, { ...params, model: "claude-opus-5-5", system, tools: [lookUp, other, added], messages });
+  assert.equal(thinks(calls[2]), false);
+  assert.equal(calls[2].messages[1].content[0].type, "tool_use");
+  await wire.request(conn, { ...params, model: "claude-opus-5-5", system: [{ type: "text", text: "Changed." }], tools: [lookUp, other], messages });
+  assert.equal(thinks(calls[3]), false);
+});
+
+test("Anthropic refusing earlier reasoning is asked once more without it", async () => {
+  const calls = [];
+  const step = { stop_reason: "tool_use", content: [{ type: "thinking", thinking: "", signature: "signed" }, { type: "tool_use", id: "t1", name: "look_up", input: {} }] };
+  global.fetch = async (url, opts) => { calls.push(JSON.parse(opts.body)); return Response.json(step); };
+  const conn = policy.connection({ provider: "anthropic", apiKey: "key" });
+  const first = await wire.request(conn, { ...params, model: "claude-opus-5-5" });
+  const messages = [{ role: "user", content: "hello" }, { role: "assistant", content: first.content },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "found" }] }];
+  global.fetch = async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    calls.push(body);
+    if (body.messages.some(m => Array.isArray(m.content) && m.content.some(b => b.type === "thinking"))) {
+      return Response.json({ type: "error", error: { type: "invalid_request_error", message: "messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation." } }, { status: 400 });
+    }
+    return Response.json({ stop_reason: "end_turn", content: [{ type: "text", text: "ready" }] });
+  };
+  calls.length = 0;
+  const reply = await wire.request(conn, { ...params, model: "claude-opus-5-5", messages });
+  assert.equal(wire.responseText(reply), "ready");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].messages[1].content[0].type, "thinking");
+  assert.deepEqual(calls[1].messages[1].content.map(b => b.type), ["tool_use"]);
+});
 const assert = require("node:assert/strict");
 const wire = require("../lib/model-wire");
 const policy = require("../lib/model-policy");
