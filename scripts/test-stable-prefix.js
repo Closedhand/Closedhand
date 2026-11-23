@@ -86,7 +86,7 @@ test('a connected server\'s tools load with the first call when the request name
   assert.equal(likelyMcpTools('thanks!', [], big, new Set(), 24000).size, 0, 'and only what the request names when there is not');
   const huge = big.concat(Array.from({ length: 300 }, (_, i) => def('archive_record_' + i)));
   assert.equal(likelyMcpTools('thanks!', [], huge, new Set(), 120000, 120000).size, 0, 'a server past the room still loads by what the request names');
-  assert.match(engine, /const room = _readsFromCache\.has\(cacheKey\) \? MCP_LOAD_CACHED_CHARS : MCP_LOAD_CHARS;\n\s+if \(room > mcpRoom\) \{/, 'more room once, when the provider is known to read from cache');
+  assert.match(engine, /if \(mcpRoom === 0\) \{\n\s+const room = _readsFromCache\.has\(cacheKey\) \? MCP_LOAD_CACHED_CHARS : MCP_LOAD_CHARS;/, 'more room when the provider is known to read from cache, chosen with a reply\'s first call (scripts/test-cache-steady.js)');
   assert.match(engine, /if \(\(response\.usage\?\.cache_read_input_tokens \|\| 0\) > 0\) _readsFromCache\.add\(cacheKey\);/);
 });
 

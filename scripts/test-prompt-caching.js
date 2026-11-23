@@ -19,12 +19,14 @@ const toolLoop = () => [
 ];
 const marks = body => JSON.stringify(body).split('"cache_control"').length - 1;
 
-test('a first message: the system prompt (and the tools before it) is marked, the conversation is not', async () => {
+test('a first message: the system prompt and the tools before it are marked, the conversation is not', async () => {
   const sent = capture({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: {} });
   await wire.request(anthropic, { system: 'You are Closedhand.', messages: [{ role: 'user', content: 'hi' }], tools });
   const { body } = sent[0];
   assert.deepEqual(body.system, [{ type: 'text', text: 'You are Closedhand.', cache_control: { type: 'ephemeral' } }]);
-  assert.equal(marks(body), 1);
+  assert.deepEqual(body.tools.at(-1).cache_control, { type: 'ephemeral' }, 'a changed system prompt alone still reads the tools from cache');
+  assert.equal(marks(body), 2);
+  assert.equal(JSON.stringify(tools).includes('cache_control'), false, 'the caller keeps its own tools unmarked');
 });
 test('mid-task, after tool results, the conversation so far is marked too, without touching the caller\'s messages', async () => {
   const sent = capture({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: {} });
@@ -32,7 +34,7 @@ test('mid-task, after tool results, the conversation so far is marked too, witho
   await wire.request(anthropic, { system: 'You are Closedhand.', messages, tools });
   const last = sent[0].body.messages.at(-1).content.at(-1);
   assert.deepEqual(last.cache_control, { type: 'ephemeral' });
-  assert.equal(marks(sent[0].body), 2);
+  assert.equal(marks(sent[0].body), 3);
   assert.equal(JSON.stringify(messages).includes('cache_control'), false, 'the caller keeps its own copy unmarked');
 });
 test('a caller\'s own marks are kept, never doubled, and never more than four in all', async () => {
@@ -40,7 +42,7 @@ test('a caller\'s own marks are kept, never doubled, and never more than four in
   const system = [{ type: 'text', text: 'static', cache_control: { type: 'ephemeral' } }, { type: 'text', text: 'time and recall' }];
   await wire.request(anthropic, { system, messages: toolLoop(), tools });
   assert.equal(sent[0].body.system[1].cache_control, undefined, 'the changing tail stays unmarked');
-  assert.equal(marks(sent[0].body), 2);
+  assert.equal(marks(sent[0].body), 3);
   const crowded = toolLoop();
   crowded.slice(0, 2).forEach(m => { if (Array.isArray(m.content)) m.content[0].cache_control = { type: 'ephemeral' }; });
   crowded[0] = { role: 'user', content: [{ type: 'text', text: 'a', cache_control: { type: 'ephemeral' } }, { type: 'text', text: 'b', cache_control: { type: 'ephemeral' } }] };
@@ -91,7 +93,7 @@ test('mid-task the context stays on the request, after tool calls, and Anthropic
   const loop = [...firstMessage, { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'search_cache', input: {} }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{}' }] }];
   await wire.request(anthropic, { system: SYSTEM, messages: box.place(loop, contextFor(1)), tools });
   const body = sent[0].body;
-  assert.equal(marks(body), 3, 'system, the earlier conversation, the step so far');
+  assert.equal(marks(body), 4, 'system, the earlier conversation, the step so far, the tools');
   assert.match(body.messages[2].content[0].text, /Closedhand context/);
   assert.equal(body.system.length, 1, 'the system prompt alone');
 });

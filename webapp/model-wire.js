@@ -319,8 +319,10 @@ function enrichToolResults(messages) {
 // them the marks are dropped in translation and a stable start is what counts.
 // The system prompt comes after the tools, so marking it caches both. In the
 // middle of a task, after tool results, the conversation so far is marked
-// too: the next step resends it within seconds. The model sees exactly the
-// same prompt either way. Anthropic allows four marks; a caller's own count.
+// too: the next step resends it within seconds. The tools are marked where a
+// mark is left, so a system prompt that changed (a fact pinned) still reads
+// them from cache. The model sees exactly the same prompt either way.
+// Anthropic allows four marks; a caller's own count.
 const CACHE_MARK = { type: "ephemeral" };
 function markCache(body) {
   const marked = b => !!b?.cache_control;
@@ -334,6 +336,10 @@ function markCache(body) {
   if (marks < 4 && last?.role === "user" && Array.isArray(last.content) && last.content.some(b => b.type === "tool_result") && !last.content.some(marked)) {
     const i = last.content.length - 1;
     last.content[i] = { ...last.content[i], cache_control: CACHE_MARK };
+    marks++;
+  }
+  if (marks < 4 && Array.isArray(body.tools) && body.tools.length && !body.tools.some(marked)) {
+    body.tools = body.tools.map((t, i) => i === body.tools.length - 1 ? { ...t, cache_control: CACHE_MARK } : t);
   }
 }
 function identity(conn, model) {
