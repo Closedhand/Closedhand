@@ -23,7 +23,9 @@ const gApi = async (method, url) => {
   throw new Error(`unexpected ${method} ${url}`);
 };
 const gmailFrom = new Function(fnSrc("gmailFrom") + "\nreturn gmailFrom;")();
-const sendHeadersFor = new Function("gmailFrom", fnSrc("sendHeadersFor") + "\nreturn sendHeadersFor;")(gmailFrom);
+const othersOnMail = new Function(handlers.slice(handlers.indexOf("function othersOnMail("), handlers.indexOf("\n}\n", handlers.indexOf("function othersOnMail(")) + 2) + "\nreturn othersOnMail;")();
+const replyCc = new Function("othersOnMail", fnSrc("replyCc") + "\nreturn replyCc;")(othersOnMail);
+const sendHeadersFor = new Function("gmailFrom", "replyCc", fnSrc("sendHeadersFor") + "\nreturn sendHeadersFor;")(gmailFrom, replyCc);
 
 test("from is one of the mailbox's own send-as addresses, with the name Gmail shows", async () => {
   assert.equal(await gmailFrom(gApi, "ana@harbour.test"), '"Ana Ruiz" <ana@harbour.test>');
@@ -96,10 +98,10 @@ test("Outlook: from is one of the account's own addresses, and the draft keeps i
     if (method === "PATCH") return { changeKey: "ck-2" };
     throw new Error(`unexpected ${method} ${url}`);
   };
-  const create = new Function("microsoftReqFor", "resolveOutgoingAttachments", "outlookRecipients", "outlookFrom", "deleteOutlookDraft", "addOutlookAttachments", "liveOutlookMessage",
-    fnSrc("createOutlookDraft") + "\nreturn createOutlookDraft;")(() => api, async () => ({ attachments: [], missing: [] }), (t) => [{ emailAddress: { address: t } }], outlookFrom, async () => {}, null, null);
+  const create = new Function("microsoftReqFor", "resolveOutgoingAttachments", "outlookRecipients", "outlookFrom", "deleteOutlookDraft", "addOutlookAttachments", "liveOutlookMessage", "outlookReplyCc", "outlookAddresses",
+    fnSrc("createOutlookDraft") + "\nreturn createOutlookDraft;")(() => api, async () => ({ attachments: [], missing: [] }), (t) => [{ emailAddress: { address: t } }], outlookFrom, async () => {}, null, null, async () => "", () => "");
   const made = await create({ to: "mara@harbourpost.example", subject: "Racquets", body: "Two land Tuesday.", from: "bookings@kestrel.test" });
-  assert.deepEqual(made, { draftId: "AAMk-9", changeKey: "ck-2" }, "the version after the From is set, so it is not mistaken for the person's edit");
+  assert.deepEqual(made, { draftId: "AAMk-9", changeKey: "ck-2", to: "mara@harbourpost.example", cc: "" }, "the version after the From is set, so it is not mistaken for the person's edit");
   assert.deepEqual(calls.at(-1)[2], { from: { emailAddress: { address: "bookings@kestrel.test", name: "Ana Ruiz" } } });
 
   const update = block("outlook_draft_update");

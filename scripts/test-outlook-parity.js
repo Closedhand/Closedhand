@@ -36,6 +36,9 @@ function outlook({ failAttach = false, failSend = false } = {}) {
     resolveOutgoingAttachments: async () => ({ attachments: files, missing: [] }),
     liveOutlookMessage: (api, id) => api("GET", `https://graph.microsoft.com/v1.0/me/messages/${id}?$select=changeKey`),
     outlookRecipients: (text) => String(text).split(",").map((address) => ({ emailAddress: { address: address.trim() } })),
+    outlookAddresses: (list) => (list || []).map((r) => r.emailAddress?.address).filter(Boolean).join(", "),
+    // Who a reply copies is scripts/test-reply-all.js's: nobody else here.
+    outlookReplyCc: async () => "",
     fetch,
   };
   const names = Object.keys(deps);
