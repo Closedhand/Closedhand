@@ -741,7 +741,7 @@ body.chat-active .mon-area { display:none; }
   /* The question is the place to write: room for two lines, larger words.
      Its least height is two lines exactly (1.5 line height, .5rem padding),
      so a placeholder that wraps on a narrow screen never scrolls. */
-  .ask-row { display: flex; align-items: flex-end; gap: .625rem; padding: .9375rem .625rem .625rem 1.375rem; }
+  .ask-row { display: flex; align-items: center; gap: .625rem; padding: .78125rem .625rem .78125rem 1.375rem; }
   .ask-box textarea { flex: 1; min-width: 0; display: block; align-self: stretch; min-height: 4.0625rem; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 400 1.1875rem/1.5 var(--font-ui); padding: .125rem 0 .375rem; max-height: 9rem; overscroll-behavior: contain; caret-color: var(--accent); }
   /* The tray is quieter: smaller words, centred, on a darker strip, the
      line on what Closedhand adds under the count. */
@@ -854,7 +854,7 @@ body.chat-active .mon-area { display:none; }
   @media (max-width: 600px) {
     .ask { margin-bottom: 1.5rem; }
     .ask-box textarea { font-size: 1.0625rem; min-height: 3.6875rem; }
-    .ask-row { padding: .8125rem .5rem .5rem 1.125rem; }
+    .ask-row { padding: .65625rem .5rem .65625rem 1.125rem; }
     .ask-send .ask-send-label { display: none; }
     .ask-send { padding: .6875rem .8125rem; }
     .ask-next { flex-direction: column; align-items: stretch; gap: .75rem; padding: .875rem; text-align: center; }

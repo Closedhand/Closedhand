@@ -367,17 +367,30 @@
   }
 
   // A conversation from an earlier visit is shown as it was left, with what
-  // comes next under it once the page knows how many questions are left.
+  // comes next under it, once the page knows how many questions are left. A
+  // whole day's questions left means none was asked here today: it is from
+  // an earlier day, and the box starts afresh. It stays kept, to be carried
+  // into Closedhand (public/carry.js), until a question today starts another.
   var earlier = kept();
-  if (earlier.length) {
+  function showEarlier() {
     earlier.forEach(function (t) {
       var li = add(t.role === 'user' ? 'user' : 'bot');
       li.style.whiteSpace = 'pre-wrap';
       li.textContent = t.text;
     });
+  }
+  if (earlier.length) {
     state.turns = earlier; state.told = true;
     tries.hidden = true;
-    hello().then(function () { if (state.left === 0) over(); else after(); }, function () {});
+    hello().then(function () {
+      if (state.left > 0 && state.left >= state.of) {
+        state.turns = []; state.told = false;
+        tries.hidden = false;
+        return count();
+      }
+      showEarlier();
+      if (state.left === 0) over(); else after();
+    }, showEarlier);
   }
 
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value); });

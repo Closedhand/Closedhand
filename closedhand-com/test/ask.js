@@ -379,6 +379,11 @@ test('the page: the box and its script are on the home page, and what it says is
   assert.match(home, /<div class="ask-row"><textarea id="askInput"[^>]*><\/textarea><button type="submit" class="ask-send" id="askSend" disabled>[\s\S]*?<\/button><\/div>\n\s*<div class="ask-foot"><p class="ask-note" id="askNote"><\/p><span id="askUnlockSlot"><\/span><\/div>/);
   assert.match(home, /\.ask-foot \{ display: flex; flex-direction: column;[^}]*justify-content: center;[^}]*border-top: 1px solid rgba\(var\(--fg-rgb\),0\.06\); background: rgba\(var\(--bg-rgb\),0\.55\); text-align: center; \}/, 'the tray quieter than the question, and centred');
   assert.match(home, /<form class="ask-box fresh" id="askForm">/);
+  assert.match(home, /\.ask-row \{ display: flex; align-items: center;/, 'Send in the middle of the question row');
+  // A new day starts afresh: with a whole day's questions left, the earlier conversation is not shown,
+  // and stays kept for Closedhand until a question today starts another.
+  assert.match(script, /if \(state\.left > 0 && state\.left >= state\.of\) \{\n\s*state\.turns = \[\]; state\.told = false;\n\s*tries\.hidden = false;\n\s*return count\(\);\n\s*\}\n\s*showEarlier\(\);/);
+  assert.doesNotMatch(script.slice(script.indexOf('var earlier = kept();')), /localStorage\.removeItem/, 'not deleted: it can still be carried over');
   assert.match(script, /input\.addEventListener\('focus', function \(\) \{ box\.querySelector\('\.ask-box'\)\.classList\.remove\('fresh'\); \}, \{ once: true \}\);/, 'the box calls for a first question until it is touched');
   assert.doesNotMatch(home + script, /Encrypted in your browser|Download below|Generate images, take actions/);
   // What it unlocks, by the names people know, in one line: no pills.
