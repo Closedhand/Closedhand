@@ -2514,9 +2514,10 @@ async function connectMcpHandler(req, res) {
             needs_credentials: true,
             server_url: row.server_url,
             own_app: published ? await connectionCatalogue.ownApp(row.server_url, published) : null,
+            // Said plainly, with where to get what it asks for.
             message: published
-              ? "This server wants you to sign in, but did not let Closedhand register itself. Paste a key if you have one, or use your own app."
-              : "This server wants a key.",
+              ? `${connectionCatalogue.hostName(row.server_url)} signs you in through an app you make with it. Use your own app, or paste a key if it gave you one.`
+              : `${connectionCatalogue.hostName(row.server_url)} asks for a key before it will connect. Paste the API key or access token it gives you, usually found in its developer or API settings.`,
           });
         }
         problems.push({ server_url: row.server_url, error: mcpClient.publicConnectionError(e) });
@@ -6890,9 +6891,9 @@ app.get("/api/rag/search", async (req, res) => {
 // Which connected account a File Search document's drive is: its source
 // says. Without it the primary account was asked, and a file on any other
 // Drive could not be downloaded.
-async function ragAccountOf(doc) {
+async function ragAccountOf(doc, userId) {
   if (!doc?.source_id) return null;
-  const { data } = await supabase.from("rag_sources").select("account").eq("id", doc.source_id).maybeSingle();
+  const { data } = await supabase.from("rag_sources").select("account").eq("id", doc.source_id).eq("user_id", userId).maybeSingle();
   return data?.account || null;
 }
 
@@ -6909,7 +6910,7 @@ app.get("/api/rag/thumbnail", async (req, res) => {
   if (!doc?.file_path) return res.status(404).end();
   const large = req.query.size === "large";
   try {
-    const account = await ragAccountOf(doc);
+    const account = await ragAccountOf(doc, userId);
     let resp = null;
     if (doc.origin === "gdrive") {
       const meta = await ragProcessor.fetchWithRefresh(userId, account || "google",
@@ -6942,7 +6943,7 @@ app.post("/api/rag/retrieve", async (req, res) => {
   if (!doc) return res.status(404).json({ error: "Document not found" });
 
   try {
-    const buffer = await ragProcessor.fetchFileContent(userId, doc.origin, doc.file_path, await ragAccountOf(doc));
+    const buffer = await ragProcessor.fetchFileContent(userId, doc.origin, doc.file_path, await ragAccountOf(doc, userId));
     const ext = (doc.name || "").split(".").pop().toLowerCase();
     const mimeMap = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json", html: "text/html" };
     res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");

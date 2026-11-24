@@ -89,3 +89,13 @@
 /* The Mac card, while it waits under Add a connection, sits as far from Apps
    as Apps sits from Connect anything. */
 #mcp-section > #apple-local-section {margin-bottom:2rem;}
+
+/* A server that wants a key: what it asked for and where to get it, then
+   the key and how it is sent, in the same form as an app of their own. */
+.mcp-key {max-width:32.5rem;margin:1rem auto 0;padding:1.25rem 1.25rem 1rem;border:1px solid rgba(var(--fg-rgb),.12);border-radius:0.875rem;background:rgba(var(--raised-rgb),.6);text-align:left;}
+.mcp-key-why {margin:0;font-size:0.875rem;line-height:1.5;color:var(--fg);}
+.mcp-key .catalogue-form {margin-top:1rem;gap:1rem;}
+.mcp-key-hint {display:block;margin-top:0.375rem;font-size:0.75rem;line-height:1.4;color:var(--muted);}
+.mcp-key #mcp-own-app {margin-top:0.75rem;}
+.catalogue-form select {width:100%;box-sizing:border-box;border:1px solid rgba(var(--fg-rgb),.25);background-color:var(--bg);color:var(--fg);border-radius:0.5rem;padding:0.75rem 2.5rem 0.75rem 0.75rem;font:inherit;min-height:2.75rem;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23908a84' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 0.875rem center;background-size:1rem;cursor:pointer;}
+.catalogue-form label[hidden] {display:none;}

@@ -1756,22 +1756,21 @@
             <!-- Status messages -->
             <div id="skill-warnings" style="display:none;margin-top:0.625rem;max-width:32.5rem;margin-left:auto;margin-right:auto;font-size: 0.8125rem;"></div>
             <div id="mcp-auth-status" role="status" aria-live="polite" style="display:none;margin-top:0.625rem;font-size: 0.8125rem;color:var(--muted);text-align:center;"></div>
-            <div id="mcp-credentials" style="display:none;margin-top:0.75rem;max-width:32.5rem;margin-left:auto;margin-right:auto;">
-              <div style="display:flex;gap:0.375rem;">
-                <select id="mcp-header-select" onchange="mcpHeaderChanged(this)" style="padding:0.5rem 0.625rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.8125rem;outline:none;font-family:inherit;">
-                  <option value="Authorization">Bearer token</option>
-                  <option value="x-api-key">x-api-key header</option>
-                  <option value="custom">Other header</option>
-                </select>
-                <input type="text" id="mcp-header-custom" placeholder="Header name" style="display:none;width:8.125rem;padding:0.5rem 0.75rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.875rem;outline:none;font-family:inherit;">
-                <input type="password" id="mcp-key-input" placeholder="Key" autocomplete="off" style="flex:1;padding:0.5rem 0.75rem;background:rgba(var(--raised-rgb),0.95);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.875rem;outline:none;font-family:inherit;">
-              </div>
-              <div style="text-align:center;margin-top:0.5rem;">
-                <button onclick="submitMcpCredentials()" style="padding:0.5rem 1rem;background:rgba(var(--fg-rgb),0.1);border:1px solid rgba(var(--fg-rgb),0.16);border-radius:0.625rem;color:var(--fg);font-size: 0.8125rem;cursor:pointer;font-family:inherit;">Connect</button>
-              </div>
-              <div style="text-align:center;margin-top:0.75rem;">
-                <button type="button" class="catalogue-quiet" id="mcp-own-app" hidden>Use your own app instead</button>
-              </div>
+            <div id="mcp-credentials" class="mcp-key" style="display:none">
+              <!-- What the server asked for and where to get it, said before anything is asked of them -->
+              <p class="mcp-key-why" id="mcp-key-why"></p>
+              <form class="catalogue-form" onsubmit="event.preventDefault();submitMcpCredentials();">
+                <label>Key or token<input type="password" id="mcp-key-input" autocomplete="off" spellcheck="false"></label>
+                <label>How it’s sent<select id="mcp-header-select" onchange="mcpHeaderChanged(this)">
+                    <option value="Authorization">Bearer token</option>
+                    <option value="x-api-key">x-api-key header</option>
+                    <option value="custom">Other header</option>
+                  </select><span class="mcp-key-hint">Most services take it as a bearer token. Change this only if their instructions name another header.</span></label>
+                <label id="mcp-header-custom-wrap" hidden>Header name<input type="text" id="mcp-header-custom" spellcheck="false"></label>
+                <button type="submit" class="catalogue-action">Connect</button>
+              </form>
+              <button type="button" class="catalogue-quiet" id="mcp-own-app" hidden>Use your own app instead</button>
+            </div>
             </div>
           </div>
           </div>
@@ -3503,8 +3502,9 @@
           // own-app form (connection-catalogue.js); any other shows the key
           // box, with an app of the person's own as the other way in.
           var ownApp = data.own_app;
-          if (ownApp && ownApp.steps.length) { mcpStatus(''); _mcpPending = null; openOwnApp(ownApp); return; }
-          mcpStatus(data.message || 'This server wants a key.');
+          if (ownApp) { mcpStatus(''); _mcpPending = null; openOwnApp(ownApp); return; }
+          mcpStatus('');
+          document.getElementById('mcp-key-why').textContent = data.message || 'This server asks for a key before it will connect.';
           var panel = document.getElementById('mcp-credentials');
           panel.style.display = 'block';
           var own = document.getElementById('mcp-own-app');
@@ -3739,7 +3739,7 @@
     }
 
     function mcpHeaderChanged(sel) {
-      document.getElementById('mcp-header-custom').style.display = sel.value === 'custom' ? '' : 'none';
+      document.getElementById('mcp-header-custom-wrap').hidden = sel.value !== 'custom';
     }
 
     async function testMcp(id) {

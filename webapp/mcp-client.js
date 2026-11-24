@@ -346,11 +346,17 @@ function isAuthError(e) {
 // authorisation server's), or null when it publishes neither. Decides whether
 // a 401 means "sign in through the service" or "paste a key", and names the
 // permissions an app the person makes for it has to carry.
+// What a server says about signing in: its protected-resource metadata,
+// looked for under its own path first (RFC 9728), as Xero's is at
+// /.well-known/oauth-protected-resource/mcp/v1, then at the root. Looked for
+// at the root alone, Xero's server read as one that wants a key, and the
+// person got a bare key box in place of the steps for an app of their own.
 async function oauthMetadata(serverUrl) {
   try {
-    const origin = new URL(serverUrl).origin;
-    for (const p of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server"]) {
-      const r = await fetch(origin + p, { signal: AbortSignal.timeout(4000) }).catch(() => null);
+    const url = new URL(serverUrl), path = url.pathname.replace(/\/+$/, "");
+    const tries = [...(path ? ["/.well-known/oauth-protected-resource" + path] : []), "/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server"];
+    for (const p of tries) {
+      const r = await fetch(url.origin + p, { signal: AbortSignal.timeout(4000) }).catch(() => null);
       const doc = r && r.ok ? await r.json().catch(() => null) : null;
       if (doc && typeof doc === "object" && !Array.isArray(doc)) return doc;
     }

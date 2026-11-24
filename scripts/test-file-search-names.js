@@ -289,7 +289,7 @@ test("drive pictures and videos show thumbnails through Closedhand, and files co
   assert.match(route, /fetchWithRefresh\(userId, account \|\| "google",\n\s*"https:\/\/www\.googleapis\.com\/drive\/v3\/files\/" \+ encodeURIComponent\(doc\.file_path\) \+ "\?fields=thumbnailLink&supportsAllDrives=true"\)/);
   assert.match(route, /\/thumbnails\/0\/" \+ \(large \? "large" : "medium"\) \+ "\/content"/);
   assert.match(route, /if \(!\/\^image\\\/\/\.test\(type\)\) return res\.status\(404\)\.end\(\);/, "only ever an image");
-  assert.match(server, /const buffer = await ragProcessor\.fetchFileContent\(userId, doc\.origin, doc\.file_path, await ragAccountOf\(doc\)\);/, "Download from the account the file is in");
+  assert.match(server, /const buffer = await ragProcessor\.fetchFileContent\(userId, doc\.origin, doc\.file_path, await ragAccountOf\(doc, userId\)\);/, "Download from the account the file is in");
   assert.match(page, /File Search keeps its index of the sources you add on the computer running Closedhand: nothing leaves it to be indexed\./);
   assert.doesNotMatch(page, /saves searchable content/);
 });

@@ -212,10 +212,18 @@ test('Slack’s app is made by Closedhand from a token: its callback address, pe
   assert.equal(asked.length,3,'no call to Slack without a token, nor for another service');
 
   // Any other server: the form for an app's client ID and secret, by its
-  // address, with nothing invented.
+  // address, with steps that say what to make and what to paste, and no link
+  // invented for it. Everything that doesn't connect at once says what's needed.
   const other=await catalogue.ownApp('https://mcp.example-crm.test/v1',{scopes_supported:['crm.read']});
   assert.equal(other.name,'example-crm.test');
-  assert.deepEqual([other.steps,other.token,other.guide,other.scopes,other.redirectUri],[[],null,null,['crm.read'],CALLBACK]);
+  assert.deepEqual([other.token,other.guide,other.scopes,other.redirectUri],[null,null,['crm.read'],CALLBACK]);
+  assert.equal(other.steps.length,3);
+  assert.match(other.steps[0],/^On example-crm\.test’s developer site, make a new app for signing in/);
+  assert.match(other.instruction,/^example-crm\.test signs you in through an app you make with it/);
+  // Xero has no tile, but its address finds its own steps and its page.
+  const xero=await catalogue.ownApp('https://api.xero.com/mcp/v1',{scopes_supported:['accounting.invoices.read']});
+  assert.deepEqual([xero.name,xero.guide,xero.steps.length,xero.redirectUri],['Xero','https://developer.xero.com/app/manage',3,CALLBACK]);
+  assert.match(xero.steps[1],/choose “Web app”/);
 });
 
 test('a token pasted in the form makes the app, and the sign-in starts with it',async()=>{
@@ -247,4 +255,26 @@ test('the dashboard has one own-app form, and the paste box opens it instead of 
   assert.equal(/client[-_ ]?secret/i.test(page.slice(page.indexOf('id="mcp-credentials"'),page.indexOf('id="mcp-own-app"'))),false,'no second place to type an app’s secret');
   assert.match(page,/openOwnApp\(ownApp\)/);
   assert.match(page,/showToast\(decodeURIComponent\(params\.get\("mcp_connected"\)\) \+ " connected"\);/,'connected through a server reads as any connection does');
+});
+
+// A server's sign-in description is found under its own path first (RFC
+// 9728), as Xero publishes it, then at the root. Looked for at the root alone,
+// Xero's server read as one that wants a key: a bare key box, no steps.
+test("what a server says about signing in is read under its own path first", async () => {
+  const seen = [];
+  const real = global.fetch;
+  global.fetch = async (url) => {
+    seen.push(String(url));
+    const ok = url === "https://api.books.example/.well-known/oauth-protected-resource/mcp/v1";
+    return { ok, status: ok ? 200 : 404, json: async () => ({ resource: "https://api.books.example/mcp/v1", authorization_servers: ["https://identity.books.example"], scopes_supported: ["books.read"] }) };
+  };
+  try {
+    const { oauthMetadata } = require("../webapp/mcp-client");
+    const doc = await oauthMetadata("https://api.books.example/mcp/v1");
+    assert.deepEqual(doc.scopes_supported, ["books.read"]);
+    assert.equal(seen[0], "https://api.books.example/.well-known/oauth-protected-resource/mcp/v1");
+    seen.length = 0;
+    assert.equal(await oauthMetadata("https://other.books.example/"), null);
+    assert.deepEqual(seen, ["https://other.books.example/.well-known/oauth-protected-resource", "https://other.books.example/.well-known/oauth-authorization-server"], "a server at the root: the root, as before");
+  } finally { global.fetch = real; }
 });

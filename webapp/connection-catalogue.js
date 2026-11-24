@@ -32,6 +32,18 @@ const remote = {
 // the person pastes only the token. Any other server that turns Closedhand
 // away gets the form for an app's client ID and secret (ownApp).
 const ownApps = {
+  // Xero's MCP server has no tile: it is found when its address is pasted
+  // (server). Its sign-in turns away an app that registers itself.
+  xero: {
+    server: 'https://api.xero.com/mcp/v1', name: 'Xero',
+    instruction: 'Xero signs you in through an app you make in its developer portal, so your accounts go straight from Xero to Closedhand.',
+    link: 'https://developer.xero.com/app/manage', linkText: 'Open Xero’s My Apps',
+    steps: [
+      'On Xero’s My Apps page (sign in if it asks), press “New app”.',
+      'Name it Closedhand, choose “Web app”, enter https://closedhand.com as the company or application URL, and paste the callback address below as the redirect URI. Then create the app.',
+      'Open the app’s “Configuration”, press “Generate a secret”, and paste its client id and client secret below.',
+    ],
+  },
   slack: {
     instruction: 'Slack connects through an app in your own workspace, so your messages go straight from Slack to Closedhand.',
     link: 'https://api.slack.com/apps', linkText: 'Open Slack’s app page',
@@ -78,7 +90,14 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl, fetchFn = 
   // Closedhand register itself: the company's steps where they are known,
   // otherwise the callback address and the permissions the server names
   // (`published`, what it says about signing in).
-  const keyFor=serverUrl=>Object.keys(ownApps).find(k=>originOf(remote[k])===originOf(serverUrl));
+  const keyFor=serverUrl=>Object.keys(ownApps).find(k=>originOf(remote[k]||ownApps[k].server)===originOf(serverUrl));
+  // A service Closedhand has no steps for still gets steps: what to make,
+  // where the callback address goes, and what to paste back.
+  const anySteps=name=>[
+    'On '+name+'’s developer site, make a new app for signing in (it may be called an OAuth app, a web app or an integration).',
+    'Add the callback address below to it as a redirect URI.',
+    'Paste its client ID, and its secret if it has one, below.',
+  ];
   // The permissions a server names (`published`, what it says about signing
   // in), as far as they read as permissions.
   const scopesOf=published=>(Array.isArray(published&&published.scopes_supported)?published.scopes_supported:[])
@@ -87,10 +106,11 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl, fetchFn = 
     const key=keyFor(serverUrl);
     const guide=ownApps[key]||{};
     const made=!!guide.create;
-    return {name:(key&&services[key]&&services[key].name)||hostName(serverUrl),serverUrl,
+    const name=(key&&services[key]&&services[key].name)||guide.name||hostName(serverUrl);
+    return {name,serverUrl,
       redirectUri:made?null:await mcpCallback({installed_via:'own_app'}),
-      instruction:guide.instruction||'This server signs you in through an app you make with the service.',
-      steps:guide.steps||[],guide:guide.link||null,linkText:guide.linkText||null,
+      instruction:guide.instruction||name+' signs you in through an app you make with it, as it doesn’t let Closedhand register itself.',
+      steps:guide.steps||anySteps(name),guide:guide.link||null,linkText:guide.linkText||null,
       token:made?guide.token:null,submitText:made?'Connect':null,
       scopes:made?[]:scopesOf(published),secretOptional:!key};
   }
@@ -160,7 +180,7 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl, fetchFn = 
       }catch(e){res.status(503).json({error:e.message});}
     });
   }
-  return {resolve,register,mcpCallback,ownApp,createOwnApp};
+  return {resolve,register,mcpCallback,ownApp,createOwnApp,hostName};
 }
 module.exports={createCatalogue,validClient,remote};
 
