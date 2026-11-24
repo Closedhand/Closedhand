@@ -54,3 +54,20 @@ test("a tile holds its name whole: a long one takes a second line, and Connected
   assert.doesNotMatch(rule, /max-content|nowrap|ellipsis|line-clamp/, "never cut, never held wider than its tile");
   assert.match(dash, /\.int-card \.int-badge \{ flex: none; \}/);
 });
+
+// Xero's "your app needs to be on a paid plan" was read as the organisation's
+// Xero subscription, and its owner told to upgrade that: a known server's
+// misleading error goes to the LLM with what it means beside it.
+test("a known server's misleading error is said with what it means", () => {
+  const src = read("lib/user-mcp.js");
+  const box = { URL };
+  vm.runInNewContext(src.slice(src.indexOf("const ERROR_NOTES = ["), src.indexOf("];", src.indexOf("const ERROR_NOTES = [")) + 2) + "\n" + grab(src, "errorNote") + "\nthis.f = errorNote;", box);
+  const xero = "To use Xero’s Remote MCP server with this organisation, your app needs to be on a paid plan. Free plans can only be used with demo organisations.";
+  const said = box.f("https://api.xero.com/mcp/v1", xero);
+  assert.ok(said.startsWith(xero), "Xero's own words first");
+  assert.match(said, /not their organisation's Xero subscription/);
+  assert.match(said, /Core developer plan or above, chosen for the app in My Apps at developer\.xero\.com/);
+  assert.equal(box.f("https://mcp.example-crm.test/v1", "your app needs to be on a paid plan"), "your app needs to be on a paid plan", "only where it is known to mislead");
+  assert.equal(box.f("stdio:npx -y @acme/acme-mcp", "boom"), "boom");
+  assert.match(src, /if \(rendered\.isError\) throw new Error\(errorNote\(entry\.row\.server_url, rendered\.text\)\);/);
+});
