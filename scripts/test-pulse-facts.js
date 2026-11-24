@@ -96,7 +96,7 @@ test("how soon a coming entry starts, and which overlap", () => {
 
 test("Pulse: the picture carries the facts, and conversations waiting on them", () => {
   assert.match(pulse, /\.eq\("type", "message"\)\.neq\("data->>sender", "me"\)/, "what others wrote, three days back");
-  assert.match(pulse, /const waitingRows = facts\.waiting\(\[\.\.\.\(theirs \|\| \[\]\), \.\.\.inboundMail\], wrote\)\n\s*\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !isNew\.has/);
+  assert.match(pulse, /const waitingAll = facts\.waiting\(\[\.\.\.\(theirs \|\| \[\]\), \.\.\.inboundMail\], wrote\)\n\s*\.filter\(\(r\) => !watches\.ignored\(r\) && unclaimed\(r\) && !isNew\.has/);
   assert.match(pulse, /noted\(l, "overlaps " \+ overlapsOf\.get\(i\)/);
   assert.match(pulse, /coming\.map\(\(r\) => noted\(line\(r\), facts\.untilNote\(r\),/);
   assert.match(require("../lib/pulse-triage").notice.toString(), /WAITING ON THEM \(in each conversation, the latest message from someone else that they have not written in since\)/);

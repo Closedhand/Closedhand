@@ -129,8 +129,11 @@ test('mail sent to a list is marked, and noticing knows what that means', async 
 // list: a plane-spotting group's news that a flight had moved reached them as
 // a change to a plan they did not have. Marked, and noticing knows what that
 // means; measured on the real LLM: such news 0 of 6 told, while a message
-// there that names them, or cancels their own flight, 3 of 3 each.
-test('a message from a group they have never written in is marked, and noticing knows what that means', async () => {
+// there that names them, or cancels their own flight, 3 of 3 each. Such a
+// group waits on nobody: a rent group's listings still went in as
+// conversations waiting on them ("nothing from you in this chat since"), and
+// came back as "the latest of the leads you haven't answered in there".
+test('a message from a group they have never written in is marked, waits on nobody, and noticing knows what that means', async () => {
   const facts = require('../lib/pulse-facts');
   const group = { type: 'message', data: { chat: '120363000000000001@g.us', text: 'The A330 has moved to Monday' } };
   const spoken = { type: 'message', data: { chat: '120363000000000002@g.us', text: 'Bring the ladder?' } };
@@ -144,8 +147,10 @@ test('a message from a group they have never written in is marked, and noticing 
   let system = '';
   await notice({ items, level: 'medium', ask: async (s) => { system = s; return '{"pulse":false,"flagged":[]}'; } });
   assert.match(system, /A message marked as from a group they have never written in is the same: it went to everyone in the group, and that they never take part there is their choice, not something they missed/);
-  assert.match(pulse, /const quiet = await facts\.quietGroups\(\[\.\.\.otherItems, \.\.\.waitingRows\], async \(chat\) => \{/);
+  assert.match(pulse, /const quiet = await facts\.quietGroups\(\[\.\.\.otherItems, \.\.\.waitingAll\], async \(chat\) => \{/);
+  assert.match(pulse, /const waitingRows = waitingAll\.filter\(\(r\) => !facts\.groupNote\(r, quiet\)\)\.slice\(0, 20\);/, 'never among the conversations waiting on them');
+  assert.match(pulse, /const replyOf = \(r\) => \(facts\.groupNote\(r, quiet\) \? "" : facts\.replyNote\(r, wrote\)\);/, 'and never said to be unanswered');
   assert.match(pulse, /\.eq\("data->>chat", chat\)\.eq\("data->>sender", "me"\)\.limit\(1\);/);
-  assert.match(pulse, /noted\(line\(r\), facts\.groupNote\(r, quiet\), facts\.replyNote\(r, wrote\)\)/);
-  assert.match(pulse, /: line\(r\), facts\.groupNote\(r, quiet\), facts\.replyNote\(r, wrote\)\)\);/);
+  assert.match(pulse, /noted\(line\(r\), facts\.groupNote\(r, quiet\), replyOf\(r\)\)/);
+  assert.match(pulse, /: line\(r\), replyOf\(r\)\)\);/);
 });
