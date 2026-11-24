@@ -92,8 +92,8 @@ test("what comes in from any connection becomes a Pinned Fact only on the item's
       { key: "[family-partner]", category: "business", subject: "Example Freight", adds: "Example Freight Ltd employs Robin.", replaces: "", n: 1, quote: "Employer: Example Freight Ltd.", topic: "" },
       { key: "profile-home", category: "profile", subject: "Robin", adds: "Robin lives at Harbour Row.", replaces: "", n: 1, quote: "Employer: Example Freight Ltd.", topic: "" },
     ] });
-    assert.deepEqual(routed.pinned.map((f) => [f.key, f.category]), [["profile-work-contact", "profile"], ["business-example-freight", "business"]],
-      "the work address in a note on work, not the one on their health; the company in a note of its own, not the partner's; a fact about them with no part of life named is not filed");
+    assert.deepEqual(routed.pinned.map((f) => [f.key, f.category]), [["profile-contact", "profile"], ["business-example-freight", "business"]],
+      "the work address under Contact, one of the fixed parts of About you, not the note on their health; the company in a note of its own, not the partner's; a fact about them with no part of life named is not filed");
     // A finding is fitted to what is pinned: said already, it is passed
     // over; partly said, only the rest is added; about the person, it joins
     // whichever of their notes it belongs to.
