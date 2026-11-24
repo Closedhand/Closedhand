@@ -6017,7 +6017,9 @@ app.get("/api/knowledge", async (req, res) => {
     if (error) throw error;
     // Map to legacy format for dashboard compatibility
     const nodes = (data || []).map(v => ({
-      title: v.source_metadata?.title || v.external_id || (v.content || "").substring(0, 50),
+      // Never its id: one without a name ("conv_summary_1795...") is named by
+      // its own heading ("Conversation from 23 Nov 2026") or opening words.
+      title: v.source_metadata?.title || ((v.content || "").match(/^\[([^\]\n]{3,80})\]/) || [])[1] || (v.content || "").substring(0, 50),
       tags: [v.item_type],
       links: [],
       updated_at: v.updated_at,

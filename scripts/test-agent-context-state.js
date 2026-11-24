@@ -225,3 +225,14 @@ test("a long file is read in parts that each fit whole in one tool result", () =
   assert.ok(JSON.stringify(`[Part 1 of ${first.parts}. Ask for part 2 for what follows.]\n\n` + first.text).length <= 40000, "the whole part survives the 40,000-character cap");
   for (const f of ["lib/tools/handlers.js", "lib/services/data-access.js"]) assert.match(read(f), /textPart\((?:text, part \|\| 1|extractedText, 1), require\("\.\.\/token-tracker"\)\.chatWindow\(\), RESULT_PART\)/, `${f} sizes parts the same way`);
 });
+// A Context Note is named for the person: a folded one after its thread, and
+// one with no name by its own heading, never its id ("conv_summary_1795...").
+test("Context Notes never show their id as a name", () => {
+  const conv = read("lib/conversation.js");
+  assert.match(conv, /source_metadata: \{\n\s*thread_id: ctx\.activeThreadId \|\| null,\n\s*title: thread\?\.title \|\| "Conversation",/);
+  const server = read("webapp/server.js");
+  assert.doesNotMatch(server, /title: v\.source_metadata\?\.title \|\| v\.external_id/);
+  const named = (content, meta = {}) => meta.title || ((content || "").match(/^\[([^\]\n]{3,80})\]/) || [])[1] || (content || "").substring(0, 50);
+  assert.match(server, /title: v\.source_metadata\?\.title \|\| \(\(v\.content \|\| ""\)\.match\(\/\^\\\[\(\[\^\\\]\\n\]\{3,80\}\)\\\]\/\) \|\| \[\]\)\[1\] \|\| \(v\.content \|\| ""\)\.substring\(0, 50\),/);
+  assert.equal(named("[Conversation from 23 Nov 2026]\nThis conversation ran from late October"), "Conversation from 23 Nov 2026");
+});
