@@ -117,8 +117,8 @@ test("runs nobody is watching ask about the same things the chat does", async ()
 
 test("every runner uses the gate: chat, background tasks, schedules and automations", () => {
   const engine = read("lib/engine.js");
-  assert.match(engine, /const browserSendAt = !needsConfirmation && ctx\.activeUserStore\?\.profile\?\.settings\?\.require_send_confirmation !== false\n\s*\? require\("\.\/send-gate"\)\.browserSend\(/);
-  assert.match(engine, /\} else if \(browserSendAt\) \{\n\s*confirmSummary = require\("\.\/send-gate"\)\.browserSendCard\(browserSendAt\);/);
+  assert.match(engine, /let browserSendAt = !needsConfirmation && ctx\.activeUserStore\?\.profile\?\.settings\?\.require_send_confirmation !== false\n\s*\? require\("\.\/send-gate"\)\.browserSend\(/);
+  assert.match(engine, /\} else if \(browserSendAt\) \{\n[^\n]*\n\s*confirmSummary = sendPreview && sendPreview\.question\n[^\n]*\n\s*: require\("\.\/send-gate"\)\.browserSendCard\(browserSendAt\);/);
   assert.match(engine, /usedCloudBrowser && \/\^bridge_\(browser\|input\)_\/\.test\(block\.name\) && !browserSendAt/, "the switch-machines question never hides a send");
   const agents = read("lib/agents.js");
   assert.match(agents, /sendGate\.sendsToOthers\(block\.name, block\.input\) && sendConfirmRequired\(userStore\)/);

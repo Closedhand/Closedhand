@@ -86,7 +86,10 @@ test("a file from the sandbox computer is sent wherever the person is, and an in
       assert.equal(deliveries.length, 0);
       assert.match(result.error, /^Not sent\. An interactive piece goes on a page: call save_report with files: \["\/workspace\/calc\.html"\] and share the page's link\.$/);
     } else {
-      assert.equal(result.success, true);
+      // A picture sent is seen by the LLM too, so it says what the person now has.
+      assert.equal(result._contentType, "image");
+      assert.equal(result.base64, "YQ==");
+      assert.match(result.description, /^Sent chart\.png \(0\.0KB\) to the user\. This is that file, as they now see it: say what it shows from this picture\.$/);
       assert.deepEqual(deliveries.map((d) => [d[0], d[2], d[3]]), [["self", "chart.png", "image/png"]], `${platform}: sent as itself`);
     }
   }

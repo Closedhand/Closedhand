@@ -164,7 +164,7 @@ test("a file a site gives is downloaded and kept, and only the person's own file
   assert.match(read("lib/engine.js"), /\} else if \(fileHandover\) \{\n\s*confirmSummary = require\("\.\/send-gate"\)\.fileHandoverCard\(/);
   const agents = read("lib/agents.js");
   assert.match(agents, /if \(sendGate\.fileHandover\(block\.name, block\.input, \(id\) => require\("\.\/attachments"\)\.madeName\(userId, id\)\)\) return \{ error: HAND_BACK \};/, "a job nobody is watching hands it back");
-  assert.match(agents, /: sendAt \? sendGate\.browserSendCard\(sendAt\) : handover \? sendGate\.fileHandoverCard\(handover, sendGate\.siteNow\(userId\)\) : null;/, "a job asks in the chat");
+  assert.match(agents, /: sendAt \? \(preview && preview\.question \? preview\.question\(false\) : sendGate\.browserSendCard\(sendAt\)\) : handover \? sendGate\.fileHandoverCard\(handover, sendGate\.siteNow\(userId\)\) : null;/, "a job asks in the chat");
   assert.match(read("lib/send-gate.js"), /const handover = fileHandover\(toolName, input, \(id\) => require\("\.\/attachments"\)\.madeName\(userId, id\)\);\n\s*if \(handover\) return \{ card: fileHandoverCard\(handover, siteNow\(userId\)\), isInternal: true \};/, "and so do schedules and automations");
   assert.match(read("lib/attachments.js"), /return a && a\.direction === "chat" \? a\.fileName \|\| attachmentId : null;/);
   assert.match(read("lib/attachments.js"), /direction: att\.direction \|\| "in" \};/);
