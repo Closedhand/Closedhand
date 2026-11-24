@@ -51,7 +51,7 @@ const ownApps = {
     secretOptional: true,
     steps: [
       'On Xero’s My Apps page (sign in if it asks), press “New app”.',
-      'Name it Closedhand and choose “Mobile or desktop app”, the type Xero’s remote MCP needs.',
+      'Name it just Closedhand (Xero turns down a name with “Xero” in it) and choose “Mobile or desktop app”, the type Xero’s remote MCP needs.',
       'Answer “No” to using Xero data to train an AI model and “Yes” to Xero’s security requirements, enter https://closedhand.com as the company or application URL, and paste the callback address below as the OAuth 2.0 redirect URI. Then agree to Xero’s terms and create the app.',
       'Copy the app’s client ID and paste it below. A mobile or desktop app has no secret, so leave that empty.',
     ],
@@ -192,7 +192,13 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl, fetchFn = 
       }catch(e){res.status(503).json({error:e.message});}
     });
   }
-  return {resolve,register,mcpCallback,ownApp,createOwnApp,hostName};
+  // What Closedhand calls a server it knows, by its address: its name in the
+  // catalogue ("Xero", "Notion"), never what the server calls itself.
+  const knownName=serverUrl=>{
+    const key=keyFor(serverUrl)||Object.keys(remote).find(k=>originOf(remote[k])===originOf(serverUrl));
+    return key?(services[key]&&services[key].name)||(ownApps[key]&&ownApps[key].name)||null:null;
+  };
+  return {resolve,register,mcpCallback,ownApp,createOwnApp,hostName,knownName};
 }
 module.exports={createCatalogue,validClient,remote};
 

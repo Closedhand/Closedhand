@@ -2371,7 +2371,7 @@ async function mcpSaveRow(userId, row, found, transportKind, explicitName) {
   const can = await mcpJobsFor(userId, found.tools, previousCaps);
   const record = {
     user_id: userId,
-    name: String(explicitName || "").trim() || row.name || await resolveMcpName(found.serverInfo, row.server_url, toolNames, await scanModelFor(userId, "background")),
+    name: String(explicitName || "").trim() || row.name || connectionCatalogue.knownName(row.server_url) || await resolveMcpName(found.serverInfo, row.server_url, toolNames, await scanModelFor(userId, "background")),
     logo_url: isStdio ? null : await storeMcpIcon(found.serverInfo, row.server_url),
     server_url: row.server_url,
     transport: isStdio ? "stdio" : transportKind,
@@ -5221,8 +5221,10 @@ async function nameViaModel(serverInfo, serverUrl, toolNames, selectedModel) {
       messages: [{ role: "user", content: JSON.stringify({ url: serverUrl, name: serverInfo?.name, tools: (toolNames || []).slice(0, 12) }) }],
     }, { signal: AbortSignal.timeout(15000) });
     const name = reply.content?.filter(b => b.type === "text").map(b => b.text).join("").trim();
-    return name && name.length <= 40 && name.split(/\s+/).length <= 4 && !/[\n<>{}]/.test(name) ? name : null;
-  } catch { return null; }
+    if (name && name.length <= 40 && name.split(/\s+/).length <= 4 && !/[\n<>{}]/.test(name) && !readsAsCode(name)) return name;
+    console.log("[mcp-name] the model's name was not used:", JSON.stringify(String(name || "").slice(0, 60)));
+    return null;
+  } catch (e) { console.log("[mcp-name] the model could not name it:", e.message); return null; }
 }
 
 // Copy a connection's icon into our own storage.
@@ -5289,11 +5291,18 @@ async function resolveMcpName(serverInfo, serverUrl, toolNames, selectedModel) {
   return (await nameViaModel(serverInfo, serverUrl, toolNames, selectedModel)) || mcpDisplayName(serverInfo, serverUrl);
 }
 
-// What to call the connection: what it calls itself, and only failing that,
-// what its address suggests.
+// What to call the connection: what it calls itself, read as words ("Xero
+// MCP Server" is Xero), and failing that, what its address suggests. A name
+// made for code ("EcosystemRemoteMcpServer", "notes_server", "crm-mcp") is
+// never shown: Xero's server called itself the first, and its tile said so.
+function readsAsCode(name) {
+  const s = String(name || "");
+  if (/\s/.test(s)) return false;
+  return /[_\-]/.test(s) || /mcp|server/i.test(s) || (s.match(/[a-z][A-Z]/g) || []).length >= 2;
+}
 function mcpDisplayName(serverInfo, serverUrl) {
-  const declared = String(serverInfo?.name || "").trim();
-  if (declared) return declared.length > 60 ? declared.slice(0, 60) : declared;
+  const declared = String(serverInfo?.name || "").replace(/\b(remote\s+)?mcp(\s+server)?\b|\bserver\b/gi, " ").replace(/\s+/g, " ").trim();
+  if (declared && !readsAsCode(declared)) return declared.length > 60 ? declared.slice(0, 60) : declared;
   return mcpNameFromUrl(serverUrl);
 }
 
