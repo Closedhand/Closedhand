@@ -28,6 +28,32 @@ test('a README pasted as text offers the connections it describes',async()=>{
  assert.equal(got.choices.length,2);
  assert.equal(await resolveInput('npx -y @kestrel/kestrel-mcp'),null,'a plain command is left to the parser');
 });
+// A package named on its own is read from the instructions its GitHub project
+// publishes, so what it needs is asked for: started bare, a server that needs
+// a client id and secret could only fail to connect.
+test('a package named on its own offers the connections its project describes, asking for what they need',async()=>{
+ const {resolveInput}=require('../webapp/mcp-input-resolver');
+ const readme='# Kestrel MCP\n\n#### 1. Custom Connections\n\n```json\n{"mcpServers":{"kestrel":{"command":"npx","args":["-y","@kestrel/kestrel-mcp@latest"],"env":{"KESTREL_CLIENT_ID":"your_client_id_here","KESTREL_CLIENT_SECRET":"your_client_secret_here"}}}}\n```\n\n#### 2. Bearer Token\n\n```json\n{"mcpServers":{"kestrel":{"command":"npx","args":["-y","@kestrel/kestrel-mcp@latest"],"env":{"KESTREL_BEARER_TOKEN":"your_bearer_token"}}}}\n```\n';
+ const seen=[];
+ const fetcher=(project)=>async(url)=>{seen.push(url);
+  if(url.startsWith('https://registry.npmjs.org/'))return {ok:true,json:async()=>(project===undefined?{}:{repository:project})};
+  const ok=/\/readme$|\/README\.md$/.test(url);
+  return {ok,status:ok?200:404,headers:{get:()=>null},body:(async function*(){yield new TextEncoder().encode(ok?readme:'');})()};};
+ for (const paste of ['@kestrel/kestrel-mcp','npm:@kestrel/kestrel-mcp@1.2.0','https://www.npmjs.com/package/@kestrel/kestrel-mcp']) {
+  seen.length=0;
+  const got=await resolveInput(paste,fetcher({url:'git+https://github.com/kestrel/kestrel-mcp.git',type:'git'}));
+  assert.equal(seen[0],'https://registry.npmjs.org/@kestrel%2fkestrel-mcp/latest',paste);
+  assert.equal(seen[1],'https://api.github.com/repos/kestrel/kestrel-mcp/readme');
+  assert.equal(got.source,'https://www.npmjs.com/package/@kestrel/kestrel-mcp');
+  assert.deepEqual(got.choices.map(c=>c.name.split(' · ')[0]),['Custom Connections','Bearer Token']);
+  assert.match(got.choices[0].input,/KESTREL_CLIENT_ID/);
+ }
+ seen.length=0;
+ await resolveInput('@kestrel/kestrel-mcp',fetcher({url:'https://github.com/kestrel/servers',directory:'packages/kestrel'}));
+ assert.ok(seen.includes('https://api.github.com/repos/kestrel/servers/contents/packages/kestrel/README.md'),'a package in a folder of a larger project: that folder\'s README, on the default branch');
+ assert.equal(await resolveInput('@kestrel/kestrel-mcp',fetcher(undefined)),null,'no project named: run as given');
+ assert.equal(await resolveInput('@kestrel/kestrel-mcp',async()=>({ok:false,status:404})),null,'not on npm: as before');
+});
 test('GitHub project links explain the correct input',()=>{
  assert.equal(mcp.parseServerInput('https://github.com/example/project').kind,'invalid');
  assert.equal(mcp.parseServerInput('https://example.com/mcp').kind,'url');

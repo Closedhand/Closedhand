@@ -94,9 +94,32 @@ async function readPublic(url, fetcher) {
   }
   return content+decoder.decode();
 }
+// A package named on its own (as npm shows it, or its npm page): the
+// instructions its GitHub project publishes are read as for a link to it, so
+// what it needs (an id, a secret, a token) is asked for. Started bare, Xero's
+// server had no client id or secret and could only fail to connect. Null when
+// the package names no GitHub project: it is then run as given.
+const NPM_NAME=/^(?:npm:)?(@[a-z0-9._-]+\/[a-z0-9._-]+)(?:@[a-z0-9.^~_-]+)?$/i;
+const NPM_PAGE=/^https:\/\/(?:www\.)?npmjs\.com\/package\/(@?[a-z0-9._-]+(?:\/[a-z0-9._-]+)?)\/?(?:[?#].*)?$/i;
+async function npmProject(name, fetcher) {
+  const r=await fetcher('https://registry.npmjs.org/'+name.replace('/','%2f')+'/latest',{signal:AbortSignal.timeout(15000),headers:{'User-Agent':'Closedhand'}});
+  if(!r.ok)return null;
+  const meta=await r.json();
+  const repo=String(meta.repository?.url||meta.repository||'').match(/github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i);
+  if(!repo)return null;
+  const dir=String(meta.repository?.directory||'').replace(/^\/+|\/+$/g,'');
+  return 'https://github.com/'+repo[1]+'/'+repo[2]+(dir&&/^[\w./-]+$/.test(dir)?'/tree/HEAD/'+dir:'');
+}
 async function resolveInput(input, fetcher=fetch) {
   let raw=String(input||'').trim();
   const link=raw.match(/^\[[^\]]*\]\((https?:\/\/[^\s)]+)\)$/);if(link)raw=link[1];
+  const pkg=(raw.match(NPM_NAME)||raw.match(NPM_PAGE)||[])[1];
+  if(pkg){
+    const project=await npmProject(pkg,fetcher).catch(()=>null);
+    if(!project)return null;
+    const found=await resolveInput(project,fetcher).catch(()=>null);
+    return found&&found.choices&&found.choices.length?{...found,source:'https://www.npmjs.com/package/'+pkg}:null;
+  }
   if (/^github\.com\//i.test(raw)) raw='https://'+raw;
   // A README's text pasted whole: the same read as one fetched from GitHub.
   let url;try{url=new URL(raw);}catch{const choices=/```/.test(raw)?candidates(raw):[];return choices.length?{source:null,choices,text:raw}:null;}
@@ -112,14 +135,16 @@ async function resolveInput(input, fetcher=fetch) {
     api+='/contents/'+parts.slice(3).map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(parts[2]);
   }else if(parts[2]==='blob'||parts[2]==='tree'){
     const ref=parts[3];if(!ref)throw new Error('This GitHub link is incomplete.');
+    // HEAD is the project's default branch, which the contents API reads without a ref.
+    const at=ref==='HEAD'?'':'?ref='+encodeURIComponent(ref);
     const file=parts.slice(4);
     // A skill's folder, as skill collections link them: its SKILL.md.
     if(parts[2]==='tree'&&file.length){
       const skill=file.concat('SKILL.md').map(encodeURIComponent).join('/');
-      try{await readPublic(api+'/contents/'+skill+'?ref='+encodeURIComponent(ref),fetcher);return{skill:'https://github.com/'+owner+'/'+repo+'/blob/'+ref+'/'+skill};}catch{}
+      try{await readPublic(api+'/contents/'+skill+at,fetcher);return{skill:'https://github.com/'+owner+'/'+repo+'/blob/'+ref+'/'+skill};}catch{}
     }
     if(parts[2]==='tree')file.push('README.md');
-    api+='/contents/'+file.map(encodeURIComponent).join('/')+'?ref='+encodeURIComponent(ref);
+    api+='/contents/'+file.map(encodeURIComponent).join('/')+at;
   }else if(parts.length===2)api+='/readme';
   else throw new Error('Use the repository link or a README/configuration file link.');
   let text;
