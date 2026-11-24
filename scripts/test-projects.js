@@ -590,15 +590,21 @@ test("a task, a routine and each agent of a team in a project work from the proj
   assert.match(read("lib/task-delivery.js"), /const projectId = table === "automation_runs" \? \(row\.runtime\?\.config \|\| \{\}\)\.project_id : row\.runtime\?\.projectId \|\| null;/, "and reports in the project");
 });
 
-// Delete is on the project's page, its one home, archived ones too, asked
-// about first; a deleted project goes with what hangs on it, leaving its name
-// a month so Closedhand does not make it again at once.
-test("a project is deleted from its page, and its name alone is kept a month", async () => {
+// Delete is on the project's card and its page, archived ones too, red and
+// asked about first in the same words; a deleted project goes with what hangs
+// on it, leaving its name a month so Closedhand does not make it again at once.
+test("a project is deleted from its card or its page, and its name alone is kept a month", async () => {
   const ui = read("webapp/public/projects.js");
-  assert.doesNotMatch(ui, /"Delete"|"Archive"|"Edit"/, "no actions on the card but its conversation");
+  assert.match(ui, /btn\("project-quiet danger", "Delete", \(\) => askDelete\(c, p\)\)/, "on the card, red, beside Edit and Archive");
+  assert.match(ui, /`Delete \$\{p\.emoji\} \$\{p\.name\}, its conversation and its Context Notes\? Any files, Pinned Facts or routines created in it stay\.`/, "asked first, in the page's words");
+  assert.match(ui, /await api\(`\/api\/projects\/\$\{p\.id\}`, \{ method: "DELETE" \}\);\n\s*if \(window\.parent !== window && window\.parent\.projectGone\) window\.parent\.projectGone\(p\.id\);/, "the web chat leaves its conversation");
+  assert.match(read("webapp/public/projects.css"), /\.project-quiet\.danger, \.project-quiet\.danger:hover \{ color: var\(--danger\); \}/);
+  const pageHtml = read("webapp/projects.js");
+  assert.match(pageHtml, /\.manage\.delete, \.manage\.delete:hover, \.manage\.delete:focus-visible \{ color: var\(--danger\); \}/, "red on the page too, never the accent");
+  assert.match(pageHtml, /\.confirm \.yes \{ font: inherit; font-weight: 500; color: var\(--danger\);/);
   const pageJs = read("webapp/public/project-page.js");
   assert.match(pageJs, /bar\.querySelector\("\[data-delete\]"\)\.onclick = \(\) => \{ ask\.hidden = false;/, "Delete asks first");
-  assert.match(pageJs, /try \{ await send\("DELETE"\); location\.href = "\/dashboard#projects"; \}/);
+  assert.match(pageJs, /await send\("DELETE"\);\n\s*\/\/ [^\n]*\n\s*if \(chat && chat\.projectGone\) chat\.projectGone\(id\);\n\s*location\.href = "\/dashboard#projects";/);
   assert.match(pageJs, /await send\("PATCH", \{ archived: archive\.dataset\.archive === "1" \}\)/);
   assert.match(pageJs, /await send\("PATCH", \{ close_open: box\.dataset\.closeOpen \}\);/);
   assert.match(read("webapp/projects.js"), /if \(b\.close_open !== undefined\) set\.state = \{ \.\.\.\(p\.state \|\| \{\}\), open: \(\(p\.state \|\| \{\}\)\.open \|\| \[\]\)\.filter\(\(x\) => x !== String\(b\.close_open\)\) \};/, "a ticked item leaves the record");
@@ -728,11 +734,16 @@ test("after a restart, a follow-up still finds the project conversation of the l
   assert.equal(await later.projects.fileTurn("u1", "ok"), null, "not after half an hour");
 });
 
-test("a project's card links to its page, its form has the way back, and closing the dashboard closes the form", () => {
+test("a project's card leads to its page and its conversation as equals, its form has the way back, and closing the dashboard closes the form", () => {
   const ui = read("webapp/public/projects.js");
-  assert.doesNotMatch(ui, /"Open page"/, "the card's top row opens the page");
-  assert.match(ui, /const head = el\("a", "project-head card-open"\);\n\s*head\.href = `\/page\/project\/\$\{p\.id\}`;/, "a real link");
+  assert.match(ui, /const page = way\("a", "page", "Open page"\); page\.classList\.add\("card-stretch"\); page\.href = `\/page\/project\/\$\{p\.id\}`;/, "a real link, first, and the whole card opens it");
+  assert.match(ui, /const talk = way\("button", "chat", "Open conversation"\);/, "beside it, its conversation");
+  assert.match(ui, /const c = el\("div", "goal-card project-card card-stretch-host"/);
   assert.doesNotMatch(ui, /c\.onclick|role", "link"/, "the card itself is not a link with buttons inside");
+  const shared = read("webapp/public/interface.css");
+  assert.match(shared, /\.card-stretch::before \{ content: ""; position: absolute; inset: 0; z-index: 1;/);
+  assert.match(shared, /\.card-stretch-host :is\(button, select, input, textarea, a:not\(\.card-stretch\)\) \{ position: relative; z-index: 2; \}/, "its own controls sit above the link");
+  assert.match(read("webapp/public/projects.css"), /\.project-goal \{ position: relative; z-index: 2;/, "and its goal");
   assert.match(read("webapp/public/interface.css"), /\.card-open::after \{ content: "\\203A";/, "with the chevron every such row has");
   assert.match(ui, /if \(p\) f\.append\(btn\("project-back", "\\u2190 All projects", \(\) => \{ state\.editing = null; render\(\); \}\)\);/);
   assert.match(ui, /window\.closeProjectForms = \(\) => \{/);

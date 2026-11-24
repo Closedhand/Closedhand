@@ -51,15 +51,21 @@ test('the count at the top says what is running', () => {
   assert.match(page, /@media \(max-width: 389px\) \{ \.agents-working-more \{ display: none; \} \}/, 'the narrowest phones keep the fist');
 });
 
-test("a project's conversation and its card on the dashboard lead to each other", () => {
+test("a project's conversation, its card on the dashboard and its page lead to each other", () => {
   const fs = require("fs"), path = require("path");
   const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
   const projects = read("webapp/public/projects.js");
-  assert.match(projects, /btn\("goal-small", "Open conversation", \(\) => \{ window\.parent\.openConversation\(p\.id\); if \(window\.parent\.closeDashSlide\) window\.parent\.closeDashSlide\(\); \}\)/, "the card opens its conversation in the web chat");
+  assert.match(projects, /const talk = way\("button", "chat", "Open conversation"\); talk\.type = "button";\n\s*talk\.onclick = \(\) => \{ window\.parent\.openConversation\(p\.id\); if \(window\.parent\.closeDashSlide\) window\.parent\.closeDashSlide\(\); \};/, "the card opens its conversation in the web chat");
+  const pageJs = read("webapp/public/project-page.js");
+  assert.match(pageJs, /inDashboard = !!window\.frameElement && window\.frameElement\.id === "dashIframe";/, "its page, opened from the card, does too");
+  assert.match(pageJs, /talk\.onclick = \(\) => \{ chat\.openConversation\(id\); if \(chat\.closeDashSlide\) chat\.closeDashSlide\(\); \};/);
   assert.match(projects, /location\.hash\.match\(\/\^#projects\\\/\(\[0-9a-f-\]\{36\}\)\(\\\/edit\)\?\$\/i\)/, "and #projects/<id> opens the tab at that card, /edit its form");
   assert.match(read("webapp/views/dashboard.html"), /\} else if \(\/\^projects\\\/\[0-9a-f-\]\{36\}\(\\\/edit\)\?\$\/i\.test\(resolved\)\) \{\n\s+\/\/ One project[^\n]*\n[^\n]*\n\s+switchTab\('projects'\);/);
   const chat = read("webapp/views/index.html");
-  assert.match(chat, /window\.openDashSlide\('#projects\/' \+ _openProject\.id\)/, "the name above a project's conversation opens it on the dashboard");
-  assert.match(chat, /head\.textContent = _openProject\.emoji \+ ' ' \+ _openProject\.name;/);
+  assert.match(chat, /window\.openPage\('\/page\/project\/' \+ _openProject\.id, _openProject\.emoji \+ ' ' \+ _openProject\.name\)/, "the name above a project's conversation opens its page beside it, as any page from the chat opens");
+  assert.match(chat, /name\.textContent = _openProject\.emoji \+ ' ' \+ _openProject\.name;/);
+  assert.match(chat, /cue\.textContent = 'Open page';/);
+  assert.doesNotMatch(chat, /\.conv-project-name \{[^}]*(ellipsis|nowrap)/, "a long name wraps, never cut");
+  assert.match(chat, /window\.projectGone = function\(id\) \{\n\s*if \(_openProject && _openProject\.id === id\) \{ window\.closePage\(\); window\.openConversation\(null\); \}/, "a deleted project's open conversation gives way to Chat");
   assert.doesNotMatch(chat, /if \(projectId && !found && _conversations\) return;/, "a project made a moment ago still opens");
 });

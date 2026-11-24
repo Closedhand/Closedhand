@@ -161,9 +161,9 @@ function shell(title, inner) {
 /* The app's one root size (interface.css): 90% on computers, full size printed. */
 html { font-size: 100%; }
 @media screen and (hover: hover) and (pointer: fine) { html { font-size: 90%; } }
-:root { --bg: #f7f3ee; --fg: #241c18; --muted: #75685f; --line: #e3dbd2; --accent: #b9452f; --head: #efe7de; color-scheme: light; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme-pick="light"]) { --bg: #141010; --fg: #efe6d6; --muted: #a2968b; --line: #2f2724; --accent: #d8624b; --head: #1f1917; color-scheme: dark; } }
-:root[data-theme-pick="dark"] { --bg: #141010; --fg: #efe6d6; --muted: #a2968b; --line: #2f2724; --accent: #d8624b; --head: #1f1917; color-scheme: dark; }
+:root { --bg: #f7f3ee; --fg: #241c18; --muted: #75685f; --line: #e3dbd2; --accent: #b9452f; --head: #efe7de; --danger: #B3133D; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme-pick="light"]) { --bg: #141010; --fg: #efe6d6; --muted: #a2968b; --line: #2f2724; --accent: #d8624b; --head: #1f1917; --danger: #F2647E; color-scheme: dark; } }
+:root[data-theme-pick="dark"] { --bg: #141010; --fg: #efe6d6; --muted: #a2968b; --line: #2f2724; --accent: #d8624b; --head: #1f1917; --danger: #F2647E; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.65 "DM Sans", system-ui, -apple-system, sans-serif; padding: max(1.25rem, env(safe-area-inset-top)) 1rem 4rem; }
 main { max-width: 47.5rem; margin: 0 auto; }
@@ -203,7 +203,8 @@ figcaption { color: var(--muted); font-size: 0.875rem; margin-top: 0.5rem; }
 .confirm:not(:target) { display: none; }
 .confirm span { flex: 1 1 16rem; }
 .confirm form { margin: 0; }
-.confirm button { font: inherit; font-weight: 500; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.manage.delete, .manage.delete:hover, .manage.delete:focus-visible { color: var(--danger); }
+.confirm button { font: inherit; font-weight: 500; color: var(--danger); background: none; border: 1px solid var(--danger); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
 .confirm .keep { color: var(--muted); font-size: 0.8125rem; }
 </style></head>
 <body><main>
@@ -231,7 +232,7 @@ function pageHtml(report) {
   // Back to Pages, its downloads, and Delete, as a project's page has them.
   // Delete asks first just under the bar, with no script (the page has none):
   // its link targets the question, and Keep it clears the target.
-  return shell(report.title, `<div class="bar"><a class="back" href="/dashboard#pages"><span aria-hidden="true">&larr;</span> All pages</a><div class="files">${files}<a class="manage" href="#delete">Delete</a></div></div>
+  return shell(report.title, `<div class="bar"><a class="back" href="/dashboard#pages"><span aria-hidden="true">&larr;</span> All pages</a><div class="files">${files}<a class="manage delete" href="#delete">Delete</a></div></div>
 <div class="confirm" id="delete"><span>${report.dataset_id ? "Delete this table for good?" : "Delete this page for good? Only the page goes, and anything said about it in your chats stays."}</span><form method="post" action="/api/pages/${id}/delete"><button type="submit">Delete</button></form><a class="keep" href="#">Keep it</a></div>
 <h1>${esc(report.title)}</h1>
 <p class="when">${esc(dated(report.created_at) + edited)}</p>

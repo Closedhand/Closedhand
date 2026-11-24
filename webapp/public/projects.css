@@ -1,17 +1,34 @@
-/* The Projects tab. A card is the emoji and name, a link to its page, and
-   where it stands; the form starts or changes one. Cards share the Goals
-   tab's look (goals.css). */
-.project-card { cursor: default; }
-.project-card.archived { opacity: 0.7; }
-.project-card.editing { padding: 1.125rem; }
-/* Its link to the page, with the chevron every such row has (.card-open, interface.css). */
-.project-head { display: flex; align-items: baseline; gap: 0.625rem; flex-wrap: wrap; }
-.project-mark { font-size: 1.25rem; line-height: 1; }
-.project-name { font-weight: 600; font-size: 0.9375rem; color: var(--fg); }
-.project-when { margin-left: auto; color: var(--muted); font-size: 0.7812rem; }
-.project-summary { margin: 0.5rem 0 0; color: rgba(var(--fg-rgb),0.72); font-size: 0.875rem; line-height: 1.5; }
-.project-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
-.project-actions a.goal-small { text-decoration: none; display: inline-flex; align-items: center; }
+/* The Projects tab. A card is the project at a glance: its emoji on a tile,
+   its name and when it last moved, where it stands, its goal, and its two ways
+   in as equals, its page and its conversation. The whole card opens the page
+   (.card-stretch, interface.css). Cards share the Goals tab's look (goals.css). */
+.project-card.archived { opacity: 0.72; }
+.project-card.editing { padding: 1.125rem; cursor: default; }
+.project-card.leaving { opacity: 0; transform: scale(0.98); transition: opacity .2s, transform .2s; }
+.project-head { display: flex; align-items: center; gap: 0.875rem; }
+.project-mark { flex: none; width: 2.75rem; height: 2.75rem; border-radius: 0.875rem; display: grid; place-items: center; font-size: 1.375rem; line-height: 1; background: var(--bg); border: 1px solid rgba(var(--fg-rgb),0.08); box-shadow: 0 0.5rem 1.25rem -0.875rem rgba(var(--accent-rgb),0.55); }
+.project-titles { display: grid; gap: 0.125rem; min-width: 0; }
+.project-name { font-weight: 600; font-size: 1rem; line-height: 1.3; color: var(--fg); overflow-wrap: anywhere; }
+.project-when { color: var(--muted); font-size: 0.7812rem; }
+.project-summary { margin: 0.875rem 0 0; color: rgba(var(--fg-rgb),0.76); font-size: 0.875rem; line-height: 1.55; }
+/* Its two ways in, then Edit, Archive and Delete as quiet text, Delete red. */
+.project-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1.25rem; margin-top: 1rem; }
+.project-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.project-way { display: inline-flex; align-items: center; gap: 0.4375rem; padding: 0.5rem 0.875rem; font-size: 0.8438rem; text-decoration: none; transition: background .15s, border-color .15s; }
+.project-way svg { width: 1rem; height: 1rem; flex: none; color: var(--muted); transition: color .15s; }
+.project-way:hover svg, .project-way:focus-visible svg, .card-stretch-host:hover .card-stretch svg { color: var(--fg); }
+.card-stretch-host:hover .project-way.card-stretch { background: var(--control-hover); border-color: rgba(var(--fg-rgb),0.3); }
+.project-manage { display: flex; gap: 1rem; }
+.project-quiet { background: none; border: 0; padding: 0.25rem 0; font: inherit; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+.project-quiet:hover, .project-quiet:focus-visible { color: var(--fg); }
+.project-quiet.danger, .project-quiet.danger:hover { color: var(--danger); }
+.project-quiet:disabled { opacity: 0.5; cursor: default; }
+/* Delete asks in the card, in the page's words: red, and Keep it a quiet link. */
+.project-confirm { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.875rem; padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--bg); border: 1px solid rgba(var(--danger-rgb),0.35); font-size: 0.875rem; cursor: default; }
+.project-confirm > span { flex: 1 1 16rem; }
+.project-confirm-yes { font: inherit; font-weight: 500; color: var(--danger); background: none; border: 1px solid var(--danger); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.project-confirm-yes:hover { background: rgba(var(--danger-rgb),0.08); }
+.project-confirm-keep { font: inherit; font-size: 0.8125rem; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 
 .project-form { display: grid; gap: 1.125rem; }
 #project-new { padding: 1.125rem; margin: 0 0 1rem; border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.75rem; background: var(--raised); }
@@ -52,16 +69,12 @@
 .project-merge select { flex: 1; padding: 0.4375rem 0.625rem; font-size: 0.875rem; }
 .project-archived-toggle { margin: 0.25rem 0 0.75rem; }
 @media (max-width: 600px) {
-  /* The date drops to its own line; the chevron stays beside the name. */
-  .project-name { flex: 1; }
-  .project-head::after { order: 1; }
-  .project-when { order: 2; margin-left: 0; width: 100%; }
   .context-kind { min-width: 0; }
 }
 
 /* A project's goal sits inside its card (goals.js), as an inset card. */
 .project-goal:empty { display: none; }
-.project-goal { margin-top: 0.75rem; }
+.project-goal { position: relative; z-index: 2; margin-top: 0.875rem; cursor: default; }
 .project-goal .goal-card { margin: 0; padding: 0.875rem 1rem; background: var(--bg); border-color: rgba(var(--fg-rgb),0.1); }
 .project-goal .goal-label { margin-right: 0.5rem; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
 .project-goal #goal-new { margin: 0; }

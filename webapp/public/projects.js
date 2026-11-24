@@ -225,29 +225,77 @@
     return box;
   }
 
+  // The two ways into a project, drawn in the app's one line style.
+  const ICON = {
+    page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
+    chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  };
+  const way = (tag, kind, text) => { const n = el(tag, "goal-small project-way"); n.insertAdjacentHTML("beforeend", ICON[kind]); n.append(el("span", null, text)); return n; };
+
+  // A project's card leads into it two ways, as equals: its page, where it
+  // stands in full, and its conversation in the web chat. The whole card opens
+  // the page, through its one Open page link (.card-stretch, interface.css),
+  // so nothing on it is a link with buttons inside. Edit, Archive and Delete
+  // sit quietly at its foot, as on the page's own bar; Delete asks first.
   function card(p) {
     if (state.editing === p.id) { const wrap = el("div", "goal-card project-card editing"); wrap.append(form(p)); return wrap; }
-    const c = el("div", "goal-card project-card" + (p.status === "archived" ? " archived" : ""));
+    const archived = p.status === "archived";
+    const c = el("div", "goal-card project-card card-stretch-host" + (archived ? " archived" : ""));
     c.dataset.project = p.id;
-    // Its top row is the link to the project's page, with a chevron saying
-    // so; nothing else on the card opens it, so no button sits inside a link.
-    // Edit, Archive and Delete are on the page, the project's one home.
-    const head = el("a", "project-head card-open");
-    head.href = `/page/project/${p.id}`;
-    head.append(el("span", "project-mark", p.emoji), el("span", "project-name card-open-name", p.name));
-    const when = p.status === "archived" && p.archived_at ? `Archived ${shortDate(p.archived_at)}` : `Updated ${shortDate(p.last_touched)}`;
-    head.append(el("span", "project-when", when + (p.expected_end ? ` · until ${shortDate(p.expected_end)}` : "")));
+    const head = el("div", "project-head");
+    const titles = el("div", "project-titles");
+    const when = archived && p.archived_at ? `Archived ${shortDate(p.archived_at)}` : `Updated ${shortDate(p.last_touched)}`;
+    titles.append(el("span", "project-name", p.name), el("span", "project-when", when + (p.expected_end ? ` · until ${shortDate(p.expected_end)}` : "")));
+    head.append(el("span", "project-mark", p.emoji), titles);
     c.append(head);
     if (p.summary) c.append(el("p", "project-summary", p.summary));
     const goal = el("div", "project-goal"); goal.dataset.goalFor = p.id; goal.dataset.goalEmoji = p.emoji;
     c.append(goal);
+    const foot = el("div", "project-foot");
+    const ways = el("div", "project-actions");
+    const page = way("a", "page", "Open page"); page.classList.add("card-stretch"); page.href = `/page/project/${p.id}`;
+    ways.append(page);
     // The dashboard sits over the web chat: its conversation opens there.
     if (window.parent !== window && window.parent.openConversation) {
-      const acts = el("div", "project-actions");
-      acts.append(btn("goal-small", "Open conversation", () => { window.parent.openConversation(p.id); if (window.parent.closeDashSlide) window.parent.closeDashSlide(); }));
-      c.append(acts);
+      const talk = way("button", "chat", "Open conversation"); talk.type = "button";
+      talk.onclick = () => { window.parent.openConversation(p.id); if (window.parent.closeDashSlide) window.parent.closeDashSlide(); };
+      ways.append(talk);
     }
+    const manage = el("div", "project-manage");
+    manage.append(
+      btn("project-quiet", "Edit", () => { state.editing = p.id; render(); }),
+      btn("project-quiet", archived ? "Bring back" : "Archive", async (ev) => {
+        ev.target.disabled = true;
+        try { await api(`/api/projects/${p.id}`, { method: "PATCH", body: JSON.stringify({ archived: !archived }) }); await load(); } catch (e) { ev.target.disabled = false; showError(e.message); }
+      }),
+      btn("project-quiet danger", "Delete", () => askDelete(c, p)),
+    );
+    foot.append(ways, manage);
+    c.append(foot);
     return c;
+  }
+
+  // In the card, in the words the page's own Delete uses: what goes and what
+  // stays. Gone, the web chat leaves its conversation if it is open there.
+  function askDelete(c, p) {
+    const open = c.querySelector(".project-confirm");
+    if (open) { open.querySelector(".project-confirm-keep").focus(); return; }
+    const box = el("div", "project-confirm");
+    box.setAttribute("role", "group");
+    box.append(el("span", null, `Delete ${p.emoji} ${p.name}, its conversation and its Context Notes? Any files, Pinned Facts or routines created in it stay.`));
+    const yes = btn("project-confirm-yes", "Delete", async () => {
+      yes.disabled = true;
+      try {
+        await api(`/api/projects/${p.id}`, { method: "DELETE" });
+        if (window.parent !== window && window.parent.projectGone) window.parent.projectGone(p.id);
+        c.classList.add("leaving");
+        setTimeout(load, 220);
+      } catch (e) { yes.disabled = false; showError(e.message); }
+    });
+    const keep = btn("project-confirm-keep", "Keep it", () => box.remove());
+    box.append(yes, keep);
+    c.append(box);
+    keep.focus();
   }
 
   function render() {

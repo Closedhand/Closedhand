@@ -8,6 +8,10 @@
   const bar = document.querySelector("header.bar[data-project]");
   if (!bar) return;
   const id = bar.dataset.project;
+  // The web chat, when the page is open over it (the dashboard, or the page
+  // panel beside a conversation).
+  let chat = null;
+  try { if (window.parent !== window && window.parent.location.origin === location.origin) chat = window.parent; } catch (e) {}
   const send = async (method, body) => {
     const res = await fetch(`/api/projects/${id}`, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json().catch(() => ({}));
@@ -29,8 +33,27 @@
   ask.querySelector("[data-delete-no]").onclick = () => { ask.hidden = true; };
   ask.querySelector("[data-delete-yes]").onclick = async (ev) => {
     ev.target.disabled = true;
-    try { await send("DELETE"); location.href = "/dashboard#projects"; } catch (e) { ev.target.disabled = false; failed(e, ask); }
+    try {
+      await send("DELETE");
+      // The web chat leaves its conversation if it is the one open there.
+      if (chat && chat.projectGone) chat.projectGone(id);
+      location.href = "/dashboard#projects";
+    } catch (e) { ev.target.disabled = false; failed(e, ask); }
   };
+  // Opened from its card in the dashboard over the web chat, the page leads
+  // into its conversation there, as the card does. Beside the conversation
+  // (the web chat's page panel), it is already in view.
+  let inDashboard = false;
+  try { inDashboard = !!window.frameElement && window.frameElement.id === "dashIframe"; } catch (e) {}
+  const titles = document.querySelector(".hero .titles");
+  if (inDashboard && chat && chat.openConversation && titles) {
+    const talk = document.createElement("button");
+    talk.type = "button"; talk.className = "talk";
+    talk.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>');
+    talk.append(Object.assign(document.createElement("span"), { textContent: "Open conversation" }));
+    talk.onclick = () => { chat.openConversation(id); if (chat.closeDashSlide) chat.closeDashSlide(); };
+    titles.append(talk);
+  }
   for (const box of document.querySelectorAll("[data-close-open]")) {
     box.onclick = async () => {
       const li = box.closest("li");

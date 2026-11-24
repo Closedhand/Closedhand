@@ -7145,14 +7145,14 @@
     // three months later (lib/page-expiry.js).
     var _archivedPages = null;
     // Any page can change after it is made (revised, or a table brought up to
-    // date); its card then says when it last did. Its title row opens it, as a
-    // project's card opens its page (.card-open); its downloads and Delete are
-    // on the page.
+    // date); its card then says when it last did. The whole card opens it, as
+    // a project's card opens its page (.card-stretch); its downloads and Delete
+    // are on the page.
     function renderPageCard(p) {
       var changed = !!p.updated_at && p.updated_at !== p.created_at;
       var made = new Date(changed ? p.updated_at : p.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-      return '<div class="auto-card">' +
-        '<a class="auto-card-header card-open" href="/page/' + encodeURIComponent(p.id) + '">' +
+      return '<div class="auto-card card-stretch-host">' +
+        '<a class="auto-card-header card-open card-stretch" href="/page/' + encodeURIComponent(p.id) + '">' +
           '<span class="auto-card-name card-open-name">' + escapeHtml(p.title || 'Untitled page') + '</span>' +
         '</a>' +
         '<div class="auto-card-meta">' + escapeHtml((changed ? 'Updated ' : 'Made ') + made) + '</div>' +

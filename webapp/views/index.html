@@ -628,9 +628,12 @@
   .chat-search-result .said { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.8125rem; line-height: 1.4; }
   .chat-search-none { padding: 0.625rem 1.125rem; font-size: 0.75rem; color: var(--muted); }
   /* Above a project's conversation: its name, which opens it on the dashboard. */
-  .conv-project-head { display: block; width: fit-content; margin: 0 auto 1rem; padding: 0.25rem 0.375rem; font-size: 0.8125rem; color: var(--muted); text-decoration: none; }
-  .conv-project-head::after { content: " \203A"; }
-  .conv-project-head:hover, .conv-project-head:focus-visible { color: var(--fg); }
+  .conv-project-head { display: flex; align-items: center; gap: 0.625rem; width: fit-content; max-width: 100%; margin: 0 auto 1rem; padding: 0.375rem 0.5rem 0.375rem 0.875rem; border: 1px solid rgba(var(--fg-rgb),0.14); border-radius: 1.25rem; background: var(--raised); font-size: 0.8125rem; color: var(--fg); text-decoration: none; transition: border-color .15s; }
+  .conv-project-name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+  .conv-project-cue { flex: none; padding: 0.125rem 0.625rem; border-radius: 62.4375rem; background: rgba(var(--fg-rgb),0.06); color: var(--muted); }
+  .conv-project-cue::after { content: " \203A"; }
+  .conv-project-head:hover, .conv-project-head:focus-visible { border-color: rgba(var(--fg-rgb),0.3); }
+  .conv-project-head:hover .conv-project-cue, .conv-project-head:focus-visible .conv-project-cue { color: var(--fg); }
   .conv-new:hover { text-decoration: underline; text-underline-offset: 0.1875rem; }
   .activity-item-text {
     font-size: 0.8125rem;
@@ -4343,19 +4346,30 @@
 
   // Opens Chat (null) or a project's conversation in the pane. What is typed
   // next goes there.
-  // A project's conversation is headed by the project's name, which opens it
-  // on the dashboard (#projects/<id>).
+  // A project's conversation is headed by the project's name, which opens its
+  // page beside the conversation, as any page from the chat opens; the page
+  // has the way to all projects, Edit, Archive and Delete.
   function projectHead() {
     var head = document.getElementById('convProjectHead');
     if (!_openProject) { if (head) head.remove(); return; }
     if (!head) {
       head = document.createElement('a');
-      head.id = 'convProjectHead'; head.className = 'conv-project-head'; head.href = '#';
-      head.addEventListener('click', function(e) { e.preventDefault(); if (_openProject && window.openDashSlide) window.openDashSlide('#projects/' + _openProject.id); });
+      head.id = 'convProjectHead'; head.className = 'conv-project-head';
+      head.addEventListener('click', function(e) { e.preventDefault(); if (_openProject) window.openPage('/page/project/' + _openProject.id, _openProject.emoji + ' ' + _openProject.name); });
       messagesEl.insertBefore(head, messagesEl.firstChild);
     }
-    head.textContent = _openProject.emoji + ' ' + _openProject.name;
+    head.href = '/page/project/' + _openProject.id;
+    head.textContent = '';
+    var name = document.createElement('span'); name.className = 'conv-project-name'; name.textContent = _openProject.emoji + ' ' + _openProject.name;
+    var cue = document.createElement('span'); cue.className = 'conv-project-cue'; cue.textContent = 'Open page';
+    head.append(name, cue);
   }
+  // A project deleted on the dashboard or its page: its conversation, if it is
+  // the one open, gives way to Chat, and the list drops it.
+  window.projectGone = function(id) {
+    if (_openProject && _openProject.id === id) { window.closePage(); window.openConversation(null); }
+    else loadActivityFeed();
+  };
 
   window.openConversation = function(projectId) {
     // A project not in the list yet (one just made on the dashboard) is

@@ -48,7 +48,7 @@ test("the page shows the report safely, with downloads that say so and a delete 
     assert.match(html, new RegExp(`href="/api/pages/a1b2c3/${kind}" download aria-label="Download as ${label}" title="Download as ${label}"><svg[^>]*aria-hidden="true"`));
   }
   assert.doesNotMatch(page.pageHtml({ ...report, content: "No tables here." }), /xlsx/, "a spreadsheet only when there are tables");
-  assert.match(html, /<div class="bar"><a class="back" href="\/dashboard#pages"><span aria-hidden="true">&larr;<\/span> All pages<\/a><div class="files">[\s\S]*?<a class="manage" href="#delete">Delete<\/a><\/div><\/div>/, "back to Pages, and Delete in the bar as on a project's page");
+  assert.match(html, /<div class="bar"><a class="back" href="\/dashboard#pages"><span aria-hidden="true">&larr;<\/span> All pages<\/a><div class="files">[\s\S]*?<a class="manage delete" href="#delete">Delete<\/a><\/div><\/div>/, "back to Pages, and Delete in the bar as on a project's page");
   assert.match(html, /<div class="confirm" id="delete"><span>[^<]*<\/span><form method="post" action="\/api\/pages\/a1b2c3\/delete"><button type="submit">Delete<\/button><\/form><a class="keep" href="#">Keep it<\/a><\/div>/, "asked first, just under the bar");
   assert.match(html, /\.confirm:not\(:target\) \{ display: none; \}/, "with no script");
   assert.match(html, /Delete this page for good\? Only the page goes, and anything said about it in your chats stays\./);
@@ -160,7 +160,7 @@ test("every page is under Pages, a week on the list then Archived, whichever cha
   const list = server.slice(server.indexOf('app.get("/api/pages"'), server.indexOf("\napp.", server.indexOf('app.get("/api/pages"') + 1));
   assert.doesNotMatch(server, /app\.delete\("\/api\/pages\/:id"/, "a page is deleted from the page itself");
   const dash = read("webapp/views/dashboard.html");
-  assert.match(dash, /'<a class="auto-card-header card-open" href="\/page\/' \+ encodeURIComponent\(p\.id\) \+ '">'/, "its card's title row opens it, as a project's does");
+  assert.match(dash, /'<div class="auto-card card-stretch-host">' \+\n\s*'<a class="auto-card-header card-open card-stretch" href="\/page\/' \+ encodeURIComponent\(p\.id\) \+ '">'/, "the whole card opens it, as a project's does");
   assert.doesNotMatch(dash, /confirmPageDelete|>Open page<\/button>' \+\n\s*'<button class="agent-del" title="Delete this page"/);
   assert.match(list, /\.is\("dataset_id", null\)\.lt\("last_opened_at", cutoff\)\.order\("last_opened_at", \{ ascending: false \}\)/, "Archived: not used for a week");
   assert.match(list, /\.is\("dataset_id", null\)\.gte\("last_opened_at", cutoff\)\.order\("last_opened_at", \{ ascending: false \}\)/, "the list: used this week, most recent first");

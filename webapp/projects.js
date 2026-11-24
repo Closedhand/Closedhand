@@ -482,9 +482,9 @@ function shell(title, inner) {
 /* The app's one root size (interface.css): 90% on computers. */
 html { font-size: 100%; }
 @media screen and (hover: hover) and (pointer: fine) { html { font-size: 90%; } }
-:root { --bg: #EFE6D6; --raised: #F7F1E7; --fg: #1A1817; --fg-rgb: 26,24,23; --muted: #5E574F; --accent: #C4513B; --accent-rgb: 196,81,59; --ok: #4E7F3A; --ok-rgb: 78,127,58; --warn: #8A6416; --warn-rgb: 138,100,22; color-scheme: light; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme-pick="light"]) { --bg: #100E0D; --raised: #1A1817; --fg: #EFE6D6; --fg-rgb: 239,230,214; --muted: #B6AFA4; --accent: #D8624B; --accent-rgb: 216,98,75; --ok: #8DBD79; --ok-rgb: 141,189,121; --warn: #D0A652; --warn-rgb: 208,166,82; color-scheme: dark; } }
-:root[data-theme-pick="dark"] { --bg: #100E0D; --raised: #1A1817; --fg: #EFE6D6; --fg-rgb: 239,230,214; --muted: #B6AFA4; --accent: #D8624B; --accent-rgb: 216,98,75; --ok: #8DBD79; --ok-rgb: 141,189,121; --warn: #D0A652; --warn-rgb: 208,166,82; color-scheme: dark; }
+:root { --bg: #EFE6D6; --raised: #F7F1E7; --fg: #1A1817; --fg-rgb: 26,24,23; --muted: #5E574F; --accent: #C4513B; --accent-rgb: 196,81,59; --ok: #4E7F3A; --ok-rgb: 78,127,58; --warn: #8A6416; --warn-rgb: 138,100,22; --danger: #B3133D; --danger-rgb: 179,19,61; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme-pick="light"]) { --bg: #100E0D; --raised: #1A1817; --fg: #EFE6D6; --fg-rgb: 239,230,214; --muted: #B6AFA4; --accent: #D8624B; --accent-rgb: 216,98,75; --ok: #8DBD79; --ok-rgb: 141,189,121; --warn: #D0A652; --warn-rgb: 208,166,82; --danger: #F2647E; --danger-rgb: 242,100,126; color-scheme: dark; } }
+:root[data-theme-pick="dark"] { --bg: #100E0D; --raised: #1A1817; --fg: #EFE6D6; --fg-rgb: 239,230,214; --muted: #B6AFA4; --accent: #D8624B; --accent-rgb: 216,98,75; --ok: #8DBD79; --ok-rgb: 141,189,121; --warn: #D0A652; --warn-rgb: 208,166,82; --danger: #F2647E; --danger-rgb: 242,100,126; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 1rem/1.6 "DM Sans", system-ui, -apple-system, sans-serif; padding: max(1.125rem, env(safe-area-inset-top)) 1rem 3.5rem; -webkit-font-smoothing: antialiased; }
 main { max-width: 55rem; margin: 0 auto; }
@@ -501,7 +501,13 @@ button.manage { background: none; border: 0; padding: 0; font: inherit; font-siz
 .confirm[hidden] { display: none; }
 .confirm span { flex: 1 1 16rem; }
 /* As a page's own Delete asks (report-page.js): red, and Keep it a quiet link. */
-.confirm .yes { font: inherit; font-weight: 500; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.confirm .yes { font: inherit; font-weight: 500; color: var(--danger); background: none; border: 1px solid var(--danger); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.manage.delete, .manage.delete:hover, .manage.delete:focus-visible { color: var(--danger); }
+/* Opened from its card over the web chat, the page leads into its
+   conversation there too (project-page.js), as the card does. */
+.talk { display: inline-flex; align-items: center; gap: 0.4375rem; margin-top: 1rem; padding: 0.4375rem 0.875rem; border: 1px solid rgba(var(--fg-rgb),0.2); border-radius: 0.5rem; background: none; color: var(--fg); font: inherit; font-size: 0.8438rem; cursor: pointer; transition: border-color .15s, background .15s; }
+.talk svg { width: 1rem; height: 1rem; color: var(--muted); }
+.talk:hover, .talk:focus-visible { border-color: rgba(var(--fg-rgb),0.35); background: rgba(var(--fg-rgb),0.04); }
 .confirm .keep { font: inherit; font-size: 0.8125rem; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 .back:hover, .back:focus-visible { color: var(--accent); }
 .manage:hover, .manage:focus-visible { color: var(--accent); }
