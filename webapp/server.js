@@ -6885,18 +6885,62 @@ app.get("/api/rag/search", async (req, res) => {
   }
 });
 
+// Which connected account a File Search document's drive is: its source
+// says. Without it the primary account was asked, and a file on any other
+// Drive could not be downloaded.
+async function ragAccountOf(doc) {
+  if (!doc?.source_id) return null;
+  const { data } = await supabase.from("rag_sources").select("account").eq("id", doc.source_id).maybeSingle();
+  return data?.account || null;
+}
+
+// GET /api/rag/thumbnail?doc=<id>[&size=large] - a picture or video's
+// thumbnail, fetched from its drive with the person's own access to it. The
+// page asking Google itself worked only in a browser signed in to that Google
+// account, so on the personal URL pictures showed a plain icon.
+app.get("/api/rag/thumbnail", async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  const id = String(req.query.doc || "");
+  if (!id) return res.status(400).end();
+  const { data: doc } = await supabase.from("rag_documents").select("origin, file_path, source_id")
+    .eq("id", id).eq("user_id", userId).maybeSingle();
+  if (!doc?.file_path) return res.status(404).end();
+  const large = req.query.size === "large";
+  try {
+    const account = await ragAccountOf(doc);
+    let resp = null;
+    if (doc.origin === "gdrive") {
+      const meta = await ragProcessor.fetchWithRefresh(userId, account || "google",
+        "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(doc.file_path) + "?fields=thumbnailLink&supportsAllDrives=true");
+      const link = meta.ok ? (await meta.json()).thumbnailLink : null;
+      // The link ends with its size (=s220): larger for the preview.
+      if (link) resp = await ragProcessor.fetchWithRefresh(userId, account || "google", link.replace(/=s\d+$/, large ? "=s1600" : "=s400"));
+    } else if (doc.origin === "onedrive") {
+      resp = await ragProcessor.fetchWithRefresh(userId, account || "microsoft",
+        "https://graph.microsoft.com/v1.0/me/drive/items/" + encodeURIComponent(doc.file_path) + "/thumbnails/0/" + (large ? "large" : "medium") + "/content");
+    }
+    const type = resp?.ok ? resp.headers.get("content-type") || "" : "";
+    if (!/^image\//.test(type)) return res.status(404).end();
+    res.setHeader("Content-Type", type);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(Buffer.from(await resp.arrayBuffer()));
+  } catch (e) {
+    res.status(404).end();
+  }
+});
+
 // POST /api/rag/retrieve - download original file for a chunk
 app.post("/api/rag/retrieve", async (req, res) => {
   const userId = getUserIdFromRequest(req);
   const { document_id } = req.body;
   if (!document_id) return res.status(400).json({ error: "Missing document_id" });
   const { data: doc } = await supabase.from("rag_documents")
-    .select("name, origin, file_path")
+    .select("name, origin, file_path, source_id")
     .eq("id", document_id).eq("user_id", userId).single();
   if (!doc) return res.status(404).json({ error: "Document not found" });
 
   try {
-    const buffer = await ragProcessor.fetchFileContent(userId, doc.origin, doc.file_path);
+    const buffer = await ragProcessor.fetchFileContent(userId, doc.origin, doc.file_path, await ragAccountOf(doc));
     const ext = (doc.name || "").split(".").pop().toLowerCase();
     const mimeMap = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", txt: "text/plain", md: "text/markdown", csv: "text/csv", json: "application/json", html: "text/html" };
     res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");

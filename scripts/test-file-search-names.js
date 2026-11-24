@@ -264,3 +264,32 @@ test("a Google Doc, Sheet or Slides shows as one, though its name has no extensi
   const server = read("webapp/server.js");
   assert.equal((server.match(/await withKinds\(userId, /g) || []).length, 2, "both searches carry it");
 });
+
+// A picture or video on a drive shows its thumbnail, fetched by Closedhand
+// with its own access to that drive, and a file downloads from the account
+// it is in. The page asked Google itself, which worked only in a browser
+// signed in to that Google account, so every picture was a plain icon on
+// the personal URL, and videos had none at all; Download asked the primary
+// account, so files on any other Drive failed. And the privacy line says
+// where the index is, not that File Search "saves" files.
+test("drive pictures and videos show thumbnails through Closedhand, and files come from their own account", async () => {
+  const page = read("webapp/views/index.html");
+  const at = page.indexOf("function ragGetThumbnailUrl(");
+  const pick = new Function(page.slice(page.indexOf("function ragIsImageFile("), page.indexOf("\n}\n", at) + 2) + "\nreturn ragGetThumbnailUrl;")();
+  assert.equal(pick({ origin: "gdrive", document_id: "d1", document_name: "Reel 9.mp4", file_path: "f1" }), "/api/rag/thumbnail?doc=d1");
+  assert.equal(pick({ origin: "gdrive", document_id: "d2", document_name: "harbour.JPG", file_path: "f2" }), "/api/rag/thumbnail?doc=d2");
+  assert.equal(pick({ origin: "onedrive", document_id: "d3", document_name: "plot.png", file_path: "f3" }), "/api/rag/thumbnail?doc=d3");
+  assert.equal(pick({ origin: "gdrive", document_id: "d4", document_name: "notes.pdf", file_path: "f4" }), null, "a document keeps its type icon");
+  assert.doesNotMatch(page, /drive\.google\.com\/thumbnail/);
+  assert.match(page, /var fullUrl = url\.indexOf\('\/api\/rag\/thumbnail'\) !== -1 \? url \+ '&size=large' : url;/);
+  assert.match(page, /'<div class="rag-result-icon' \+ \(thumbUrl && ragIsVideoFile\(r\.document_name\) \? ' video' : ''\) \+ '">'/, "a video's frame is marked as one");
+  const server = read("webapp/server.js");
+  const route = server.slice(server.indexOf('app.get("/api/rag/thumbnail"'), server.indexOf('// POST /api/rag/retrieve'));
+  assert.match(route, /\.eq\("id", id\)\.eq\("user_id", userId\)/, "only the person's own documents");
+  assert.match(route, /fetchWithRefresh\(userId, account \|\| "google",\n\s*"https:\/\/www\.googleapis\.com\/drive\/v3\/files\/" \+ encodeURIComponent\(doc\.file_path\) \+ "\?fields=thumbnailLink&supportsAllDrives=true"\)/);
+  assert.match(route, /\/thumbnails\/0\/" \+ \(large \? "large" : "medium"\) \+ "\/content"/);
+  assert.match(route, /if \(!\/\^image\\\/\/\.test\(type\)\) return res\.status\(404\)\.end\(\);/, "only ever an image");
+  assert.match(server, /const buffer = await ragProcessor\.fetchFileContent\(userId, doc\.origin, doc\.file_path, await ragAccountOf\(doc\)\);/, "Download from the account the file is in");
+  assert.match(page, /File Search keeps its index of the sources you add on the computer running Closedhand: nothing leaves it to be indexed\./);
+  assert.doesNotMatch(page, /saves searchable content/);
+});
