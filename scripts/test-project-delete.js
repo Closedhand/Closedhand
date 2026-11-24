@@ -15,10 +15,16 @@ test("the delete runs only on the call their yes ran, then the web chat leaves i
   const removed = [], pushed = [];
   const projects = { find: async () => ({ id: "p1", emoji: "🏠", name: "House move" }), remove: async (u, id) => { removed.push(id); return true; } };
   const orig = Module._load;
+  // CI's checks install no packages: one the handlers load (node-cron and
+  // the like) stands in as an empty stub, as nothing here uses it.
+  const stub = new Proxy(function () {}, { get: (t, k) => (k === "__esModule" ? false : stub), apply: () => stub, construct: () => stub });
   Module._load = function (req, parent) {
     if (/(^|\/)projects$/.test(req) && parent && /tools[\\/]handlers\.js$/.test(parent.filename)) return projects;
     if (/web-chat-ws$/.test(req)) return { sendToUser: (u, m) => pushed.push(m) };
-    return orig.apply(this, arguments);
+    try { return orig.apply(this, arguments); } catch (e) {
+      if (e.code === "MODULE_NOT_FOUND" && !/^[./]/.test(req)) return stub;
+      throw e;
+    }
   };
   try {
     const h = require("../lib/tools/handlers");
