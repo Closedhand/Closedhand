@@ -726,9 +726,9 @@ test("Usage costs: what the provider reported, else its listed price, with token
 test("Models: a card for each way Closedhand can run, their own LLM provider first; one says In use, the other Not in use with the way to switch, and what the plan means in one sentence", async () => {
   const els = {};
   const classes = () => { const on = new Set(); return { toggle: (c, yes) => { if (yes) on.add(c); else on.delete(c); }, contains: (c) => on.has(c) }; };
-  const el = (id) => (els[id] ||= { id, hidden: false, textContent: "", className: "", style: {}, classList: classes(), querySelector: () => null,
+  const el = (id) => (els[id] ||= { id, hidden: false, textContent: "", className: "", style: {}, classList: classes(), querySelector: () => null, append(...parts) { this.textContent += parts.map((p) => (typeof p === "string" ? p : p.textContent)).join(""); },
     replaceChildren(...parts) { this.textContent = parts.map((p) => typeof p === "string" ? p : p.textContent).join(""); } });
-  const box = vm.createContext({ Date, document: { getElementById: el, createElement: () => ({ style: {} }), querySelectorAll: () => [] } });
+  const box = vm.createContext({ Date, document: { getElementById: el, createElement: () => ({ style: {}, textContent: "" }), querySelectorAll: () => [] } });
   vm.runInContext(region(html, "    function accountLink(words) {", "    // Back to the person's own LLM provider, as Closedhand kept it.") + "\nthis.state = (s) => { includedState = s; llmStep = null; renderLlmOptions(); };", box);
   const word = (id) => els[id].hidden ? "" : `${els[id].textContent} (${els[id].className.trim()})`;
   const look = () => ({ own: word("llm-own-status"), managed: word("llm-managed-status"), ownCard: els["llm-own"].classList.contains("in-use"), managedCard: els["llm-managed"].classList.contains("in-use") });
@@ -740,7 +740,7 @@ test("Models: a card for each way Closedhand can run, their own LLM provider fir
   assert.equal(els["included-ai-plan"].textContent, "DeepSeek V4.1 Flash Abliterated comes with your subscription, which you cancelled: it ends on 27 November. Resume it in My Account.", "the plan in one sentence; the plan itself is in My Account");
   box.llmStepTo("managed");
   assert.deepEqual([els["included-ai-use"].hidden, els["included-ai-confirm"].hidden, look().own], [true, false, "In use (plan-status on)"], "looking is not switching");
-  assert.equal(els["included-ai-confirm-text"].textContent, "Closedhand will run on DeepSeek V4.1 Flash Abliterated from now on. Switch back before 27 November to keep Closedhand replying. DeepSeek stays saved here, so you can switch back in one click.");
+  assert.equal(els["included-ai-confirm-text"].textContent, "Closedhand will run on DeepSeek V4.1 Flash Abliterated from now on. Switch back before 27 November to keep Closedhand replying. DeepSeek stays saved above, so you can switch back in one click.");
 
   // Managed Models in use, their own kept: theirs not in use, back in one click, named.
   box.state({ state: "in-use", plan: { name: "plus" }, ownKept: true, own: ["DeepSeek", "OpenAI"] });
@@ -825,4 +825,20 @@ test("the dashboard's later claim offers using Closedhand anonymously: the same 
   assert.equal(state.nudged, el("phone-terms"), "the Terms row is shown instead");
   state.renderPhone({ enabled: false, state: "off", termsAccepted: true });
   assert.equal(el("phone-terms").hidden, true, "agreed before, not asked again");
+});
+
+// Switching to the uncensored LLM checks it first, which can take a minute or
+// two: the button's brush paints while it works, and a line says what it is
+// doing and for how long, so a wait never looks like a stall. Their own
+// provider is named in the line as a chip that points to its card above.
+test("switching says what it is doing while it works, and points to what stays saved", () => {
+  const fs = require("fs"), path = require("path");
+  const dash = fs.readFileSync(path.join(__dirname, "..", "webapp", "views", "dashboard.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "..", "webapp", "public", "interface.css"), "utf8");
+  assert.match(dash, /chip\.type = 'button'; chip\.className = 'ref-chip'; chip\.textContent = own\.name \|\| 'Your own LLM provider';\n\s*chip\.title = 'Show it above'; chip\.onclick = function \(\) \{ pointAt\('llm-own'\); \};/);
+  assert.match(dash, /btn\.disabled = true; btn\.textContent = 'Switching\\u2026'; btn\.setAttribute\('aria-busy', 'true'\);/);
+  assert.match(dash, /var done = busyLine\(document\.getElementById\('included-ai-busy'\), 'Checking ' \+ llmName\(\) \+ ' works with Closedhand before switching: a test question, then a picture and a short clip\. This can take a minute or two\.'\);/);
+  assert.match(dash, /el\.textContent = words \+ \(s >= 3 \? ' ' \+ s \+ ' seconds so far\.' : ''\);/);
+  assert.match(css, /:is\(\.cta, \.save-btn, \.go\)\[aria-busy="true"\]::after \{ animation: brush-paint 1\.5s/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ :is\(\.cta, \.save-btn, \.go\)\[aria-busy="true"\]::after \{ animation: none;/);
 });

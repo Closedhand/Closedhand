@@ -532,6 +532,13 @@ body.polar-open { overflow: hidden; }
 .text-link:hover { color: var(--fg); }
 /* A main action set aside with hidden stays hidden, whatever display its look sets. */
 .cta[hidden] { display: none !important; }
+/* A main action at work (aria-busy): its brush paints across again and again
+   until it is done, and it stays bright, so a wait never looks like a stall. */
+:is(.cta, .save-btn, .go)[aria-busy="true"]::after { animation: brush-paint 1.5s cubic-bezier(.65, 0, .35, 1) infinite; }
+/* As specific as the main actions' :disabled rule, whose :is() holds an id. */
+:is(.cta, .save-btn, .go, #goal-new button[type=submit])[aria-busy="true"]:disabled { opacity: .9; cursor: progress; }
+@keyframes brush-paint { 0% { clip-path: inset(0 100% 0 0); } 55% { clip-path: inset(0 0 0 0); } 100% { clip-path: inset(0 0 0 100%); } }
+@media (prefers-reduced-motion: reduce) { :is(.cta, .save-btn, .go)[aria-busy="true"]::after { animation: none; clip-path: inset(0 0 0 0); } }
 
 /* A move between computers (move-progress.js): where it starts and where it
    goes, the fist carrying Closedhand along the line as the parts arrive, the

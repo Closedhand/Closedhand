@@ -860,6 +860,15 @@
     .choice-card .account-action-desc:last-child { margin-bottom: 0; }
     /* Only their own LLM provider to choose: no card around it. */
     .choice-cards.alone .choice-card { border: 0; padding: 0; background: none; box-shadow: none; }
+    /* Pointed out from below (pointAt): a ring passes round it once. */
+    .choice-card.pointed { animation: choice-pointed 1.5s ease 1; }
+    @keyframes choice-pointed { 30% { box-shadow: 0 0 0 0.3125rem rgba(var(--accent-strong-rgb),0.28); } }
+    @media (prefers-reduced-motion: reduce) { .choice-card.pointed { animation: none; } }
+    /* A value set elsewhere on the page, named in a sentence: a chip that
+       points to where it is set. */
+    .ref-chip { display: inline; padding: 0.0625rem 0.4375rem; margin: 0 0.0625rem; border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.375rem; background: rgba(var(--fg-rgb),0.06); font: inherit; font-weight: 600; color: var(--fg); cursor: pointer; transition: border-color .15s, background .15s; }
+    .ref-chip:hover, .ref-chip:focus-visible { border-color: rgba(var(--fg-rgb),0.32); background: rgba(var(--fg-rgb),0.1); }
+    .busy-line { margin: 0.75rem 0 0; font-size: 0.8125rem; }
     .choice-cards.alone .choice-head { display: none; }
     /* The person's own plan: set apart from what Managed Models are by a line,
        never a box of its own, which read as boxes in boxes in boxes. */
@@ -2200,8 +2209,10 @@
                     <p class="account-action-desc" id="included-ai-confirm-text"></p>
                     <div class="included-ai-confirm-ways">
                       <button type="button" class="cta" id="included-ai-go" onclick="useIncludedAi()">Let's go</button>
-                      <button type="button" class="quiet-link" onclick="llmStepTo(null)">Cancel</button>
+                      <button type="button" class="quiet-link" id="included-ai-cancel" onclick="llmStepTo(null)">Cancel</button>
                     </div>
+                    <!-- While it switches: what it is doing and for how long. -->
+                    <p class="account-action-desc busy-line" id="included-ai-busy" role="status" hidden></p>
                   </div>
                 </section>
               </div>
@@ -4105,7 +4116,14 @@
       if (switching) {
         var plan = data.plan || {};
         var until = plan.name === 'plus' && plan.ends_at ? ' Switch back before ' + planDay(plan.ends_at) + ' to keep Closedhand replying.' : '';
-        $('included-ai-confirm-text').textContent = 'Closedhand will run on ' + llmName() + ' from now on.' + until + ' ' + (own.name || 'Your own LLM provider') + (own.many ? ' stay' : ' stays') + ' saved here, so you can switch back in one click.';
+        // Their own provider is named as it is in the card above, a chip that
+        // points to it there: what stays saved is what they chose above.
+        var said = $('included-ai-confirm-text');
+        said.textContent = 'Closedhand will run on ' + llmName() + ' from now on.' + until + ' ';
+        var chip = document.createElement('button');
+        chip.type = 'button'; chip.className = 'ref-chip'; chip.textContent = own.name || 'Your own LLM provider';
+        chip.title = 'Show it above'; chip.onclick = function () { pointAt('llm-own'); };
+        said.append(chip, (own.many ? ' stay' : ' stays') + ' saved above, so you can switch back in one click.');
       }
     }
     // Back to the person's own LLM provider, as Closedhand kept it.
@@ -4122,9 +4140,32 @@
       finally { go.disabled = false; }
       loadIncludedAi();
     }
+    // A card in Settings pointed out: brought into view, a ring passing round it once.
+    function pointAt(id) {
+      var card = document.getElementById(id);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.remove('pointed'); void card.offsetWidth; card.classList.add('pointed');
+      setTimeout(function () { card.classList.remove('pointed'); }, 1600);
+    }
+    // Switching checks the LLM first, with a test question, a picture and a
+    // short clip, which can take a minute or two: the button's brush paints
+    // while it works, and a line says what it is doing and for how long.
+    function busyLine(el, words) {
+      var started = Date.now();
+      var tick = function () {
+        var s = Math.round((Date.now() - started) / 1000);
+        el.textContent = words + (s >= 3 ? ' ' + s + ' seconds so far.' : '');
+      };
+      el.hidden = false; tick();
+      var timer = setInterval(tick, 1000);
+      return function () { clearInterval(timer); el.hidden = true; el.textContent = ''; };
+    }
     async function useIncludedAi() {
       var btn = document.getElementById('included-ai-go');
-      btn.disabled = true; btn.textContent = 'Switching\u2026';
+      btn.disabled = true; btn.textContent = 'Switching\u2026'; btn.setAttribute('aria-busy', 'true');
+      var cancel = document.getElementById('included-ai-cancel'); if (cancel) cancel.hidden = true;
+      var done = busyLine(document.getElementById('included-ai-busy'), 'Checking ' + llmName() + ' works with Closedhand before switching: a test question, then a picture and a short clip. This can take a minute or two.');
       try {
         var res = await fetch('/api/included-ai/use', { method: 'POST' });
         var data = await res.json().catch(function () { return {}; });
@@ -4134,7 +4175,9 @@
       } catch (e) {
         showToast(e.message, true);
       } finally {
-        btn.disabled = false; btn.textContent = "Let's go";
+        done();
+        btn.disabled = false; btn.textContent = "Let's go"; btn.removeAttribute('aria-busy');
+        if (cancel) cancel.hidden = false;
         loadIncludedAi();
       }
     }
