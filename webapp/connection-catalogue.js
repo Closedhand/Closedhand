@@ -39,7 +39,10 @@ const ownApps = {
     // A Xero app made since 2 March 2026 has every permission from the start
     // (developer.xero.com/faq/granular-scopes): nothing to tick, so none listed.
     scopesSet: true,
-    instruction: 'Xero signs you in through an app you make in its developer portal, so your accounts go straight from Xero to Closedhand.',
+    // Xero's remote MCP reaches a real organisation only from an app on its
+    // Core developer plan or above; on the free Starter plan, its demo company
+    // alone (developer.xero.com/faq/remote-mcp). Said first, before the steps.
+    instruction: 'Xero signs you in through an app you make in its developer portal, so your accounts go straight from Xero to Closedhand. On Xero’s free developer plan the app reaches only Xero’s demo company: your own organisation needs its Core plan or above.',
     link: 'https://developer.xero.com/app/manage', linkText: 'Open Xero’s My Apps',
     steps: [
       'On Xero’s My Apps page (sign in if it asks), press “New app”.',
