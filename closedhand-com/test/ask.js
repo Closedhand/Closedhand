@@ -377,7 +377,9 @@ test('the page: the box and its script are on the home page, and what it says is
   // an answer one quiet line on what Closedhand adds (the way to the download on a computer, the link
   // sent on a phone).
   assert.match(home, /<div class="ask-row"><textarea id="askInput"[^>]*><\/textarea><button type="submit" class="ask-send" id="askSend" disabled>[\s\S]*?<\/button><\/div>\n\s*<div class="ask-foot"><p class="ask-note" id="askNote"><\/p><span id="askUnlockSlot"><\/span><\/div>/);
-  assert.match(home, /\.ask-foot \{[^}]*border-top: 1px solid rgba\(var\(--fg-rgb\),0\.07\); background: rgba\(var\(--fg-rgb\),0\.025\); \}/);
+  assert.match(home, /\.ask-foot \{[^}]*justify-content: center;[^}]*border-top: 1px solid rgba\(var\(--fg-rgb\),0\.06\); background: rgba\(var\(--bg-rgb\),0\.55\); text-align: center; \}/, 'the tray quieter than the question, and centred');
+  assert.match(home, /<form class="ask-box fresh" id="askForm">/);
+  assert.match(script, /input\.addEventListener\('focus', function \(\) \{ box\.querySelector\('\.ask-box'\)\.classList\.remove\('fresh'\); \}, \{ once: true \}\);/, 'the box calls for a first question until it is touched');
   assert.doesNotMatch(home + script, /Encrypted in your browser|Download below|Generate images, take actions/);
   // What it unlocks, by the names people know, in one line: no pills.
   assert.match(script, /var UNLOCKS = 'image generation, agentic actions and connect with anything';/);

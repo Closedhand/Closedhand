@@ -382,6 +382,8 @@
 
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value); });
   input.addEventListener('input', function () { fit(); ready(); });
+  // First touched, the box stops calling for it.
+  input.addEventListener('focus', function () { box.querySelector('.ask-box').classList.remove('fresh'); }, { once: true });
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(input.value); }
   });
