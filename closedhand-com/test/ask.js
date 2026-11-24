@@ -376,8 +376,12 @@ test('the page: the box and its script are on the home page, and what it says is
   // piece leads to the download just below, the whole of it the button on a computer.
   assert.match(home, /<p class="ask-note" id="askNote"><\/p>/);
   assert.doesNotMatch(home + script, /Encrypted in your browser|Download below|Generate images, take actions/);
-  assert.match(script, /'Download Closedhand below to unlock image generation, agentic actions and anything you connect\.'/);
-  assert.match(script, /'On a computer, Closedhand unlocks image generation, agentic actions and anything you connect\.'/);
+  // What it unlocks, a chip each under the line.
+  assert.match(script, /say\('', handheld \? 'On a computer, Closedhand unlocks:' : 'Download Closedhand below to unlock:', true\);/);
+  assert.deepEqual([...script.matchAll(/\['([a-z ]+)', '<(?:rect|path)/g)].map(m => m[1]), ['image generation', 'agentic actions', 'anything you connect']);
+  // How many questions are left: a mark for each and the same in words, never a zero.
+  assert.match(script, /line\.textContent = \(state\.left === 1 \? 'One question' : state\.left \+ ' questions'\) \+ ' left here today';/);
+  assert.match(script, /if \(!\(state\.left > 0\)\) \{ note\.hidden = true; return; \}/);
   assert.match(script, /next = document\.createElement\(handheld \? 'div' : 'button'\);/);
   // Accuracy and honesty come first: nothing invented, "I don't know" said plainly, working shown and
   // mistakes put right. Then it answers as asked, unkind questions too, and gives its own pick, well

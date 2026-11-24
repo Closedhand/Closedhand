@@ -49,6 +49,7 @@
         if (!r.body.key) throw new Error('busy');
         state.key = r.body.key; state.left = r.body.left; state.of = r.body.of; state.name = r.body.name || '';
         if (state.left === 0 && !state.turns.length) over();
+        else if (!state.turns.length) count();
       });
       greeting.catch(function () { greeting = null; });
     }
@@ -144,7 +145,13 @@
     if (navigator.share) return navigator.share({ title: 'Closedhand', url: here }).catch(function () {});
     if (navigator.clipboard) navigator.clipboard.writeText(here).then(function () { b.textContent = 'Link copied'; }, function () {});
   }
-  function say(lead, words) {
+  // What Closedhand unlocks, one chip each, in the line style of the rest.
+  var UNLOCKS = [
+    ['image generation', '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.75"/><path d="M21 16l-5-5-9 9"/>'],
+    ['agentic actions', '<path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/>'],
+    ['anything you connect', '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>'],
+  ];
+  function say(lead, words, unlocks) {
     if (next) next.remove();
     next = document.createElement(handheld ? 'div' : 'button');
     next.className = 'ask-next';
@@ -153,6 +160,19 @@
     line.className = 'ask-next-words';
     if (lead) { var strong = document.createElement('strong'); strong.textContent = lead; line.appendChild(strong); }
     line.appendChild(document.createTextNode(words));
+    if (unlocks) {
+      var chips = document.createElement('span');
+      chips.className = 'ask-chips';
+      UNLOCKS.forEach(function (u, i) {
+        var chip = document.createElement('span');
+        chip.className = 'ask-chip';
+        chip.style.animationDelay = (0.25 + i * 0.12) + 's';
+        chip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + u[1] + '</svg>';
+        chip.appendChild(document.createTextNode(u[0].charAt(0).toUpperCase() + u[0].slice(1)));
+        chips.appendChild(chip);
+      });
+      line.appendChild(chips);
+    }
     next.appendChild(line);
     if (handheld) {
       var go = document.createElement('button');
@@ -170,10 +190,34 @@
   var FREE = 'The first 7 days are free and need no card.';
   function after() {
     if (state.left === 0) return over(true);
-    say('', handheld
-      ? 'On a computer, Closedhand unlocks image generation, agentic actions and anything you connect.'
-      : 'Download Closedhand below to unlock image generation, agentic actions and anything you connect.');
-    if (state.left === 1) note.textContent = 'One question left here today.';
+    say('', handheld ? 'On a computer, Closedhand unlocks:' : 'Download Closedhand below to unlock:', true);
+    count();
+  }
+  // How many questions are left here today: a mark for each, and the same in
+  // words. One just asked goes out with a flare and the number rolls down.
+  // None left is the download's to say, never a zero.
+  var shown = null;
+  function count() {
+    if (!(state.left > 0)) { note.hidden = true; return; }
+    var spent = shown !== null && state.left < shown && !still;
+    shown = state.left;
+    note.hidden = false;
+    if (!note.querySelector('.ask-pips')) {
+      note.textContent = '';
+      var pips = document.createElement('span'), words = document.createElement('span');
+      pips.className = 'ask-pips'; pips.setAttribute('aria-hidden', 'true');
+      for (var i = 0; i < Math.max(state.of, state.left); i++) pips.appendChild(document.createElement('i'));
+      words.className = 'ask-left';
+      note.appendChild(pips); note.appendChild(words);
+    }
+    var marks = note.querySelectorAll('.ask-pips i');
+    for (var j = 0; j < marks.length; j++) marks[j].className = j < state.left ? 'on' : '';
+    var line = note.querySelector('.ask-left');
+    line.textContent = (state.left === 1 ? 'One question' : state.left + ' questions') + ' left here today';
+    if (spent) {
+      if (marks[state.left]) marks[state.left].className = 'going';
+      line.classList.remove('roll'); void line.offsetWidth; line.classList.add('roll');
+    }
   }
   // asked: the questions ran out just now, as an answer came, so the piece
   // is brought into view with the download under it; a page that opens with
