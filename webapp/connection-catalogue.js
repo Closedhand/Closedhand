@@ -36,6 +36,9 @@ const ownApps = {
   // (server). Its sign-in turns away an app that registers itself.
   xero: {
     server: 'https://api.xero.com/mcp/v1', name: 'Xero',
+    // A Xero app made since 2 March 2026 has every permission from the start
+    // (developer.xero.com/faq/granular-scopes): nothing to tick, so none listed.
+    scopesSet: true,
     instruction: 'Xero signs you in through an app you make in its developer portal, so your accounts go straight from Xero to Closedhand.',
     link: 'https://developer.xero.com/app/manage', linkText: 'Open Xero’s My Apps',
     steps: [
@@ -112,7 +115,7 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl, fetchFn = 
       instruction:guide.instruction||name+' signs you in through an app you make with it, as it doesn’t let Closedhand register itself.',
       steps:guide.steps||anySteps(name),guide:guide.link||null,linkText:guide.linkText||null,
       token:made?guide.token:null,submitText:made?'Connect':null,
-      scopes:made?[]:scopesOf(published),secretOptional:!key};
+      scopes:made||guide.scopesSet?[]:scopesOf(published),secretOptional:!key};
   }
   // Makes the person's app with the token the company handed them, for a
   // server that has `create`, and gives back its client ID and secret.

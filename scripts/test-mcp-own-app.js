@@ -224,6 +224,11 @@ test('Slack’s app is made by Closedhand from a token: its callback address, pe
   const xero=await catalogue.ownApp('https://api.xero.com/mcp/v1',{scopes_supported:['accounting.invoices.read']});
   assert.deepEqual([xero.name,xero.guide,xero.steps.length,xero.redirectUri],['Xero','https://developer.xero.com/app/manage',3,CALLBACK]);
   assert.match(xero.steps[1],/choose “Web app”/);
+  assert.deepEqual(xero.scopes,[],'a new Xero app has every permission already: nothing to tick, so no list of codes');
+  // Elsewhere the permissions are folded away as one box to copy, for a service that asks.
+  const page=require('fs').readFileSync(require('path').join(__dirname,'..','webapp','public','connection-catalogue.js'),'utf8');
+  assert.match(page,/if\(s\.scopes\.length\)\{const asks=el\('details','catalogue-instead'\);asks\.append\(el\('summary','','If '\+s\.name\+' asks which permissions the app needs'\),copyBox\('Permissions',s\.scopes\.join\(' '\),status\)\);form\.append\(asks\);\}/);
+  assert.doesNotMatch(page,/Enable these permissions/);
 });
 
 test('a token pasted in the form makes the app, and the sign-in starts with it',async()=>{

@@ -223,7 +223,9 @@
     const submit=el('button','catalogue-action',s.submitText||'Save and sign in');submit.type='submit';
     form.append(...own.map(f=>f.wrap));
     if(s.redirectUri)form.append(copyBox('Callback address',s.redirectUri,status));
-    if(s.scopes.length){const permissions=el('p','','Enable these permissions in the application: '+s.scopes.join(', ')+'.');form.append(permissions);}
+    // The permissions the server names, for a service that asks which the app
+    // needs: folded away, as one box to copy, never a wall of codes.
+    if(s.scopes.length){const asks=el('details','catalogue-instead');asks.append(el('summary','','If '+s.name+' asks which permissions the app needs'),copyBox('Permissions',s.scopes.join(' '),status));form.append(asks);}
     form.append(...(token?[token.wrap]:[id.wrap,secret.wrap]));
     let instead=null;
     if(s.instead){
