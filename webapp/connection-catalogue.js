@@ -44,10 +44,16 @@ const ownApps = {
     // alone (developer.xero.com/faq/remote-mcp). Said first, before the steps.
     instruction: 'Xero signs you in through an app you make in its developer portal, so your accounts go straight from Xero to Closedhand. On Xero’s free developer plan the app reaches only Xero’s demo company: your own organisation needs its Core plan or above.',
     link: 'https://developer.xero.com/app/manage', linkText: 'Open Xero’s My Apps',
+    // Xero's form for a new app, as it asks. It recommends a "Mobile or
+    // desktop app" (PKCE) for its remote MCP, which has a client ID and no
+    // secret; a "Web app" with its secret works too, so the secret is asked
+    // for only if the app has one.
+    secretOptional: true,
     steps: [
       'On Xero’s My Apps page (sign in if it asks), press “New app”.',
-      'Name it Closedhand, choose “Web app”, enter https://closedhand.com as the company or application URL, and paste the callback address below as the redirect URI. Then create the app.',
-      'Open the app’s “Configuration”, press “Generate a secret”, and paste its client id and client secret below.',
+      'Name it Closedhand and choose “Mobile or desktop app”, the type Xero’s remote MCP needs.',
+      'Answer “No” to using Xero data to train an AI model and “Yes” to Xero’s security requirements, enter https://closedhand.com as the company or application URL, and paste the callback address below as the OAuth 2.0 redirect URI. Then agree to Xero’s terms and create the app.',
+      'Copy the app’s client ID and paste it below. A mobile or desktop app has no secret, so leave that empty.',
     ],
   },
   slack: {
@@ -118,7 +124,7 @@ function createCatalogue({db, services, userId, baseUrl, personalUrl, fetchFn = 
       instruction:guide.instruction||name+' signs you in through an app you make with it, as it doesn’t let Closedhand register itself.',
       steps:guide.steps||anySteps(name),guide:guide.link||null,linkText:guide.linkText||null,
       token:made?guide.token:null,submitText:made?'Connect':null,
-      scopes:made||guide.scopesSet?[]:scopesOf(published),secretOptional:!key};
+      scopes:made||guide.scopesSet?[]:scopesOf(published),secretOptional:!key||!!guide.secretOptional};
   }
   // Makes the person's app with the token the company handed them, for a
   // server that has `create`, and gives back its client ID and secret.

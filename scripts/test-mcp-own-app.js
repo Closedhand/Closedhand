@@ -222,8 +222,11 @@ test('Slack’s app is made by Closedhand from a token: its callback address, pe
   assert.match(other.instruction,/^example-crm\.test signs you in through an app you make with it/);
   // Xero has no tile, but its address finds its own steps and its page.
   const xero=await catalogue.ownApp('https://api.xero.com/mcp/v1',{scopes_supported:['accounting.invoices.read']});
-  assert.deepEqual([xero.name,xero.guide,xero.steps.length,xero.redirectUri],['Xero','https://developer.xero.com/app/manage',3,CALLBACK]);
-  assert.match(xero.steps[1],/choose “Web app”/);
+  assert.deepEqual([xero.name,xero.guide,xero.steps.length,xero.redirectUri,xero.secretOptional],['Xero','https://developer.xero.com/app/manage',4,CALLBACK,true]);
+  // Xero's own form: it recommends a mobile or desktop app, which has no secret; a web app's secret works too.
+  assert.match(xero.steps[1],/choose “Mobile or desktop app”, the type Xero’s remote MCP needs/);
+  assert.match(xero.steps[2],/“No” to using Xero data to train an AI model and “Yes” to Xero’s security requirements[\s\S]*OAuth 2\.0 redirect URI/);
+  assert.match(xero.steps[3],/A mobile or desktop app has no secret, so leave that empty\./);
   assert.deepEqual(xero.scopes,[],'a new Xero app has every permission already: nothing to tick, so no list of codes');
   assert.match(xero.instruction,/On Xero’s free developer plan the app reaches only Xero’s demo company: your own organisation needs its Core plan or above\./,'said before the steps, not found out after them');
   // Elsewhere the permissions are folded away as one box to copy, for a service that asks.
