@@ -66,4 +66,9 @@ test("every writer keeps the shape: chat's pin_fact, what came in, the setup sca
   assert.match(follow, /if \(!part \|\| part === "profile-name"\) continue;/, "what came in never sets their name");
   assert.match(follow, /if \(held\.value\.length > shape\.NOTE_MAX\) \{\n\s*const short = await \(deps\.rewrite \|\| shape\.rewriteNote\)/);
   assert.match(read("lib/onboarding.js"), /new Set\(\["profile-name", "profile-contact", "profile-work"\]\)/);
+  const dash = read("webapp/views/dashboard.html");
+  const order = dash.match(/var ABOUT_ORDER = (\[[^\]]*\]);/);
+  assert.deepEqual(JSON.parse(order[1].replace(/'/g, '"')), require("../lib/facts-shape").ABOUT, "the dashboard shows About you in the same order");
+  assert.match(dash, /if \(cat === 'profile'\) rows\.sort\(function\(a, b\) \{ return aboutRank\(a\.key\) - aboutRank\(b\.key\); \}\);/);
+  assert.match(dash, /var valPreview = n\.value \|\| '';/, "a note shows whole");
 });
