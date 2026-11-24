@@ -68,7 +68,11 @@ test("the same words go without asking again; anything changed is named", () => 
   const changed = p.compare(parts, ["Hi,", BODY[0], "The replacement ticket cost GBP 62 at the station.", BODY[2], "Thanks, Ana"].join("\n\n"));
   assert.equal(changed.same, false);
   assert.deepEqual(plain(changed.added), ["Hi,", "The replacement ticket cost GBP 62 at the station.", "Thanks, Ana"]);
-  assert.deepEqual(plain(changed.removed), [BODY[1]]);
+  assert.deepEqual(plain(changed.removed), [BODY[1]], "the lead-in and the \"say send\" are not the message");
+  // Its last sentence reworded: what it said is named too, as on the live run.
+  const last = p.compare(parts, [BODY[0], BODY[1], "Please confirm the £60 is approved and when it will be paid."].join("\n\n"));
+  assert.deepEqual(plain(last.added), ["Please confirm the £60 is approved and when it will be paid."]);
+  assert.deepEqual(plain(last.removed), [BODY[2]]);
   assert.equal(p.compare(null, BODY.join("\n\n")), null, "no yes, nothing to compare");
 });
 
