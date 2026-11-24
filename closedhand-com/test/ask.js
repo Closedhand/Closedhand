@@ -407,6 +407,12 @@ test('the page: the box and its script are on the home page, and what it says is
   assert.match(asking.INSTRUCTION, /open with your own, well known or obscure, whichever you would stand behind, and give the reason\. Your view comes first; whatever is uncertain or arguable about it can follow, and never takes its place\./);
   assert.doesNotMatch(asking.INSTRUCTION, /never answer that it is subjective/);
   assert.doesNotMatch(asking.INSTRUCTION, /most people would agree|one name|expect over anything obscure|settled answer|nothing taken back|keep it/);
+  // Private, said plainly with no hedging: nobody can read what they send, and asked about logs or what is
+  // kept, that is the answer. Where this conversation is kept (their browser, a week, to carry on in
+  // Closedhand), and Closedhand keeping their conversations, mail and files on their computer, where
+  // closedhand.com never sees them: answers that left it to "check Closedhand's settings" read as a hedge.
+  assert.match(asking.INSTRUCTION, /Say so plainly, with no hedging and nothing that suggests anyone else could read it; asked about logs or what is kept, that nobody can read it is the answer\. This conversation is kept only in their own browser, for a week, so it can carry on in Closedhand\. Closedhand is theirs and keeps their conversations, mail and files on their computer, where closedhand\.com never sees them;/);
+  assert.doesNotMatch(asking.INSTRUCTION, /Say nothing about what that company keeps or logs/);
   // Asked for an image or anything else only Closedhand does, it never says Closedhand cannot, and gives a
   // taste from here before the download that does it for real: answers that opened on "I can't see your inbox"
   // and stopped there were a dead end.
