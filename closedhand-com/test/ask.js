@@ -148,6 +148,7 @@ test('a question goes to the sealed hardware encrypted, with closedhand.com\'s i
   assert.equal(sent.opened[0].text, asking.INSTRUCTION, 'its own instruction, encrypted to the same key');
   assert.equal(sent.opened[1].text, question);
   assert.equal(sent.body.max_tokens, asking.MAX_TOKENS);
+  assert.deepEqual(sent.body.chat_template_kwargs, { enable_thinking: false }, 'the first question answers at once');
   assert.equal(sent.body.model, 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated');
   assert.deepEqual(sent.sealed, { modelKey: key, clientKey: mine.publicHex }, 'the answer is for the page\'s key, never one of closedhand.com\'s');
   assert.match(sent.conn.apiKey, /^sk-/, 'with closedhand.com\'s own key at the provider');
@@ -156,6 +157,8 @@ test('a question goes to the sealed hardware encrypted, with closedhand.com\'s i
   const next = await fromPage(key, [question, 'Answer to: ' + question, 'And at night?']);
   assert.equal((await ask.ask(next.body, '203.0.113.7')).status, 200);
   assert.deepEqual(h.got[1].opened.map(m => m.role), ['system', 'user', 'assistant', 'user']);
+  assert.deepEqual(h.got[1].body.chat_template_kwargs, { enable_thinking: true }, 'a follow-up thinks first: answered at once, it gave way to a misreading');
+  assert.equal(h.got[1].body.max_tokens, asking.MAX_TOKENS + asking.THINKING_TOKENS, 'with room to think on top of the answer');
   assert.deepEqual(await today(), { asks: 2, askers: 1, capped: 0, went: 0 }, 'only the day\'s totals are kept');
   const kept = JSON.stringify((await db.query('SELECT * FROM site_asks')).rows);
   assert.doesNotMatch(kept, /203\.0\.113|Fixture/, 'no address and no words');

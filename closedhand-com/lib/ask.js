@@ -19,6 +19,14 @@ const HEX_KEY = /^[0-9a-f]{64}$/;
 const field = bytes => (32 + 24 + bytes + 16) * 2;
 const MAX_QUESTION = field(2000), MAX_ANSWER = field(6000);
 const MAX_TOKENS = 400;
+// A follow-up thinks first, with room for that on top of the answer. Asked
+// straight away, it gave way to a follow-up that misread its answer (5 times
+// in 5, reshuffling a sound ranking) and stumbled on a recount; thinking
+// first, it pointed out the misreading 5 times in 5, in 10 to 23 s. The
+// thinking streams as it goes, so its first piece leads well inside the
+// second try's three seconds. The first question stays without thinking: its
+// first words come at once.
+const THINKING_TOKENS = 3600;
 // What the LLM is told. Accuracy and honesty come before everything else in
 // it. It answers at once here, without thinking first, so its first words
 // come in under a second (thinking took 1.4 to 35 s to the first word when
@@ -171,8 +179,10 @@ function create({ db, env = process.env, includedAi, near = defaultNear, now = (
     try {
       const { conn, model } = await connection();
       const instruction = { role: 'system', content: near.seal(INSTRUCTION, Buffer.from(asked.key, 'hex')) };
-      // Without thinking: the answer is short, and its first word comes at once.
-      const res = await answered(conn, { model, max_tokens: MAX_TOKENS, chat_template_kwargs: { enable_thinking: false }, messages: [instruction, ...asked.messages] },
+      // The first question without thinking, so its first word comes at once;
+      // a follow-up thinks first (THINKING_TOKENS).
+      const followUp = asked.messages.length > 1;
+      const res = await answered(conn, { model, max_tokens: followUp ? MAX_TOKENS + THINKING_TOKENS : MAX_TOKENS, chat_template_kwargs: { enable_thinking: followUp }, messages: [instruction, ...asked.messages] },
         { modelKey: asked.key, clientKey: asked.client }, signal, chunk => {
           const piece = chunk?.choices?.[0]?.delta?.content;
           if (typeof piece === 'string' && piece) { pieces++; onPiece(piece); }
@@ -243,4 +253,4 @@ function create({ db, env = process.env, includedAi, near = defaultNear, now = (
   return { register, ask, key, days, on, left };
 }
 
-module.exports = { create, INSTRUCTION, MAX_TOKENS };
+module.exports = { create, INSTRUCTION, MAX_TOKENS, THINKING_TOKENS };
