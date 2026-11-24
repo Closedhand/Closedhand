@@ -372,13 +372,16 @@ test('the page: the box and its script are on the home page, and what it says is
   // Each example is one the LLM can answer with nothing of the person's.
   const tries = [...home.matchAll(/<button type="button">([^<]+)<\/button>/g)].map(m => m[1]).filter(t => /\?|\.$/.test(t));
   assert.ok(tries.length >= 2 && tries.every(t => !/\bmy\b|\bme\b/i.test(t)), 'no example needs their mail, calendar or files');
-  // The box says nothing of how it is private: the line below it on the page does. After an answer one
-  // piece leads to the download just below, the whole of it the button on a computer.
-  assert.match(home, /<p class="ask-note" id="askNote"><\/p>/);
+  // The box says nothing of how it is private: the line below it on the page does. It is one piece: in
+  // its own foot, how many questions are left, after an answer one quiet line on what Closedhand adds
+  // (the way to the download on a computer, the link sent on a phone), and Send.
+  assert.match(home, /<div class="ask-foot"><div class="ask-foot-info"><p class="ask-note" id="askNote"><\/p><span id="askUnlockSlot"><\/span><\/div><button type="submit" class="ask-send" id="askSend" disabled>/);
   assert.doesNotMatch(home + script, /Encrypted in your browser|Download below|Generate images, take actions/);
-  // What it unlocks, a chip each under the line.
-  assert.match(script, /say\('', handheld \? 'On a computer, Closedhand unlocks:' : 'Download Closedhand below to unlock:', true\);/);
-  assert.deepEqual([...script.matchAll(/\['([a-z ]+)', '<(?:rect|path)/g)].map(m => m[1]), ['image generation', 'agentic actions', 'anything you connect']);
+  // What it unlocks, by the names people know, in one line: no pills.
+  assert.match(script, /var UNLOCKS = 'image generation, agentic actions and anything you connect';/);
+  assert.match(script, /unlock\.textContent = handheld \? 'Send yourself the link for ' \+ UNLOCKS : 'Get ' \+ UNLOCKS;/);
+  assert.match(script, /unlock\.addEventListener\('click', handheld \? sendLink : down\);/);
+  assert.doesNotMatch(home + script, /ask-chip/);
   // How many questions are left: a mark for each and the same in words, never a zero.
   assert.match(script, /line\.textContent = \(state\.left === 1 \? 'One question' : state\.left \+ ' questions'\) \+ ' left here today';/);
   assert.match(script, /if \(!\(state\.left > 0\)\) \{ note\.hidden = true; return; \}/);

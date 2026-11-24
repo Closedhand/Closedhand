@@ -15,7 +15,7 @@
   if (!P || !P.ready || !window.fetch) { box.hidden = true; return; }
   var byId = function (id) { return document.getElementById(id); };
   var thread = byId('askThread'), form = byId('askForm'), input = byId('askInput'), send = byId('askSend');
-  var tries = byId('askTries'), slot = byId('askNextSlot'), next = null, note = byId('askNote');
+  var tries = byId('askTries'), slot = byId('askNextSlot'), next = null, note = byId('askNote'), unlockSlot = byId('askUnlockSlot'), unlock = null;
   var handheld = document.documentElement.classList.contains('handheld');
   var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   var NOISE = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -145,13 +145,20 @@
     if (navigator.share) return navigator.share({ title: 'Closedhand', url: here }).catch(function () {});
     if (navigator.clipboard) navigator.clipboard.writeText(here).then(function () { b.textContent = 'Link copied'; }, function () {});
   }
-  // What Closedhand unlocks, one chip each, in the line style of the rest.
-  var UNLOCKS = [
-    ['image generation', '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.75"/><path d="M21 16l-5-5-9 9"/>'],
-    ['agentic actions', '<path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/>'],
-    ['anything you connect', '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>'],
-  ];
-  function say(lead, words, unlocks) {
+  // After an answer, what Closedhand itself adds, as one quiet line in the
+  // box's foot beside the questions left: on a computer the way to the
+  // download just below, on a phone a way to send yourself the link.
+  var UNLOCKS = 'image generation, agentic actions and anything you connect';
+  function unlockLine() {
+    if (unlock) { unlock.hidden = false; return; }
+    unlock = document.createElement('button');
+    unlock.type = 'button'; unlock.className = 'ask-unlock';
+    unlock.textContent = handheld ? 'Send yourself the link for ' + UNLOCKS : 'Get ' + UNLOCKS;
+    if (!handheld) unlock.insertAdjacentHTML('beforeend', DOWN);
+    unlock.addEventListener('click', handheld ? sendLink : down);
+    unlockSlot.appendChild(unlock);
+  }
+  function say(lead, words) {
     if (next) next.remove();
     next = document.createElement(handheld ? 'div' : 'button');
     next.className = 'ask-next';
@@ -160,19 +167,6 @@
     line.className = 'ask-next-words';
     if (lead) { var strong = document.createElement('strong'); strong.textContent = lead; line.appendChild(strong); }
     line.appendChild(document.createTextNode(words));
-    if (unlocks) {
-      var chips = document.createElement('span');
-      chips.className = 'ask-chips';
-      UNLOCKS.forEach(function (u, i) {
-        var chip = document.createElement('span');
-        chip.className = 'ask-chip';
-        chip.style.animationDelay = (0.25 + i * 0.12) + 's';
-        chip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + u[1] + '</svg>';
-        chip.appendChild(document.createTextNode(u[0].charAt(0).toUpperCase() + u[0].slice(1)));
-        chips.appendChild(chip);
-      });
-      line.appendChild(chips);
-    }
     next.appendChild(line);
     if (handheld) {
       var go = document.createElement('button');
@@ -186,11 +180,11 @@
     }
     slot.appendChild(next);
   }
-  function hush(yes) { if (next) next.hidden = yes; }
+  function hush(yes) { if (next) next.hidden = yes; if (unlock) unlock.hidden = yes; }
   var FREE = 'The first 7 days are free and need no card.';
   function after() {
     if (state.left === 0) return over(true);
-    say('', handheld ? 'On a computer, Closedhand unlocks:' : 'Download Closedhand below to unlock:', true);
+    unlockLine();
     count();
   }
   // How many questions are left here today: a mark for each, and the same in

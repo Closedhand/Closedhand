@@ -733,9 +733,23 @@ body.chat-active .mon-area { display:none; }
   .ask-msg.bot { align-self: flex-start; max-width: 100%; background: rgba(var(--fg-rgb),0.03); border: 1px solid rgba(var(--fg-rgb),0.06); border-radius: .875rem .875rem .875rem .25rem; }
   .ask-msg.bot.failed { color: var(--muted); }
   .ask-by { display: block; margin-top: .5rem; font-size: .78125rem; line-height: 1.4; color: var(--muted); }
-  .ask-box { display: flex; align-items: flex-end; gap: .5rem; padding: .4375rem .4375rem .4375rem 1.125rem; border-radius: 1.25rem; background: rgba(var(--raised-rgb),0.75); border: 1.5px solid rgba(var(--accent-strong-rgb),0.3); box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 3.125rem rgba(var(--accent-strong-rgb),0.04); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
+  /* One piece: the question, and under it in the box's own foot how many are
+     left today, after an answer the one line on what Closedhand adds, and Send. */
+  .ask-box { display: flex; flex-direction: column; align-items: stretch; gap: .25rem; padding: .625rem .5rem .5rem 1.125rem; border-radius: 1.25rem; background: rgba(var(--raised-rgb),0.75); border: 1.5px solid rgba(var(--accent-strong-rgb),0.3); box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 3.125rem rgba(var(--accent-strong-rgb),0.04); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
   .ask-box:focus-within { border-color: rgba(var(--accent-strong-rgb),0.45); box-shadow: 0 0 1.875rem rgba(var(--accent-strong-rgb),0.12), 0 0 3.75rem rgba(var(--accent-strong-rgb),0.06); }
-  .ask-box textarea { flex: 1; min-width: 0; display: block; align-self: center; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 300 1.0625rem/1.5 var(--font-ui); padding: .4375rem 0; max-height: 9rem; overscroll-behavior: contain; }
+  .ask-box textarea { min-width: 0; display: block; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 300 1.0625rem/1.5 var(--font-ui); padding: .375rem .625rem .375rem 0; max-height: 9rem; overscroll-behavior: contain; }
+  .ask-foot { display: flex; align-items: center; gap: .75rem; }
+  .ask-foot-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.125rem; }
+  .ask-foot .ask-note { margin: 0; justify-content: flex-start; text-align: left; }
+  /* After an answer, what Closedhand itself adds: one quiet line, the way to
+     the download on a computer, a way to send yourself the link on a phone. */
+  .ask-unlock { display: inline; padding: .125rem 0; background: none; border: 0; font: inherit; font-size: .8125rem; line-height: 1.45; color: rgba(var(--fg-rgb),0.55); text-align: left; cursor: pointer; transition: color .2s; animation: heroIn .5s cubic-bezier(0.16,1,0.3,1); }
+  /* The arrow ends the words, on whichever line they end. */
+  .ask-unlock svg { display: inline-block; vertical-align: -.125rem; margin-left: .3125rem; width: .875rem; height: .875rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; animation: nextNod 1.1s ease-in-out .8s 2; }
+  .ask-unlock:hover { color: var(--fg); }
+  .ask-unlock:hover svg { animation: nextNod 1.1s ease-in-out infinite; }
+  .ask-unlock:focus-visible { outline: 2px solid var(--accent); outline-offset: .1875rem; border-radius: .25rem; color: var(--fg); }
+  .ask-unlock[hidden] { display: none; }
   .ask-box textarea::placeholder { color: rgba(var(--fg-rgb),0.5); }
   .ask-send { flex: none; display: flex; align-items: center; gap: .5rem; padding: .625rem 1.125rem; border-radius: .875rem; background: rgba(var(--fg-rgb),0.08); border: 1px solid rgba(var(--fg-rgb),0.12); color: rgba(var(--fg-rgb),0.5); font: 400 .9375rem/1 var(--font-ui); cursor: default; transition: background 0.2s, color 0.2s, border-color 0.2s; }
   .ask-send svg { width: .875rem; height: .875rem; fill: currentColor; }
@@ -796,11 +810,6 @@ body.chat-active .mon-area { display:none; }
   button.ask-next:hover .ask-next-go, button.ask-next-go:hover { background: rgba(var(--fg-rgb),0.22); }
   button.ask-next-go { cursor: pointer; }
   .ask-next svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  /* What Closedhand unlocks, a chip each, coming in one after another. */
-  .ask-chips { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .5rem; }
-  .ask-chip { display: inline-flex; align-items: center; gap: .375rem; padding: .25rem .625rem .25rem .5rem; border-radius: 62.5rem; border: 1px solid rgba(var(--fg-rgb),0.12); background: rgba(var(--fg-rgb),0.04); font-size: .8125rem; line-height: 1.3; color: rgba(var(--fg-rgb),0.85); opacity: 0; animation: heroIn .5s cubic-bezier(0.16,1,0.3,1) forwards; }
-  .ask-next .ask-chip svg { width: .875rem; height: .875rem; stroke-width: 1.75; color: var(--muted); }
-  button.ask-next:hover .ask-chip { border-color: rgba(var(--fg-rgb),0.2); }
   .ask.done .ask-box, .ask.done .ask-tries { display: none; }
   /* The questions are used up: the piece takes the box's place and its look,
      so it reads as where the conversation now goes, and the download card
@@ -811,8 +820,7 @@ body.chat-active .mon-area { display:none; }
   .ask.done .ask-next { animation: heroIn .5s cubic-bezier(0.16,1,0.3,1), doneGlow 3.2s ease-in-out .6s 3; }
   @keyframes doneGlow { 50% { border-color: rgba(var(--accent-strong-rgb),0.7); box-shadow: 0 0 1.75rem rgba(var(--accent-strong-rgb),0.22), 0 0 4.375rem rgba(var(--accent-strong-rgb),0.1); } }
   @media (prefers-reduced-motion: reduce) {
-    .ask-next, .ask.done .ask-next, .ask-next::before, .ask-next svg, .ask-pips i, .ask-pips i::after, .ask-left { animation: none !important; }
-    .ask-chip { animation: none; opacity: 1; }
+    .ask-next, .ask.done .ask-next, .ask-next::before, .ask-next svg, .ask-pips i, .ask-pips i::after, .ask-left, .ask-unlock, .ask-unlock svg { animation: none !important; }
     .ask-next::before { display: none; }
   }
   .ask.done .ask-next strong { font-size: 1.125rem; margin-bottom: .125rem; }
@@ -834,7 +842,6 @@ body.chat-active .mon-area { display:none; }
     .ask-send { padding: .6875rem .8125rem; }
     .ask-next { flex-direction: column; align-items: stretch; gap: .75rem; padding: .875rem; text-align: center; }
     .ask-next .ask-next-go { padding: .75rem 1.125rem; }
-    .ask-chips { justify-content: center; }
     button.ask-next .ask-next-go { align-self: center; }
   }
   .first-steps { display: flex; flex-direction: column; gap: .75rem; width: 100%; max-width: 22.5rem; margin: 0 auto; padding: .875rem .875rem .5rem; border-radius: 1rem; background: rgba(var(--deep-rgb),0.72); border: 1px solid rgba(var(--fg-rgb),0.1); opacity: 0; animation: heroIn 0.8s ease forwards 0.8s; }
@@ -938,7 +945,7 @@ body.chat-active .mon-area { display:none; }
       <ol class="ask-thread" id="askThread" aria-live="polite"></ol>
       <form class="ask-box" id="askForm">
         <textarea id="askInput" rows="1" maxlength="500" placeholder="Ask what other assistants refuse to answer" aria-label="Your question" enterkeyhint="send" autocomplete="off"></textarea>
-        <button type="submit" class="ask-send" id="askSend" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span class="ask-send-label">Send</span></button>
+        <div class="ask-foot"><div class="ask-foot-info"><p class="ask-note" id="askNote"></p><span id="askUnlockSlot"></span></div><button type="submit" class="ask-send" id="askSend" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span class="ask-send-label">Send</span></button></div>
       </form>
       <div class="ask-tries computer-only" id="askTries" role="group" aria-label="Questions to try">
         <div class="ask-tries-track">
@@ -953,7 +960,6 @@ body.chat-active .mon-area { display:none; }
         </div>
       </div>
       <div id="askNextSlot"></div>
-      <p class="ask-note" id="askNote"></p>
     </section>
 
     <!-- A phone can't run Closedhand: it lives on a computer, and this phone
