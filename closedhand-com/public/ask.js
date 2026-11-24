@@ -148,12 +148,12 @@
   // After an answer, what Closedhand itself adds, as one quiet line in the
   // box's foot beside the questions left: on a computer the way to the
   // download just below, on a phone a way to send yourself the link.
-  var UNLOCKS = 'image generation, agentic actions and anything you connect';
+  var UNLOCKS = 'image generation, agentic actions and connect with anything';
   function unlockLine() {
     if (unlock) { unlock.hidden = false; return; }
     unlock = document.createElement('button');
     unlock.type = 'button'; unlock.className = 'ask-unlock';
-    unlock.textContent = handheld ? 'Send yourself the link for ' + UNLOCKS : 'Get ' + UNLOCKS;
+    unlock.textContent = handheld ? 'Send yourself the link: ' + UNLOCKS : 'Get ' + UNLOCKS;
     if (!handheld) unlock.insertAdjacentHTML('beforeend', DOWN);
     unlock.addEventListener('click', handheld ? sendLink : down);
     unlockSlot.appendChild(unlock);

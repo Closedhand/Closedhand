@@ -733,13 +733,16 @@ body.chat-active .mon-area { display:none; }
   .ask-msg.bot { align-self: flex-start; max-width: 100%; background: rgba(var(--fg-rgb),0.03); border: 1px solid rgba(var(--fg-rgb),0.06); border-radius: .875rem .875rem .875rem .25rem; }
   .ask-msg.bot.failed { color: var(--muted); }
   .ask-by { display: block; margin-top: .5rem; font-size: .78125rem; line-height: 1.4; color: var(--muted); }
-  /* One piece: the question, and under it in the box's own foot how many are
-     left today, after an answer the one line on what Closedhand adds, and Send. */
-  .ask-box { display: flex; flex-direction: column; align-items: stretch; gap: .25rem; padding: .625rem .5rem .5rem 1.125rem; border-radius: 1.25rem; background: rgba(var(--raised-rgb),0.75); border: 1.5px solid rgba(var(--accent-strong-rgb),0.3); box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 3.125rem rgba(var(--accent-strong-rgb),0.04); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
+  /* One piece: the question and Send, and under a hairline, in a tray of its
+     own, how many are left today and after an answer the one line on what
+     Closedhand adds. */
+  .ask-box { display: flex; flex-direction: column; align-items: stretch; overflow: hidden; padding: 0; border-radius: 1.25rem; background: rgba(var(--raised-rgb),0.75); border: 1.5px solid rgba(var(--accent-strong-rgb),0.3); box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 3.125rem rgba(var(--accent-strong-rgb),0.04); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
   .ask-box:focus-within { border-color: rgba(var(--accent-strong-rgb),0.45); box-shadow: 0 0 1.875rem rgba(var(--accent-strong-rgb),0.12), 0 0 3.75rem rgba(var(--accent-strong-rgb),0.06); }
-  .ask-box textarea { min-width: 0; display: block; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 300 1.0625rem/1.5 var(--font-ui); padding: .375rem .625rem .375rem 0; max-height: 9rem; overscroll-behavior: contain; }
-  .ask-foot { display: flex; align-items: center; gap: .75rem; }
-  .ask-foot-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.125rem; }
+  .ask-row { display: flex; align-items: flex-end; gap: .5rem; padding: .4375rem .4375rem .4375rem 1.125rem; }
+  .ask-box textarea { flex: 1; min-width: 0; display: block; align-self: center; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 300 1.0625rem/1.5 var(--font-ui); padding: .4375rem 0; max-height: 9rem; overscroll-behavior: contain; }
+  .ask-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem 1.25rem; padding: .5rem 1.125rem .5625rem; border-top: 1px solid rgba(var(--fg-rgb),0.07); background: rgba(var(--fg-rgb),0.025); }
+  /* Nothing to say yet (the count still coming), no tray. */
+  .ask-foot:not(:has(.ask-note:not(:empty):not([hidden]), .ask-unlock:not([hidden]))) { display: none; }
   .ask-foot .ask-note { margin: 0; justify-content: flex-start; text-align: left; }
   /* After an answer, what Closedhand itself adds: one quiet line, the way to
      the download on a computer, a way to send yourself the link on a phone. */
@@ -944,8 +947,8 @@ body.chat-active .mon-area { display:none; }
     <section class="ask" id="ask" aria-label="Ask the uncensored LLM">
       <ol class="ask-thread" id="askThread" aria-live="polite"></ol>
       <form class="ask-box" id="askForm">
-        <textarea id="askInput" rows="1" maxlength="500" placeholder="Ask what other assistants refuse to answer" aria-label="Your question" enterkeyhint="send" autocomplete="off"></textarea>
-        <div class="ask-foot"><div class="ask-foot-info"><p class="ask-note" id="askNote"></p><span id="askUnlockSlot"></span></div><button type="submit" class="ask-send" id="askSend" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span class="ask-send-label">Send</span></button></div>
+        <div class="ask-row"><textarea id="askInput" rows="1" maxlength="500" placeholder="Ask what other assistants refuse to answer" aria-label="Your question" enterkeyhint="send" autocomplete="off"></textarea><button type="submit" class="ask-send" id="askSend" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span class="ask-send-label">Send</span></button></div>
+        <div class="ask-foot"><p class="ask-note" id="askNote"></p><span id="askUnlockSlot"></span></div>
       </form>
       <div class="ask-tries computer-only" id="askTries" role="group" aria-label="Questions to try">
         <div class="ask-tries-track">
