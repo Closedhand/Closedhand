@@ -30,7 +30,7 @@ function loadConfirmation(pending, fail = null) {
   const ctx = { pendingConfirmations: { u1: pending }, activePlatform: "web" };
   const deps = {
     "./context": ctx, "./storage": { saveStore() {} }, "./conversation": { getConversation: () => [] },
-    "./tools/handlers": { handleInternalTool: async (name, input) => { ran.push(["own", name, input.event_id]); return { success: true }; } },
+    "./tools/handlers": { saidYes: () => {}, handleInternalTool: async (name, input) => { ran.push(["own", name, input.event_id]); return { success: true }; } },
     "./mcp": { callMCPTool: async (name, input) => { ran.push(["mcp", name, input.event_id]); if (fail === input.event_id) throw new Error("the server said no"); return { content: [{ type: "text", text: "deleted " + input.event_id }] }; } },
     "./spend-guard": { ledgerUpdate: async () => {} }, "./messaging": { sendTyping() {} },
     "./confirmation-lifetime": require("../lib/confirmation-lifetime"),

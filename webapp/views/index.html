@@ -3615,6 +3615,8 @@
           if (msg.type === 'carried') { if (window._onCarried) window._onCarried(msg.count); return; }
           // Conversation history was cleared (/clear, lib/clear-command.js): what is shown goes too.
           if (msg.type === 'cleared') { messagesEl.querySelectorAll('.message').forEach(function(m) { m.remove(); }); loadActivityFeed(); return; }
+          // A project deleted in chat: its conversation, if open here, gives way to Chat.
+          if (msg.type === 'project_gone') { if (window.projectGone) window.projectGone(msg.id); return; }
           // A turn or a message in another app: shown here too, live.
           if (msg.type === 'elsewhere') { showElsewhere(msg); return; }
           // A reply ends the wait; progress while this tab waits restarts the timer.
