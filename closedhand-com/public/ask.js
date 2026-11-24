@@ -153,7 +153,7 @@
     if (unlock) { unlock.hidden = false; return; }
     unlock = document.createElement('button');
     unlock.type = 'button'; unlock.className = 'ask-unlock';
-    unlock.textContent = handheld ? 'Send yourself the link: ' + UNLOCKS : 'Get ' + UNLOCKS;
+    unlock.textContent = handheld ? 'Send yourself the link: ' + UNLOCKS : 'Access ' + UNLOCKS;
     if (!handheld) unlock.insertAdjacentHTML('beforeend', DOWN);
     unlock.addEventListener('click', handheld ? sendLink : down);
     unlockSlot.appendChild(unlock);

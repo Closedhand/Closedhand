@@ -743,8 +743,9 @@ body.chat-active .mon-area { display:none; }
      so a placeholder that wraps on a narrow screen never scrolls. */
   .ask-row { display: flex; align-items: flex-end; gap: .625rem; padding: .9375rem .625rem .625rem 1.375rem; }
   .ask-box textarea { flex: 1; min-width: 0; display: block; align-self: stretch; min-height: 4.0625rem; background: none; border: none; outline: none; resize: none; color: var(--fg); font: 400 1.1875rem/1.5 var(--font-ui); padding: .125rem 0 .375rem; max-height: 9rem; overscroll-behavior: contain; caret-color: var(--accent); }
-  /* The tray is quieter: smaller words, centred, on a darker strip. */
-  .ask-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .125rem 1rem; padding: .4375rem 1rem .5rem; border-top: 1px solid rgba(var(--fg-rgb),0.06); background: rgba(var(--bg-rgb),0.55); text-align: center; }
+  /* The tray is quieter: smaller words, centred, on a darker strip, the
+     line on what Closedhand adds under the count. */
+  .ask-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .125rem; padding: .4375rem 1rem .5rem; border-top: 1px solid rgba(var(--fg-rgb),0.06); background: rgba(var(--bg-rgb),0.55); text-align: center; }
   /* Nothing to say yet (the count still coming), no tray. */
   .ask-foot:not(:has(.ask-note:not(:empty):not([hidden]), .ask-unlock:not([hidden]))) { display: none; }
   .ask-foot .ask-note { margin: 0; justify-content: center; font-size: .75rem; }
