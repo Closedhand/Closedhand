@@ -8697,9 +8697,7 @@
     }
 
     var PROFILE_LABELS = { name: 'Name', email: 'Email', phone: 'Phone', birthday: 'Birthday', timezone: 'Time zone' };
-    // The parts of About you, in order, as lib/facts-shape.js ABOUT has them.
-    var ABOUT_ORDER = ['name', 'identity', 'contact', 'home', 'work', 'health', 'money'];
-    function aboutRank(key) { var i = ABOUT_ORDER.indexOf(String(key || '').replace(/^profile[-_]/, '')); return i === -1 ? ABOUT_ORDER.length : i; }
+
     // The tab row says when it has more to scroll to, and keeps the open tab in view.
     (function() {
       var bar = document.querySelector('.tab-bar');
@@ -9275,9 +9273,10 @@
           var cat = CATEGORY_ORDER[ci];
           var rows = grouped[cat];
           if (!rows || rows.length === 0) continue;
-          // About you in its fixed order (lib/facts-shape.js ABOUT); elsewhere
-          // subject first, so several notes on one company read as a set.
-          if (cat === 'profile') rows.sort(function(a, b) { return aboutRank(a.key) - aboutRank(b.key); });
+          // About you by heading, their name first (its subject is the same
+          // for each); elsewhere subject first, so several notes on one
+          // company read as a set.
+          if (cat === 'profile') rows.sort(function(a, b) { return (a.key === 'profile-name' ? 0 : 1) - (b.key === 'profile-name' ? 0 : 1) || factLabel(a).localeCompare(factLabel(b)); });
           else rows.sort(function(a, b) { return (a.subject || a.key).localeCompare(b.subject || b.key); });
           html += '<div class="memory-section-label">' + CATEGORY_LABELS[cat] + '</div>';
           html += '<div class="pinned-note-list">';

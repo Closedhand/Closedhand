@@ -1,9 +1,10 @@
 // The shape a Pinned Fact keeps (lib/facts-shape.js), wherever it is written.
-// About you is a fixed set of parts of the person's life, never a heading made
-// up on the way ("Health knee surgery", an "Email" note holding health
-// details). The name is the name alone, never joined with anything. A note grown past its size is rewritten short, and the rewrite
-// may never lose an address, a phone number or a reference number. Invented
-// people and numbers only.
+// The writer names a note's heading and code guards it: a heading they have,
+// named within it, goes under it; a treatment or an operation is under Health,
+// never a heading of its own ("Health knee surgery"); a heading is a word or
+// two; the name is the name alone. A note grown past its size is rewritten
+// short, and the rewrite may never lose an address, a phone number or a
+// reference number. Invented people and numbers only.
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -11,14 +12,19 @@ const path = require("node:path");
 const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
 process.env.CTX_STRICT = "off";
 
-test("a note about the person goes under one fixed part of their life", () => {
-  const { aboutKey, ABOUT } = require("../lib/facts-shape");
-  assert.deepEqual(ABOUT, ["name", "identity", "contact", "home", "work", "health", "money"]);
-  for (const [given, part] of [["health-knee-surgery", "profile-health"], ["email", "profile-contact"], ["profile-email", "profile-contact"], ["Work contact", "profile-contact"],
-    ["profile-work", "profile-work"], ["profile-company", "profile-work"], ["profile-name", "profile-name"], ["full name", "profile-name"], ["birthday", "profile-identity"], ["nationality", "profile-identity"], ["bank", "profile-money"], ["where they live", "profile-home"]]) {
-    assert.equal(aboutKey(given), part, given);
+test("the writer names a heading, and code guards it", () => {
+  const { headingKey } = require("../lib/facts-shape");
+  const have = ["profile-contact", "profile-health", "profile-name"];
+  for (const [given, key, none] of [
+    ["health-knee-surgery", "profile-health", "profile-health"], ["knee surgery", "profile-health", "profile-health"], ["allergies", "profile-health", "profile-health"],
+    ["work contact", "profile-contact", "profile-work-contact"], ["profile-contact", "profile-contact", "profile-contact"],
+    ["email", "profile-email", "profile-email"], ["languages", "profile-languages", "profile-languages"], ["Travel documents", "profile-travel-documents", "profile-travel-documents"],
+    ["travel documents and visas", "profile-travel", "profile-travel"], ["name", "profile-name", "profile-name"], ["full name", "profile-full-name", "profile-full-name"],
+  ]) {
+    assert.equal(headingKey(given, have), key, `${given}, beside Contact and Health`);
+    assert.equal(headingKey(given, []), none, `${given}, with nothing pinned`);
   }
-  assert.equal(aboutKey("family-kids"), null, "nothing in it says which part: not filed by a guess");
+  assert.equal(headingKey("", have), null);
 });
 
 test("a rewrite keeps every address, phone number and reference number, or the note stays as it was", async () => {
@@ -53,22 +59,20 @@ test("a rewrite keeps every address, phone number and reference number, or the n
 test("every writer keeps the shape: chat's pin_fact, what came in, the setup scan", () => {
   const handlers = read("lib/tools/handlers.js");
   const pin = handlers.slice(handlers.indexOf('case "pin_fact": {'), handlers.indexOf('case "get_facts": {'));
-  assert.match(pin, /const part = shape\.aboutKey\(toolInput\.key\);\n\s*if \(!part\) return \{ error:/, "an About you note under a part, or asked again");
+  assert.match(pin, /const part = shape\.headingKey\(toolInput\.key, Object\.keys\(ctx\.store\.facts\)\.filter\(\(k\) => \/\^profile-\/\.test\(k\)\)\);\n\s*if \(!part\) return \{ error:/, "an About you note under its guarded heading"); 
   assert.match(pin, /if \(old && !old\.includes\(value\)\) value = `\$\{old\.replace\(\/\[\.!\?\]\?\$\/, "\."\)\} \$\{value\}`;/, "joining what is there");
   assert.match(pin, /if \(part !== key && part !== "profile-name"\) \{/, "the name is replaced, never joined");
   assert.match(pin, /if \(value\.length > shape\.NOTE_MAX\) \{/, "grown past its size, rewritten short");
   const defs = read("lib/tools/definitions.js");
-  assert.match(defs, /one of profile-name \(the name alone\), profile-identity, profile-contact, profile-home, profile-work, profile-health, profile-money/);
+  assert.match(defs, /a broad part of their life in a word or two \(profile-health, profile-contact, profile-languages\), never one thing within it, and a heading they have whenever the fact is what it names\. profile-name is the name alone\./);
   assert.match(defs, /what Closedhand can look up \(calendar entries and when they repeat, bookings, messages\) or what a project of theirs already holds/);
   const follow = read("lib/facts-follow.js");
-  assert.match(follow, /const part = require\("\.\/facts-shape"\)\.aboutKey\(held\.topic\);/);
-  assert.match(follow, /one of identity, contact, home, work, health or money/);
+  assert.match(follow, /const part = require\("\.\/facts-shape"\)\.headingKey\(held\.topic, Object\.keys\(facts\)\.filter\(\(k\) => \/\^profile-\/\.test\(k\)\)\);/);
+  assert.match(follow, /a broad part of their life in a word or two \(health, contact, languages\), never one thing within it/);
+  assert.match(follow, /String\(v\.value \?\? ""\)\.trim\(\) && k === held\.key\);/, "only the note under its own heading or subject is offered");
   assert.match(follow, /if \(!part \|\| part === "profile-name"\) continue;/, "what came in never sets their name");
   assert.match(follow, /if \(held\.value\.length > shape\.NOTE_MAX\) \{\n\s*const short = await \(deps\.rewrite \|\| shape\.rewriteNote\)/);
-  assert.match(read("lib/onboarding.js"), /new Set\(\["profile-name", "profile-contact", "profile-work"\]\)/);
   const dash = read("webapp/views/dashboard.html");
-  const order = dash.match(/var ABOUT_ORDER = (\[[^\]]*\]);/);
-  assert.deepEqual(JSON.parse(order[1].replace(/'/g, '"')), require("../lib/facts-shape").ABOUT, "the dashboard shows About you in the same order");
-  assert.match(dash, /if \(cat === 'profile'\) rows\.sort\(function\(a, b\) \{ return aboutRank\(a\.key\) - aboutRank\(b\.key\); \}\);/);
+  assert.match(dash, /if \(cat === 'profile'\) rows\.sort\(function\(a, b\) \{ return \(a\.key === 'profile-name' \? 0 : 1\) - \(b\.key === 'profile-name' \? 0 : 1\) \|\| factLabel\(a\)\.localeCompare\(factLabel\(b\)\); \}\);/, "About you by heading, the name first");
   assert.match(dash, /var valPreview = n\.value \|\| '';/, "a note shows whole");
 });
