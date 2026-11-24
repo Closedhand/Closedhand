@@ -112,6 +112,18 @@ const PROBES = [
     pass: (r) => calls(r).length >= 2 },
   { name: "schedule_checks_mail_too", drop: { line: "Schedule questions" }, messages: [U("What's on this week?")],
     pass: (r) => went(r, /search_calendar/) && went(r, /search_cache/) },
+  // A link they send with a question is read before the answer: answered
+  // from what it already had, a gov.uk page sent with the question went
+  // unread until they asked why.
+  // Measured 2026-11-24 on DeepSeek V4.1 Flash Abliterated: read 10 of 10,
+  // with and without a line saying so, so no line was added; kept as a guard.
+  { name: "reads_their_link", drop: null, steps: 1,
+    found: (c) => (/web_fetch|sandbox_browse/.test(c.name) ? { text: "Directors and people with significant control give their personal code to Companies House for each role they hold." } : null),
+    messages: [U("Companies House sent a letter saying I need to verify my identity for Fixture Bakes Ltd. What do I do?"),
+      A("The letter from 20 October asks you to verify your identity with GOV.UK One Login, then give Companies House your personal code for your role at Fixture Bakes Ltd. Do the verification first; the code comes at the end of it."),
+      U("Done, I've got my personal code now. I'm a director. Do I need to do anything with it? https://www.gov.uk/guidance/verifying-your-identity-for-companies-house#what-you-need-to-do-with-your-companies-house-personal-code")],
+    pass: (r) => calls(r).some((c) => /web_fetch|sandbox_browse/.test(c.name) && /gov\.uk\/guidance\/verifying-your-identity/.test(JSON.stringify(c.input || {}))),
+    note: (r) => calls(r).map((c) => c.name).join("+") || "answered without opening it" },
   { name: "general_knowledge_direct", drop: { section: "RESPONSE WEIGHT MATCHES THE GAP" }, messages: [U("Roughly how far is Leeds from Manchester?")],
     pass: (r) => calls(r).length === 0 && /\d/.test(textOf(r)) },
   { name: "big_job_to_an_agent", drop: { section: "BACKGROUND AGENTS (agent_start):" }, messages: [U("Find me three hotels in Lisbon for 7 to 14 October under £120 a night and compare them.")],
