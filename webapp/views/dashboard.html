@@ -1740,7 +1740,7 @@
             <div class="mcp-pill">
               <span class="edge-glow" aria-hidden="true"></span><span class="edge-run" aria-hidden="true"></span>
               <div class="mcp-pill-inner">
-                <textarea id="mcp-url-input" rows="1" placeholder="Paste an MCP server, skill or API key" aria-label="MCP server, skill or API key" oninput="mcpGrowInput(this)" onkeydown="mcpInputKey(event)" onpaste="mcpPaste(event)" spellcheck="false"></textarea>
+                <textarea id="mcp-url-input" rows="1" placeholder="Paste an MCP server, skill or API key" aria-label="MCP server, skill or API key" oninput="mcpGrowInput(this); mcpInputChanged(this)" onkeydown="mcpInputKey(event)" onpaste="mcpPaste(event)" spellcheck="false"></textarea>
                 <button onclick="addMcpConnection()" id="mcp-connect-btn" class="cta mcp-connect-btn unpainted">Connect</button>
               </div>
             </div>
@@ -3438,12 +3438,28 @@
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addMcpConnection(); }
     }
 
-    // A link pasted into the empty box is all there is to it, so it starts at
-    // once. A command, a config or a key may still be edited, and waits for Connect.
+    // A link pasted into the empty box, or over all of what was in it, is all
+    // there is to it, so it starts at once. A command, a config or a key may
+    // still be edited, and waits for Connect.
     function mcpPaste(e) {
-      var text = (e.clipboardData && e.clipboardData.getData('text') || '').trim();
-      if (e.target.value.trim() || !/^https?:\/\/\S+$/i.test(text)) return;
+      var text = (e.clipboardData && e.clipboardData.getData('text') || '').trim(), box = e.target;
+      var whole = box.selectionStart === 0 && box.selectionEnd === box.value.length;
+      if ((box.value.trim() && !whole) || !/^https?:\/\/\S+$/i.test(text)) return;
       setTimeout(addMcpConnection, 0);
+    }
+    // What the box last asked about, and which attempt is the current one.
+    // Changed, the box clears all the last one left under it (its status, the
+    // key it asked for, its choices, a scan's findings), and a reply to it that
+    // comes back later is let go: what shows is only ever about what is there.
+    var _mcpAskedFor = '', _mcpAttempt = 0;
+    function mcpInputChanged(box) {
+      if (box.value.trim() === _mcpAskedFor) return;
+      _mcpAskedFor = ''; _mcpAttempt++;
+      _mcpPending = null; _pendingSkillUrl = null;
+      mcpStatus('');
+      document.getElementById('mcp-credentials').style.display = 'none';
+      var warn = document.getElementById('skill-warnings');
+      warn.style.display = 'none'; warn.innerHTML = '';
     }
 
     async function addMcpConnection() {
@@ -3451,6 +3467,7 @@
       var input = box.value.trim();
       if (document.getElementById('mcp-connect-btn').disabled) return;
       if (!input) return needsField(box.closest('.mcp-pill'), 'Paste an MCP server, skill or API key.');
+      _mcpAskedFor = input; _mcpAttempt++;
 
       // A skill link goes to the skill installer, which has its own flow.
       if (/\/SKILL\.md(?:[?#].*)?$/i.test(input)) {
@@ -3476,6 +3493,7 @@
       mcpStatus(/github\.com|raw\.githubusercontent\.com/i.test(_mcpPending.input) ? 'Reading the project’s connection instructions…' : 'Connecting and checking the available tools. This can take a minute.');
       var body = Object.assign({ input: _mcpPending.input }, _mcpPending.extra || {}, extra || {});
       _mcpPending.extra = body;
+      var attempt = _mcpAttempt;
       try {
         var res = await fetch('/api/mcps', {
           method: 'POST',
@@ -3483,6 +3501,8 @@
           body: JSON.stringify(body)
         });
         var data = await res.json();
+        // The box has changed since this was asked: this answer is let go.
+        if (attempt !== _mcpAttempt) return;
 
         if (data.setup_choices) { renderMcpChoices(data); return; }
         if (data.skill) { installSkill(false, data.url); return; }
@@ -3546,7 +3566,7 @@
         }
         await loadMcps();
       } catch (e) {
-        mcpStatus('Error: ' + e.message);
+        if (attempt === _mcpAttempt) mcpStatus('Error: ' + e.message);
       } finally {
         btn.disabled = false;
         btn.textContent = 'Connect';
@@ -6902,12 +6922,15 @@
       btn.disabled = true; btn.textContent = 'Scanning…';
       mcpStatus('Scanning the skill for security risks…');
       if (!acceptWarnings) warnEl.style.display = 'none';
+      var attempt = _mcpAttempt;
       try {
         var res = await fetch('/api/skills/install', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: url, accept_warnings: !!acceptWarnings })
         });
         var data = await res.json();
+        // The box has changed since this was asked: this answer is let go.
+        if (attempt !== _mcpAttempt) return;
 
         if (data.blocked) {
           mcpStatus('');
