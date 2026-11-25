@@ -166,6 +166,23 @@ test("a stopped task sends the answer it drafted, not the line beside its last t
   assert.equal(writtenAnswer([{ role: "assistant", content: "Plain string answer." }]).content, "Plain string answer.");
 });
 
+test("a task carried on from a chat counts only its own turns as findings, never the conversation before it", () => {
+  const { ownTurns } = require("../lib/task-outcome");
+  const goal = "[replying to Closedhand's message: \"Ferrylink finished your refund review.\"]\nYou do it";
+  const messages = [
+    { role: "user", content: "Any news on the ferry refund?" },
+    { role: "assistant", content: [{ type: "text", text: "Ferrylink finished your refund review." }] },
+    { role: "user", content: goal },
+    { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "sandbox_browse", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "Refund request 4412: complete, no amount shown" }] },
+  ];
+  const own = ownTurns(messages, goal);
+  assert.equal(own.length, 3);
+  assert.equal(writtenAnswer(own), null, "nothing written yet, so the write-up from evidence takes over");
+  assert.equal(ownTurns(messages, "something never asked").length, 5, "a request not found keeps everything");
+  assert.equal(ownTurns(messages, null).length, 5);
+});
+
 test("a page that is really a check for bots is told apart from a page", () => {
   const { looksBlocked } = require("../lib/blocked-page");
   const cloudflare = `<html><head><title>Just a moment...</title></head><body><div>Checking your browser before accessing fares.example.org</div><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script></body></html>`;

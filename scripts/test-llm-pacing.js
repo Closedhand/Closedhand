@@ -124,6 +124,21 @@ test("no reply while others ran on the same model means fewer at once, and it as
   assert.equal(capacity.atOnce(k, 6), 2, "three were running, so two from now");
 });
 
+test("no reply with nothing else on the model is asked once more, then given up", async () => {
+  capacity.reset();
+  let calls = 0;
+  const answersSecond = { messages: { create: () => (++calls === 1 ? new Promise(() => {})
+    : Promise.resolve({ content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } })) } };
+  const reply = await withTaskRun({ userId: "u-lone", budget: makeBudget() }, () => modelCall(answersSecond, { model: "lone-model", messages: [] }, { timeoutMs: 5, pace: true }));
+  assert.equal(reply.content[0].text, "ok");
+  assert.equal(calls, 2);
+  let tries = 0;
+  const never = { messages: { create: () => { tries++; return new Promise(() => {}); } } };
+  await assert.rejects(withTaskRun({ userId: "u-lone", budget: makeBudget() }, () => modelCall(never, { model: "lone-model", messages: [] }, { timeoutMs: 5, pace: true })),
+    (e) => e.code === "MODEL_TIMEOUT");
+  assert.equal(tries, 2, "once more, not on and on");
+});
+
 test("a check inside a chat turn is never held up waiting: only background work is paced", async () => {
   capacity.reset();
   const client = refusing(1, { status: 429, waitable: true, retryAfterMs: 0 });

@@ -88,6 +88,22 @@ test("everything that looks like paying, from every source, grouped by who it is
   assert.match(P.groupText(gym, 0), /Bank payments: every month \(about 31 days\), 4 payments from 2026-07-03 to 2026-10-03/);
 });
 
+test("what they wrote in a thread about paying is read with the sender's mail there, and nothing else they sent", async () => {
+  const mail = (id, from, to, subject, labels, threadId, body) => ({ source: "gmail", type: "email", external_id: id, received_at: "2026-10-0" + id.slice(-1) + "T09:00:00Z", data: { from, to, subject, labels, threadId, body } });
+  const db = fakeDb({ data_cache: [] }, {
+    paying_candidates: ({ p_offset }) => (p_offset ? [] : [
+      mail("e1", "Ledgerline <accounts@ledgerline.example>", "Robin Vale <robin@valeworks.example>", "Invoice LL-204 for October", ["INBOX"], "th-1", "ZAR 2,900 is due on 26 Oct."),
+      mail("e2", "Robin Vale <robin@valeworks.example>", "Ledgerline <accounts@ledgerline.example>", "Re: Invoice LL-204 for October", ["SENT"], "th-1", "I've paid LL-204, and we won't need you after this month."),
+      mail("e3", "Robin Vale <robin@valeworks.example>", "Sam Ito <sam@itoparts.example>", "Your invoice from Vale Works", ["SENT"], "th-9", "Payment is due in 30 days."),
+    ]),
+  });
+  const groups = await P.gather("u1", { db });
+  assert.deepEqual(groups.map((g) => g.key), ["mail:ledgerline <accounts@ledgerline.example>"], "their own invoice to a customer is not something they pay for");
+  assert.equal(groups[0].count, 2);
+  assert.match(groups[0].newest[0], /^Email they sent to Ledgerline <accounts@ledgerline\.example>, .*I've paid LL-204/);
+  assert.match(groups[0].newest[1], /^Email from Ledgerline/);
+});
+
 test("an entry says only what the items say: a past trial or deadline is history, a past next charge moves on, said as an estimate", () => {
   const today = "2026-11-02";
   const e = P.cleanEntry({ name: "Streamflix", what: "Standard plan", amount: 10.99, currency: "gbp", every: "month", next: "2026-10-03", trial_ends: "2026-02-01", cancel_by: "2026-11-20",
