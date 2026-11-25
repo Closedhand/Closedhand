@@ -295,7 +295,10 @@ test("Closedhand's own steps start by themselves, one at a time, in the goal's p
     assert.equal(tables.goal_events.filter((e) => e.kind === "step_done").length, 1, "ticked once");
 
     await sweep();
-    assert.equal(tables.agent_tasks.length, 2, "a step whose day has come starts even while one of theirs comes first");
+    assert.equal(tables.agent_tasks.length, 1, "a step whose day has come waits while one of theirs before it is to do");
+    await goals.recordProgress("u1", { id: "aaaaaaaa-job", action: "step_done", step: "s2" });
+    await sweep();
+    assert.equal(tables.agent_tasks.length, 2, "and starts once they tick theirs");
     const [, second] = tables.agent_tasks;
     assert.equal(second.runtime.goalStep.step, "s3");
     second.status = "failed";
@@ -305,6 +308,26 @@ test("Closedhand's own steps start by themselves, one at a time, in the goal's p
     assert.equal(tables.agent_tasks.length, 2, "and is not started again by itself");
   });
   assert.match(read("lib/task-delivery.js"), /if \(table === "agent_tasks" && row\.runtime\?\.goalStep\) await require\("\.\/goal-steps"\)\.ran\(row\)/, "ticked after the result is posted");
+  // Nobody asked for it just then: the result says which step it is, and that
+  // nothing went to anyone when nothing could have.
+  await withModules({ "./db": { supabase: memoryDb({ goals: [{ id: "g-job", user_id: "u1", title: "Get the promotion", plan: [
+    { id: "s1", text: "Look up what senior roles at the firm ask for", owner: "closedhand", due: "2026-11-12", status: "done" },
+    { id: "s2", text: "Draft the message asking Dana for a review.", owner: "closedhand", due: "2026-11-25", status: "todo" },
+  ] }] }) } }, async () => {
+    const steps = require("../lib/goal-steps");
+    const use = (name, input = {}) => ({ role: "assistant", content: [{ type: "tool_use", id: name, name, input }] });
+    const row = (messages) => ({ user_id: "u1", runtime: { goalStep: { goal: "g-job", step: "s2" } }, messages });
+    const reads = [use("search_cache"), use("web_search"), use("sandbox_browse", { action: "read_pages", urls: ["https://pay.example.test"] }), use("save_report")];
+    assert.equal(await steps.lead(row(reads)), `Step 2 of 2 in your plan for "Get the promotion", mine to do by 25 Nov: "Draft the message asking Dana for a review". Nothing has been sent to anyone.`);
+    for (const outward of [use("gmail_send", { to: "dana@example.test" }), use("umcp_slack_post"), use("bridge_input_key_press", { key: "enter" }), use("sandbox_exec", { code: "ls" }),
+      use("sandbox_browse", { action: "batch", steps: [{ action: "goto", url: "https://forms.example.test" }, { action: "click", ref: 3 }] })]) {
+      assert.doesNotMatch(await steps.lead(row([...reads, outward])), /Nothing has been sent/, `not said after ${outward.content[0].name}`);
+    }
+    assert.equal(await steps.lead({ ...row(reads), runtime: { goalStep: { goal: "g-job", step: "gone" } } }), "", "a step taken out of the plan says nothing");
+  });
+  const delivery = read("lib/task-delivery.js");
+  assert.match(delivery, /const opening = table === "agent_tasks" && row\.runtime\?\.goalStep \? await require\("\.\/goal-steps"\)\.lead\(row\)\.catch\(\(\) => ""\) : "";/);
+  assert.match(delivery, /const said = opening && own \? `\$\{opening\}\\n\\n\$\{own\}` : own;/, "before the result, in its first message");
   const server = read("webapp/server.js");
   assert.match(server, /from\("agent_tasks"\)\.select\("id"\)\.eq\("user_id", userId\)\.in\("id", stepTasks\)\.in\("status", \["pending", "running"\]\)/, "only while its task is going, and only the person's own tasks");
   assert.match(server, /plan: \(g\.plan \|\| \[\]\)\.map\(\(s\) => \(onIt\.has\(s\.task_id\) \? \{ \.\.\.s, on_it: true \} : s\)\)/);

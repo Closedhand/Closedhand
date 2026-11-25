@@ -545,7 +545,7 @@ test("a routine can belong to a project: it runs with the project and reports in
   assert.match(handlers, /\.\.\.\(project \? \{ project_id: project\.id \} : \{\}\),/);
   assert.match(read("lib/automations.js"), /prompt \+= await require\("\.\/projects"\)\.brief\(userId, automation\.project_id, "ROUTINE"\);/);
   const delivery = read("lib/task-delivery.js");
-  assert.match(delivery, /const marked = project && message && !message\.trimStart\(\)\.startsWith\(project\.emoji\) \? `\$\{project\.emoji\} \$\{message\.trimStart\(\)\}` : message;/);
+  assert.match(delivery, /const own = project && message && message\.trimStart\(\)\.startsWith\(project\.emoji\) \? message\.trimStart\(\)\.slice\(project\.emoji\.length\)\.trimStart\(\) : message;\n[^\n]*\n\s*const marked = project && said \? `\$\{project\.emoji\} \$\{said\.trimStart\(\)\}` : said;/, "once, at the start, with the emoji");
   assert.match(delivery, /if \(sentText && project\) await require\("\.\/projects"\)\.said\(row\.user_id, project, sentText\);\n\s*else if \(sentText\)/, "kept in the project's conversation, not the general one");
   assert.match(read("migrations/069_routines_in_projects.sql"), /ALTER TABLE automations ADD COLUMN IF NOT EXISTS project_id uuid REFERENCES projects\(id\) ON DELETE SET NULL;/);
   const server = read("webapp/server.js");
