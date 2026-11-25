@@ -309,4 +309,22 @@ test("a sender's brand is its name, whatever its address ends in, so one service
   assert.equal(P.brandOf("bank:streamflix p"), "streamflix");
   assert.equal(P.brandOf("mail:sam lee <sam.lee@gmail.com>"), "sam.lee@gmail.com", "a person at a mailbox anyone can have is themselves");
   assert.notEqual(P.brandOf("mail:sam.lee@gmail.com"), P.brandOf("mail:ana.ruiz@gmail.com"));
+  // Sent through another company's service, read with the company's own mail.
+  const groups = ["mail:\"robin vale | ledgerline\" <robin@ledgerline.example>", "mail:ledgerline <messaging-service@post.invoicely.example>",
+    "mail:sam ito <messaging-service@post.invoicely.example>", "mail:streamflix <billing@streamflix.example>"].map((key) => ({ key }));
+  const brands = P.brandsOf(groups);
+  assert.equal(brands.get(groups[1].key), "ledgerline", "an invoice Ledgerline sent through Invoicely");
+  assert.equal(brands.get(groups[2].key), "invoicely", "a name that is no brand keeps its address's");
+  assert.equal(brands.get(groups[0].key), "ledgerline");
+});
+
+test("the groups are read a callful at a time, one brand's groups never split between two calls", () => {
+  const groups = [...Array(28)].map((_, i) => ({ key: "mail:billing@aaa" + String(i).padStart(2, "0") + ".example" }))
+    .concat([0, 1, 2, 3].map((i) => ({ key: "mail:team" + i + "@ledgerline.example" })), [{ key: "mail:hello@zebra.example" }]);
+  const batches = P.batchesOf(groups);
+  assert.equal(batches.length, 2);
+  assert.equal(batches[0].length, 28, "the four Ledgerline groups would not fit after 28 others, so they start the next call");
+  assert.equal(batches[1].filter((g) => g.key.includes("ledgerline")).length, 4);
+  const one = [...Array(45)].map((_, i) => ({ key: "mail:desk" + i + "@hugeco.example" }));
+  assert.deepEqual(P.batchesOf(one).map((b) => b.length), [30, 15], "a brand bigger than a call is split only as it must be");
 });
