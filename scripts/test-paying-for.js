@@ -296,7 +296,7 @@ test("something new that looks like paying is read on its own and takes its plac
 
 test("the whole picture is read again once a week, and only added to in between", () => {
   const src = read("lib/paying-for.js");
-  assert.match(src, /const whole = !row\?\.built_at \|\| Date\.now\(\) - Date\.parse\(row\.rebuilt_at \|\| row\.built_at\) > REBUILD_EVERY;\n\s+const stale = whole \|\| await changedSince\(userId, row\.built_at, db\);/);
+  assert.match(src, /const whole = !row\?\.rebuilt_at \|\| Date\.now\(\) - Date\.parse\(row\.rebuilt_at\) > REBUILD_EVERY;\n\s+const stale = whole \|\| await changedSince\(userId, row\.built_at, db\);/, "by when it was last read whole, never by when it was last added to");
   assert.match(src, /const built = whole \? await build\(userId, \{ store, db \}\) : await addNew\(userId, row, \{ store, db \}\);/);
   assert.match(src, /upsert\(\{ user_id: userId, picture, sources, built_at: now, rebuilt_at: now \}/, "a whole reading says when it was");
   assert.match(read("migrations/094_paying_for_rebuilt_at.sql"), /ALTER TABLE paying_for ADD COLUMN IF NOT EXISTS rebuilt_at timestamp with time zone;/);
