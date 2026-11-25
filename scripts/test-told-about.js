@@ -305,6 +305,22 @@ test("a turn after a nudge about a chat sees what that chat has said since, and 
 
 test("the turn and a nudge's check both read what the chats said since", () => {
   assert.match(read("lib/engine.js"), /require\("\.\/chat-since"\)\.forConversation\(userId, conversation/);
-  assert.match(read("lib/pulse.js"), /const sinceLook = await require\("\.\/chat-since"\)\.forRows\(userId, \[\.\.\.cited\]/);
+  assert.match(read("lib/pulse.js"), /const sinceLook = await require\("\.\/chat-since"\)\.forRows\(userId, citedRows, userTz\)/);
   assert.match(read("lib/pulse.js"), /const evidence = \[citedItems\.join\("\\n"\), sinceLook,/);
+});
+
+test("a nudge resting on what they sent is read with what the chat said after it, and what they sent is still never told", async () => {
+  const since = require("../lib/chat-since");
+  const db = chatDb([
+    waRow("wa-2", "2026-11-18T11:30:00.000Z", "me", "I need to renew the parking permit, I'll look into it today"),
+    waRow("wa-3", "2026-11-18T12:05:00.000Z", "Morgan Fixture", "No need, I renewed it this morning"),
+  ]);
+  assert.match(await since.forRows("u1", [waRow("wa-2", "2026-11-18T11:30:00.000Z", "me", "x")], null, { supabase: db }), /I renewed it this morning/, "the reply after their own message");
+  const pulse = read("lib/pulse.js");
+  assert.match(pulse, /const sentRows = \[\.\.\.\(mine \|\| \[\]\)\.slice\(0, 40\), \.\.\.sentMail\.slice\(0, 20\)\];\n\s*const sentLines = sentRows\.map\(/, "one line for each row they sent, in the same order");
+  assert.match(pulse, /waitingItems = cite\(waitingLines\), sentFirst = n \+ 1, sentItems = cite\(sentLines\);/, "numbered from where their lines start");
+  assert.match(pulse, /const citedRows = \[\.\.\.cited\]\.map\(\(k\) => numbered\[k - 1\] \|\| sentRows\[k - sentFirst\]\)\.filter\(Boolean\);/);
+  assert.match(pulse, /const citedChats = \[\.\.\.new Set\(citedRows\.filter\(\(r\) => r\.type === "message" && r\.data\?\.chat\)/, "the writer reads the chat they wrote in");
+  assert.match(pulse, /\.\.\.sentLines\.map\(\(\) => null\)/, "what they sent stays out of what is told and drafted from");
+  assert.match(pulse, /const flaggedItems = verdict\.flagged\.flatMap\(citedNumbers\)\n\s*\.filter\(\(k\) => k >= 1 && k <= numbered\.length\)\.map\(\(k\) => numbered\[k - 1\]\)\.filter\(Boolean\);/);
 });
