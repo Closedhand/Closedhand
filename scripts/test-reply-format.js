@@ -130,8 +130,27 @@ test("coming back to the tab, or a connection coming back, shows what arrived me
   assert.deepEqual([...box.f(before, ["is this the right total?"])].map((m) => m.content), ["Yes."], "and an older one with only the label");
   assert.match(page, /addMessage\(theirOwn\(m\), 'user', files\.map\(function \(f\) \{ return \{ name: f\.name, type: f\.mime \|\| '', url: url\(f\) \}; \}\), m\.ts \|\| null, m\.via \|\| null\);/, "shown as their words with the picture, never the description");
   assert.match(page, /img\.src = f\.url \|\| 'data:' \+ f\.type \+ ';base64,' \+ f\.data;/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8"), /conversation\.push\(\{ role: "user", content: `\$\{uploadLabel\} \$\{caption\}`, said: caption, \.\.\.\(sent\.length \? \{ files: sent \} : \{\}\) \}\);/);
+  const engine = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
+  assert.match(engine, /conversation\.push\(\{ role: "user", content: `\$\{uploadLabel\} \$\{told\}`, said: userMessage \|\| "", \.\.\.\(sent\.length \|\| alsoSent\.length \? \{ files: \[\.\.\.sent, \.\.\.alsoSent\] \} : \{\}\) \}\);/, "their words as typed, every file they sent");
+  // Several files in one message: every one is kept and named for the LLM,
+  // never "not sent to you" in the person's own message.
+  const ws = fs.readFileSync(path.join(__dirname, "..", "lib", "web-chat-ws.js"), "utf8");
+  assert.doesNotMatch(ws, /\[Also attached but not sent to you/);
+  assert.match(ws, /await handleChatMessage\(userId, text, ws, fileData, project, msg\.spoken === true, more\.map\(\(o\) => \(\{ data: o\.data, name: o\.name \|\| "file", type: o\.type \|\| "" \}\)\)\);/);
+  assert.match(engine, /for \(const f of Array\.isArray\(opts\.more\) \? opts\.more\.slice\(0, 9\) : \[\]\) \{[\s\S]{0,500}const id = saveAttachment\(userId, \{ \.\.\.fd, buffer: fd\.buffer \|\| buffer \}, `Sent in the chat: \$\{fd\.fileName \|\| f\.name\}`\);/);
+  assert.match(engine, /\[Also sent with this message: \$\{alsoSent\.map\(\(f\) => `\$\{f\.name\} \(attachment_id \$\{f\.id\}\)`\)\.join\(", "\)\}\. Read each with view_attachment\.\]/);
   assert.equal((page.match(/var REPLY_PREFIX = /g) || []).length, 1, "one reading of a quoted reply");
+  // A quote cut short opens whole, from the message it quotes when on the page.
+  assert.match(page, /unfurlable\(quote, replied\[1\]\);/);
+  assert.match(page, /more\.textContent = open \? 'Show less' : 'Show all';/);
+  const finder = {};
+  vm.runInNewContext(prefix + page.slice(start, page.indexOf("  function shownText(m)")) + page.slice(page.indexOf("  function quotedOriginal(kept) {"), page.indexOf("\n  }\n", page.indexOf("  function quotedOriginal(kept) {")) + 4) + "\nthis.f = quotedOriginal;",
+    Object.assign(finder, { messagesEl: { querySelectorAll: () => [{ _raw: "Is there a reason I paid for this shipping to go to:\n\n1 Fixture Mah. Sample Cad. No 4, Kat 2, 34000 Fixture" }] } }));
+  assert.equal(finder.f("Is there a reason I paid for this shipping to go to: 1 Fixture Mah. Sample Cad...."), "Is there a reason I paid for this shipping to go to:\n\n1 Fixture Mah. Sample Cad. No 4, Kat 2, 34000 Fixture", "the whole message, not the copy kept with the reply");
+  // Bubbles, times and icons read clearly (they all but vanished at 3 and 6 per cent).
+  assert.match(page, /\.message\.bot \{\n\s*background: var\(--raised\);\n\s*color: var\(--fg\) !important;\n\s*border: 1px solid rgba\(var\(--fg-rgb\),0\.13\);/);
+  assert.match(page, /\.conv-heading \{[^}]*font-weight: 600; color: rgba\(var\(--fg-rgb\),0\.7\); \}/);
+  assert.doesNotMatch(page, /\.conv-heading \{[^}]*uppercase/, "no small capitals");
   assert.match(page, /div\._raw = raw;/, "each message keeps the text as sent");
   assert.match(page, /fetch\('\/api\/conversation' \+ \(projectId \? '\?project=' \+ encodeURIComponent\(projectId\) : ''\)\)[\s\S]{0,400}missedSince\(shownInThread\(conv\.messages\), shown\)/, "read from the conversation open here, Chat or a project's");
   assert.match(page, /if \(document\.visibilityState === 'visible' && isAuthenticated\) \{\n\s*connectChat\(\);\n\s*pollAgentStatus\(\);\n\s*catchUp\(\);/, "when the tab comes back");

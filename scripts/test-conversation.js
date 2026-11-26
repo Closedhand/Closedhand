@@ -298,7 +298,7 @@ test("talked over, the rest is not said and the voice stops making it", async ()
 
 test("a spoken turn is marked, and its reply is written to be heard", () => {
   const ws = read("lib/web-chat-ws.js");
-  assert.match(ws, /await handleChatMessage\(userId, text, ws, fileData, project, msg\.spoken === true\);/);
+  assert.match(ws, /await handleChatMessage\(userId, text, ws, fileData, project, msg\.spoken === true, more\.map\(/);
   assert.match(ws, /const opts = \{\n\s+project,\n\s+spoken,/);
   const engine = read("lib/engine.js");
   assert.match(engine, /"\\n\\n" \+ \(opts\.spoken \? SPOKEN_TURN : ANSWER_SIZE_TURN\)/, "a spoken reply's length note in place of the written one");
