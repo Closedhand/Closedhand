@@ -191,6 +191,20 @@ for (const scenario of ["superseded", "other-thread", "replacement-during-call",
   });
 }
 
+// A message set aside in a project's own conversation was compared with the
+// open conversation, never matched, and was dropped unanswered: the promised
+// "come back to the one before it" never came. It is finished in its project's
+// conversation, read against what was said there, and delivered there.
+test("a request set aside in a project's conversation is finished and delivered there", () => {
+  const engine = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
+  assert.match(engine, /project = info\.threadId && info\.threadId !== currentStore\.activeThreadId \? await projectOfThread\(info\.userId, info\.threadId\) : null;/);
+  assert.match(engine, /threadId: project \? info\.threadId : \(currentStore\.activeThreadId \|\| null\),\n\s*recent: project \? project\.messages\.slice\(-8\) : currentStore\.conversations\.slice\(-8\)/);
+  assert.match(engine, /if \(project\) \{ await require\("\.\/projects"\)\.said\(info\.userId, project, said\); return; \}/);
+  assert.match(engine, /async function projectOfThread\(userId, threadId\) \{[\s\S]{0,400}\.not\("project_id", "is", null\)[\s\S]{0,300}\.eq\("status", "active"\)/);
+  const deferred = fs.readFileSync(path.join(__dirname, "..", "lib", "deferred-reply.js"), "utf8");
+  assert.match(deferred, /console\.log\(`\[deferred-reply\] not sending \$\{info\.requestId\}: its conversation is no longer the one in use`\)/, "never dropped silently");
+});
+
 // Three messages arrived together after a dropped connection: the first was
 // set aside for the second, the second for the third, and the first question
 // was never answered. Set-aside requests now join one follow-up, and each is
