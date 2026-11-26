@@ -63,6 +63,39 @@ test('a phone sees the two steps in order and nothing that looks like a download
   assert.doesNotMatch(home.replace(/<!--[\s\S]*?-->/g, ''), /\bInstall Closedhand\b/, 'set up, never install');
 });
 
+test('once this device knows its Closedhand the question box goes everywhere, and a computer keeps the downloads', async () => {
+  const script = home.match(/<script>\n(\/\/ A device that has opened its Closedhand before[\s\S]*?)<\/script>/)[1];
+  async function page({ handheld, kept = null, account = null }) {
+    const el = {};
+    for (const id of ['ask', 'orbOpen', 'orbAddress', 'firstSteps', 'ways']) {
+      el[id] = { id, hidden: id === 'orbAddress', style: { setProperty(k, v) { this[k] = v; } }, setAttribute(k, v) { this[k] = v; } };
+    }
+    vm.runInNewContext(script, {
+      document: { documentElement: { classList: { contains: (c) => c === 'handheld' && handheld } }, getElementById: (id) => el[id] || null },
+      localStorage: { getItem: () => kept },
+      fetch: async () => ({ ok: true, json: async () => account || { signedIn: false } }),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    return el;
+  }
+  const url = 'https://amber-fox-42.closedhand.ai';
+  const newcomer = await page({ handheld: false });
+  assert.equal(newcomer.ask.style.display, undefined, 'a newcomer on a computer can try the LLM');
+  for (const how of [{ kept: url }, { account: { signedIn: true, url } }]) {
+    const computer = await page({ handheld: false, ...how });
+    assert.equal(computer.ask.style.display, 'none', 'a computer that knows its Closedhand: no question box');
+    assert.equal(computer.ways.style.display, undefined, 'the downloads stay');
+    assert.equal(computer.orbOpen.href, undefined, 'nothing of the phone ring on a computer');
+    const phone = await page({ handheld: true, ...how });
+    assert.equal(phone.ask.style.display, 'none');
+    assert.equal(phone.firstSteps.style.display, 'none');
+    assert.equal(phone.orbOpen.href, url + '/dashboard');
+    assert.equal(phone.orbAddress.textContent, 'amber-fox-42.closedhand.ai');
+  }
+  const signedInNoUrl = await page({ handheld: false, account: { signedIn: true, url: null } });
+  assert.equal(signedInNoUrl.ask.style.display, undefined, 'signed in but never set up: still a newcomer');
+});
+
 test("every page's header says Sign in, or Open dashboard and Sign out, and Sign out forgets the address", async () => {
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   const views = fs.readdirSync(path.join(__dirname, '..', 'closedhand-com/views')).filter((v) => v.endsWith('.html') && v !== 'insights.html');

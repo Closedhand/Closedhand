@@ -1875,15 +1875,19 @@ body.chat-active .mon-area { display:none; }
 })();
 </script>
 <script>
-// A phone that has opened its Closedhand before, signed in or by typing its
+// A device that has opened its Closedhand before, signed in or by typing its
 // personal URL on the sign-in page (kept in this browser, only ever an
-// address): the ring opens that exact Closedhand's dashboard and shows its
-// address, and what is there for newcomers (the steps, the question box) goes.
+// address): the question box goes, as it is for trying the LLM before having
+// Closedhand. A computer keeps the downloads, where moving Closedhand to a new
+// computer or setting it up again starts. On a phone the ring opens that exact
+// Closedhand's dashboard and shows its address, and the steps for newcomers go.
 (function () {
-  if (!document.documentElement.classList.contains('handheld')) return;
   var personal = /^https:\/\/[a-z][a-z0-9-]{1,30}[a-z0-9]\.closedhand\.ai$/;
   function opens(url) {
     if (!personal.test(url || '')) return;
+    var ask = document.getElementById('ask');
+    if (ask) ask.style.setProperty('display', 'none', 'important');
+    if (!document.documentElement.classList.contains('handheld')) return;
     var link = document.getElementById('orbOpen');
     link.href = url + '/dashboard';
     link.setAttribute('aria-label', 'Open your dashboard');
@@ -1891,9 +1895,6 @@ body.chat-active .mon-area { display:none; }
     address.textContent = url.slice('https://'.length);
     address.hidden = false;
     document.getElementById('firstSteps').style.setProperty('display', 'none', 'important');
-    // The question box is for trying the LLM before having Closedhand, too.
-    var ask = document.getElementById('ask');
-    if (ask) ask.style.setProperty('display', 'none', 'important');
   }
   try { opens(localStorage.getItem('closedhand-personal-url')); } catch (e) { /* not kept in this browser */ }
   fetch('/api/account?brief=1', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (a) { opens(a && a.url); }).catch(function () {});
