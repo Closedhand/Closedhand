@@ -100,6 +100,19 @@ const SETTLED = { results: [
   { id: "m_704", from: "Robin <robin@sampleloaf.example>", to: "Jo Fixture <jo@sampleaccounts.example>", subject: "Re: Invoice SA-0412", date: "2026-11-25", body: "Hi Jo, I've settled SA-0412 less the £32 Fixture Payroll recharge, as the subscription is ours now. Thanks, Robin" },
   { id: "m_705", from: "Jo Fixture <jo@sampleaccounts.example>", to: "Robin <robin@sampleloaf.example>", subject: "Re: Invoice SA-0412", date: "2026-11-26", body: "Thanks Robin, £240 received and the recharge is off from December. All square. Jo" },
 ], source_counts: { gmail: 5 }, note: "Full messages shown; nothing more to read." };
+// A customs form filled box by box from a confirmed wholesale order, the
+// order and its price list in front of the LLM. Asked for the next box, the
+// answer gives the figure the order settles, with no what-if on a quantity it
+// settles ("if nine turns out to be the whole quantity..."), and nothing
+// between figures that reads as a minus ("$1,100 - 10 × $110").
+const ORDER = { results: [
+  { id: "m_810", from: "Sam Fixture <sam@fixturepadel.example>", to: "Robin <robin@sampleloaf.example>", subject: "Re: Order V1 confirmed", date: "2026-11-25", body: "Hi Robin, confirming order V1: 14 Pavilion bags (ivory), 20 Harbour Classic racquets (green), 25 Cream Pavilion Classic racquets. Packed across several boxes is fine. Thanks, Sam" },
+  { id: "m_790", from: "Robin <robin@sampleloaf.example>", to: "Sam Fixture <sam@fixturepadel.example>", subject: "Stock and wholesale prices, November", date: "2026-11-22", body: "Wholesale price per unit, by the total ordered of that item. Pavilion bag: $45 at any quantity. Harbour Classic racquet: 5–19 units $80, 20–99 units $75. Cream Pavilion Classic racquet: 5–19 units $120, 20–99 units $110." },
+], source_counts: { gmail: 2 }, note: "Full messages shown; nothing more to read." };
+const BOXES = [U("Help me fill in the customs form for Fixture Padel's order V1, box by box. I need the USD value for each box. First box is 14 Pavilion bags."),
+  ...toolTurn("search_cache", { query: "Fixture Padel order V1 prices" }, ORDER), A("14 Pavilion bags at $45 each: **$630**.")];
+const WHAT_IF = /\bif\b[^.?!]{0,100}\b(turns out|whole|all of|only|entire|total|rather than)/i;
+const DASH_BETWEEN = /[\d)]\s*\u2014\s*[\d$£€(]|[\d)]\s+[\u2013-]\s+[\d$£€(]/;
 // A sentence calling something stale or a loose end, unless it is about
 // Closedhand's own message ("my earlier message was out of date" is the
 // right correction): the sentence, or null.
@@ -227,6 +240,12 @@ const PROBES = [
     pass: (r) => /dentist/i.test(textOf(r)) && (!/priya/i.test(textOf(r)) || /cancel/i.test(textOf(r))), note: (r) => (!textOf(r) ? "still looking" : !/priya/i.test(textOf(r)) ? "left out" : /cancel/i.test(textOf(r)) ? "said it was cancelled" : "LISTED AS ON") },
   // What they wrote is read as of when they wrote it: an email sent before the
   // change it asked for is not a loose end once the change is made.
+  { name: "order_settles_the_quantity", drop: { line: "Accuracy and honesty come first." }, steps: 1,
+    messages: [...BOXES, U("ok good. next box is 9 harbour")],
+    pass: (r) => /\$675/.test(textOf(r)) && !WHAT_IF.test(textOf(r)), note: (r) => (textOf(r).match(WHAT_IF) || [/\$675/.test(textOf(r)) ? "settled" : "no $675"])[0] },
+  { name: "no_dash_between_figures", drop: { line: "Never write the emdash" }, steps: 1,
+    messages: [...BOXES, U("ok good. next box is 9 harbour"), A("9 Harbour Classic at $75 each (the 20–99 rate, as V1 has 20): **$675**."), U("ok next one is 10 cream pavilion classic. i only need what usd price to put")],
+    pass: (r) => /\$1,?100/.test(textOf(r)) && !DASH_BETWEEN.test(textOf(r)), note: (r) => { const m = textOf(r).match(DASH_BETWEEN); return m ? (/\u2014/.test(m[0]) ? "emdash: " : "hyphen: ") + m[0] : /\$1,?100/.test(textOf(r)) ? "clear" : "no $1,100"; } },
   { name: "earlier_message_after_correction", drop: { line: "Raise only what is specific and real" }, steps: 2, found: (c) => (/search_cache|read_cached_record/.test(c.name) ? SETTLED : null),
     messages: [A(RECHARGE), U(`[replying to Closedhand's message: "${RECHARGE.slice(0, 160)}"]\nNo, I settled SA-0412 without the recharge, and the subscription moved to us, like I asked Jo. Check.`), ...toolTurn("search_cache", { query: "SA-0412 Fixture Payroll" }, SETTLED)],
     pass: (r) => !!textOf(r) && !theirsCalledStale(textOf(r)), note: (r) => (!textOf(r) ? "still looking" : theirsCalledStale(textOf(r)) || "read in its time") },
