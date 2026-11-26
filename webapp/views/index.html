@@ -2013,7 +2013,29 @@
   .message.bot .reply-list { margin: 0.375rem 0 0.375rem 1.25rem; padding: 0; }
   .message.bot .reply-list li { margin: 0.1875rem 0; }
   .message.bot .reply-head { display: inline-block; margin-top: 0.25rem; }
-  .agent-live { display: flex; align-items: center; gap: 0.5rem; margin: 2px 0 0.625rem 0.25rem; font-size: var(--chat-text-sm); color: rgba(var(--fg-rgb),0.55); }
+  /* Work going on in the background: one line under the conversation while
+     it runs. A stroke of the brush draws itself over and over, the step it
+     is on glints as it goes and slides in when it changes, and the time it
+     has been going ticks on, so it reads as busy, never stuck. When the
+     result lands the stroke completes, the line says Done and folds away. */
+  .agent-live { flex: none; display: flex; align-items: center; gap: 0.625rem; max-height: 3rem; margin: 0.125rem 0 0.75rem 0.25rem; overflow: hidden; font-size: var(--chat-text-sm); color: rgba(var(--fg-rgb),0.62); transition: opacity 0.45s ease, max-height 0.45s ease, margin 0.45s ease; }
+  .agent-live-mark { position: relative; flex: none; width: 1.75rem; height: 0.5rem; }
+  .agent-live-mark::before { content: ""; position: absolute; inset: 0; background: var(--accent); -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; animation: agentLiveDraw 2.4s cubic-bezier(0.45, 0.05, 0.25, 1) infinite; }
+  @keyframes agentLiveDraw { 0% { clip-path: inset(0 100% 0 0); opacity: 1; } 55% { clip-path: inset(0 0 0 0); opacity: 1; } 78% { clip-path: inset(0 0 0 0); opacity: 0.4; } 100% { clip-path: inset(0 0 0 100%); opacity: 0; } }
+  .agent-live-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: linear-gradient(90deg, rgba(var(--fg-rgb),0.58) 0%, rgba(var(--fg-rgb),0.58) 42%, rgba(var(--fg-rgb),0.95) 50%, rgba(var(--fg-rgb),0.58) 58%, rgba(var(--fg-rgb),0.58) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: agentLiveGlint 2.8s linear infinite; }
+  @keyframes agentLiveGlint { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+  .agent-live-text.changing { animation: agentLiveStep 0.35s ease-out, agentLiveGlint 2.8s linear infinite; }
+  @keyframes agentLiveStep { from { opacity: 0; transform: translateY(0.3rem); } to { opacity: 1; transform: none; } }
+  .agent-live-time { flex: none; font-variant-numeric: tabular-nums; color: rgba(var(--fg-rgb),0.4); }
+  .agent-live.done .agent-live-mark::before { animation: agentLiveFinish 0.45s ease-out forwards; }
+  @keyframes agentLiveFinish { to { clip-path: inset(0 0 0 0); opacity: 1; } }
+  .agent-live.done .agent-live-text { animation: agentLiveStep 0.35s ease-out; background: none; color: var(--fg); }
+  .agent-live.leaving { opacity: 0; max-height: 0; margin-top: 0; margin-bottom: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .agent-live, .agent-live-text, .agent-live-text.changing, .agent-live.done .agent-live-text { animation: none; transition: none; }
+    .agent-live-text { background: none; color: rgba(var(--fg-rgb),0.62); }
+    .agent-live-mark::before, .agent-live.done .agent-live-mark::before { animation: none; opacity: 0.7; }
+  }
   .agent-live-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--accent); flex: none; animation: agentLivePulse 1.6s ease-in-out infinite; }
   @keyframes agentLivePulse { 50% { opacity: 0.3; } }
   @media (prefers-reduced-motion: reduce) { .agent-live-dot { animation: none; } }
@@ -4451,7 +4473,7 @@
     // still opened: the conversation itself says which project it is.
     var found = projectId && _conversations ? (_conversations.projects || []).find(function(p) { return p.id === projectId; }) : null;
     enterChatMode();
-    messagesEl.querySelectorAll('.message').forEach(function(m) { m.remove(); });
+    messagesEl.querySelectorAll('.message, .agent-live').forEach(function(m) { m.remove(); });
     window._chatHistory = null;
     _openProject = found ? { id: found.id, emoji: found.emoji, name: found.name } : null;
     input.setAttribute('placeholder', composerPlaceholder());
@@ -4464,6 +4486,8 @@
         if (conv && conv.messages) shownInThread(conv.messages).forEach(showStored);
         // The message that moved it here, unless the conversation has it already.
         if (keep && !shownJustNow(keep._raw, 'user')) messagesEl.insertBefore(keep, typingEl);
+        // And the work running for this conversation, its line under the rest.
+        pollAgentStatus();
         [300, 600, 1000].forEach(function(ms) { setTimeout(scrollToBottom, ms); });
       })
       .catch(function() {});
@@ -4472,20 +4496,53 @@
   // Background work shows as one live line under the conversation, updated
   // in place ("Checking prices on Booking.com · 8 min"), gone when the result
   // lands. It is never a message: it is only true while the work runs.
+  // Shown in the conversation the work belongs to (a project's, or Chat),
+  // from the moment it starts (lib/agents.js showLive) and again after a
+  // reload or on opening that conversation (pollAgentStatus). The step comes
+  // from the server; the clock ticks here.
+  function agentLiveId(taskId) { return 'agentLive-' + String(taskId || '').replace(/[^\w-]/g, ''); }
   function agentLiveLine(msg) {
-    var id = 'agentLive-' + String(msg.taskId || '').replace(/[^\w-]/g, '');
-    var line = document.getElementById(id);
-    if (msg.done) { if (line) line.remove(); return; }
+    var line = document.getElementById(agentLiveId(msg.taskId));
+    if (msg.done) { if (line) finishLive(line); return; }
+    if ('project' in msg && (msg.project || null) !== (_openProject ? _openProject.id : null)) { if (line) line.remove(); return; }
+    var action = msg.action || String(msg.content || '').replace(/ · \d+ min$/, '') || 'Working on it';
     if (!line) {
       line = document.createElement('div');
-      line.id = id;
+      line.id = agentLiveId(msg.taskId);
       line.className = 'agent-live';
-      line.innerHTML = '<span class="agent-live-dot"></span><span class="agent-live-text"></span>';
+      line.setAttribute('role', 'status');
+      line.innerHTML = '<span class="agent-live-mark" aria-hidden="true"></span><span class="agent-live-text"></span><span class="agent-live-time"></span>';
+      messagesEl.insertBefore(line, typingEl);
+      scrollToBottom();
     }
-    line.querySelector('.agent-live-text').textContent = msg.content || '';
-    messagesEl.insertBefore(line, typingEl);
-    scrollToBottom();
+    if (line.classList.contains('done')) return;
+    if (msg.startedAt) line.dataset.started = msg.startedAt;
+    var text = line.querySelector('.agent-live-text');
+    if (text.textContent !== action) {
+      text.textContent = action;
+      text.classList.remove('changing'); void text.offsetWidth; text.classList.add('changing');
+    }
+    tickLive();
   }
+  // The result has landed: the stroke completes, Done, and the line folds away.
+  function finishLive(line) {
+    if (line.classList.contains('done')) return;
+    line.classList.add('done');
+    line.querySelector('.agent-live-text').textContent = 'Done';
+    setTimeout(function () { line.classList.add('leaving'); setTimeout(function () { line.remove(); }, 500); }, 900);
+  }
+  // 0:42, 12:05, then 1 h 3 min.
+  function liveAge(ms) {
+    var secs = Math.max(0, Math.floor(ms / 1000)), mins = Math.floor(secs / 60);
+    return mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ':' + String(secs % 60).padStart(2, '0');
+  }
+  function tickLive() {
+    document.querySelectorAll('.agent-live[data-started]:not(.done)').forEach(function (line) {
+      var when = Date.parse(line.dataset.started);
+      if (when) line.querySelector('.agent-live-time').textContent = liveAge(Date.now() - when);
+    });
+  }
+  setInterval(tickLive, 1000);
 
   // One chat in every app (lib/one-chat.js). The names of the apps a
   // message can come from; the web chat is this one, so it needs none.
@@ -4951,8 +5008,14 @@
         indicator.hidden = false;
       } else {
         indicator.hidden = true;
-        document.querySelectorAll('.agent-live').forEach(function (el) { el.remove(); });
       }
+      // Each running task's live line, in the conversation it belongs to; a
+      // line whose task has ended finishes.
+      var running = Array.isArray(data.running) ? data.running : [];
+      if (hasMessages) running.forEach(function (t) { agentLiveLine({ taskId: t.id, action: t.action, startedAt: t.startedAt, project: t.project || null }); });
+      document.querySelectorAll('.agent-live:not(.done)').forEach(function (el) {
+        if (!running.some(function (t) { return agentLiveId(t.id) === el.id; })) finishLive(el);
+      });
     }).catch(function() {});
   }
   setInterval(pollAgentStatus, 10000);

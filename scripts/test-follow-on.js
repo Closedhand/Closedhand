@@ -97,12 +97,30 @@ test("background progress: one live line on the web, one plain message on a chat
   vm.runInNewContext(agents.slice(start, agents.indexOf("// --- Build agent system prompt ---")) + "\nthis.live = liveLine; this.still = stillWorking;", box);
   assert.equal(box.live("Searching the web... (8m so far)", 8 * 60000), "Searching the web · 8 min");
   assert.equal(box.still("Searching the web... (8m so far)", 8 * 60000), "Still on it, about 8 minutes in: searching the web. I'll send the answer here when it's done.");
-  assert.match(agents, /sendToUser\(chatId, \{ type: "agent_progress", taskId, content: liveLine\(/);
-  assert.match(agents, /\} else if \(deliveredNow \|\| !chatAppPinged\) \{/);
+  assert.match(agents, /sendToUser\(chatId, \{ type: "agent_progress", taskId, action: progressParts\(status, 0\)\.action, startedAt, project: projectId \|\| null, content: liveLine\(status, Date\.now\(\) - startTime\) \}\);/);
+  assert.match(agents, /else if \(deliveredNow \|\| !chatAppPinged\) \{/);
+  // The web line from the start and after every step, never after ten steps
+  // and two minutes as the chat apps' message is.
+  assert.match(agents, /showLive\("Getting started"\);/);
+  assert.match(agents, /const deliveredNow = [^\n]*\n\s*showLive\(describeAgentProgress\(block\.name, toolCallCount, \[\.\.\.toolsUsed\], model, Date\.now\(\) - startTime, block\.input\)\);\n\s*const sinceLastPing/);
+  assert.match(agents, /const progressEntry = \{ text: friendlyStatus, action: progressParts\(friendlyStatus, 0\)\.action,/, "kept, for the line after a reload");
+  const server = read("webapp/server.js");
+  assert.match(server, /return \{ id: t\.id, action, startedAt: t\.created_at, project: \(t\.runtime && t\.runtime\.projectId\) \|\| null \};/);
+  assert.match(server, /res\.json\(\{ active, completedToday, completedTotal, failed, avgDuration, running \}\);/);
   assert.match(read("lib/task-delivery.js"), /\{ type: "agent_progress", taskId: row\.id, done: true \}/, "the line goes when the result lands");
   const page = read("webapp/views/index.html");
   assert.match(page, /if \(msg\.type === 'agent_progress'\) \{ agentLiveLine\(msg\); return; \}/);
   assert.ok(page.indexOf("if (msg.type === 'agent_progress')") < page.indexOf("armResponseWatchdog();\n"), "progress never arms the reply watchdog");
+  // The clock ticks on the page; the line comes back after a reload, in its
+  // own conversation, and a line whose task ended finishes.
+  const clock = {};
+  vm.runInNewContext(page.slice(page.indexOf("  function liveAge(ms) {"), page.indexOf("  function tickLive() {")) + "\nthis.age = liveAge;", clock);
+  assert.deepEqual([0, 42e3, 12 * 60e3 + 5e3, 63 * 60e3].map(clock.age), ["0:00", "0:42", "12:05", "1 h 3 min"]);
+  assert.match(page, /if \('project' in msg && \(msg\.project \|\| null\) !== \(_openProject \? _openProject\.id : null\)\) \{ if \(line\) line\.remove\(\); return; \}/);
+  assert.match(page, /if \(hasMessages\) running\.forEach\(function \(t\) \{ agentLiveLine\(\{ taskId: t\.id, action: t\.action, startedAt: t\.startedAt, project: t\.project \|\| null \}\); \}\);/);
+  assert.match(page, /if \(!running\.some\(function \(t\) \{ return agentLiveId\(t\.id\) === el\.id; \}\)\) finishLive\(el\);/);
+  assert.match(page, /line\.querySelector\('\.agent-live-text'\)\.textContent = 'Done';/);
+  assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{\n\s*\.agent-live, \.agent-live-text/, "still for reduced motion");
 });
 
 test("a long reply without marks is split anyway: the answer, then the rest in one or two parts", () => {

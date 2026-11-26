@@ -4123,7 +4123,23 @@ app.get("/api/agents/stats", async (req, res) => {
       avgDuration = Math.round(totalMs / completed.length / 1000);
     }
 
-    res.json({ active, completedToday, completedTotal, failed, avgDuration });
+    // What is running now, for the web chat's live line after a reload or on
+    // opening a conversation: the step it is on, when it began and the
+    // project it belongs to (lib/agents.js showLive sends the same live).
+    // Read apart, so the counts still come back if it cannot be.
+    let running = [];
+    if (active) {
+      try {
+        const { data: now } = await supabase.from("agent_tasks").select("id, created_at, progress, runtime")
+          .eq("user_id", userId).in("status", ["running", "pending"]).order("created_at", { ascending: false }).limit(10);
+        running = (now || []).map((t) => {
+          const last = Array.isArray(t.progress) && t.progress.length ? t.progress[t.progress.length - 1] : null;
+          const action = String((last && (last.action || last.text)) || "Working on it").replace(/\.\.\. \(\d+m so far\)$/, "");
+          return { id: t.id, action, startedAt: t.created_at, project: (t.runtime && t.runtime.projectId) || null };
+        });
+      } catch (e) { console.error("Agent stats running:", e.message); }
+    }
+    res.json({ active, completedToday, completedTotal, failed, avgDuration, running });
   } catch (e) {
     console.error("Agent stats error:", e);
     res.status(500).json({ error: "Failed to load stats" });
