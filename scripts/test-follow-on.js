@@ -117,7 +117,8 @@ test("background progress: one live line on the web, one plain message on a chat
   vm.runInNewContext(page.slice(page.indexOf("  function liveAge(ms) {"), page.indexOf("  function tickLive() {")) + "\nthis.age = liveAge;", clock);
   assert.deepEqual([0, 42e3, 12 * 60e3 + 5e3, 63 * 60e3].map(clock.age), ["0:00", "0:42", "12:05", "1 h 3 min"]);
   assert.match(page, /if \('project' in msg && \(msg\.project \|\| null\) !== \(_openProject \? _openProject\.id : null\)\) \{ if \(line\) line\.remove\(\); return; \}/);
-  assert.match(page, /if \(hasMessages\) running\.forEach\(function \(t\) \{ agentLiveLine\(\{ taskId: t\.id, action: t\.action, startedAt: t\.startedAt, project: t\.project \|\| null \}\); \}\);/);
+  assert.match(page, /if \(hasMessages\) running\.forEach\(function \(t\) \{ agentLiveLine\(\{ taskId: t\.id, action: t\.action, startedAt: t\.startedAt, project: t\.project \|\| null, restore: true \}\); \}\);/);
+  assert.match(page, /if \(msg\.restore && line\.querySelector\('\.agent-live-text'\)\.textContent\) \{ tickLive\(\); return; \}/, "the poll brings a line back, never overwrites the live step");
   assert.match(page, /if \(!running\.some\(function \(t\) \{ return agentLiveId\(t\.id\) === el\.id; \}\)\) finishLive\(el\);/);
   assert.match(page, /line\.querySelector\('\.agent-live-text'\)\.textContent = 'Done';/);
   assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{\n\s*\.agent-live, \.agent-live-text/, "still for reduced motion");

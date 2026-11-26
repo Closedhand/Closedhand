@@ -4517,6 +4517,9 @@
     }
     if (line.classList.contains('done')) return;
     if (msg.startedAt) line.dataset.started = msg.startedAt;
+    // The poll only brings a line back: the step sent live is the newer one,
+    // and the poll's saved step, overwriting it, read "Working on it".
+    if (msg.restore && line.querySelector('.agent-live-text').textContent) { tickLive(); return; }
     var text = line.querySelector('.agent-live-text');
     if (text.textContent !== action) {
       text.textContent = action;
@@ -5012,7 +5015,7 @@
       // Each running task's live line, in the conversation it belongs to; a
       // line whose task has ended finishes.
       var running = Array.isArray(data.running) ? data.running : [];
-      if (hasMessages) running.forEach(function (t) { agentLiveLine({ taskId: t.id, action: t.action, startedAt: t.startedAt, project: t.project || null }); });
+      if (hasMessages) running.forEach(function (t) { agentLiveLine({ taskId: t.id, action: t.action, startedAt: t.startedAt, project: t.project || null, restore: true }); });
       document.querySelectorAll('.agent-live:not(.done)').forEach(function (el) {
         if (!running.some(function (t) { return agentLiveId(t.id) === el.id; })) finishLive(el);
       });
