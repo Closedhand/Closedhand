@@ -80,10 +80,13 @@ function register(app, { db, userId: who, withAppearance }) {
       const general = await generalThread(userId);
       const projects = (await mine(userId)).filter((p) => p.status === "active");
       const { data: threads } = projects.length ? await db.from("conversation_threads").select("project_id, messages, updated_at").eq("user_id", userId).in("project_id", projects.map((p) => p.id)) : { data: [] };
+      // A conversation is listed once it has something in it: a project with
+      // none (new, or its conversation deleted) is on the dashboard's Projects
+      // tab and comes back here with the next message about it.
       const list = projects.map((p) => {
         const t = (threads || []).find((x) => x.project_id === p.id);
         return { id: p.id, emoji: p.emoji, name: p.name, updated_at: (t && t.updated_at) || p.last_touched, message_count: shown(t && t.messages).length };
-      }).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+      }).filter((c) => c.message_count > 0).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
       res.json({ chat: { updated_at: general ? general.updated_at : null, message_count: shown(general && general.messages).length }, projects: list });
     } catch (e) { fail(res, e); }
   });
@@ -96,6 +99,18 @@ function register(app, { db, userId: who, withAppearance }) {
       if (!p) return fail(res, new Error("That project is not here any more."), 404);
       const { data } = await db.from("conversation_threads").select("messages").eq("user_id", userId).eq("project_id", p.id).limit(1);
       res.json({ project: { id: p.id, emoji: p.emoji, name: p.name }, messages: shown(data && data[0] && data[0].messages) });
+    } catch (e) { fail(res, e); }
+  });
+  // A project's conversation deleted from the web chat's list; the project
+  // stays (project-rules.js deleteConversation).
+  app.delete("/api/conversation", async (req, res) => {
+    const userId = owner(req, res); if (!userId) return;
+    try {
+      const p = (await mine(userId)).find((x) => x.id === String(req.query.project || ""));
+      if (!p) return fail(res, new Error("That project is not here any more."), 404);
+      const { error } = await rules.deleteConversation(db, userId, p.id);
+      if (error) throw new Error("Could not delete the conversation.");
+      res.json({ success: true });
     } catch (e) { fail(res, e); }
   });
 

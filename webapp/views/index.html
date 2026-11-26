@@ -610,6 +610,15 @@
   .activity-item-icon.conv-emoji { width: auto; height: auto; margin-top: 0; font-size: 0.875rem; line-height: 1.2; color: inherit; }
   .conv-heading { padding: 0.875rem 1.125rem 0.375rem; font-size: 0.6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: rgba(var(--fg-rgb),0.55); }
   .conv-new { display: block; padding: 0.5rem 1.125rem 0.75rem 1.6875rem; font-size: 0.75rem; color: var(--accent-link); text-decoration: none; }
+  /* A project's conversation is deleted from its row: the x shows on hover or
+     focus, always where nothing hovers, and asks first beneath the row. */
+  .conv-delete { flex: none; display: grid; place-items: center; width: 1.5rem; height: 1.5rem; margin: -0.125rem 0 0; padding: 0; border: 0; border-radius: 0.375rem; background: none; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+  .activity-item:hover .conv-delete, .conv-delete:focus-visible { opacity: 1; }
+  .conv-delete:hover { color: var(--danger); background: rgba(var(--danger-rgb),0.08); }
+  @media (hover: none) { .conv-delete { opacity: 1; } }
+  .project-confirm.conv-confirm { margin: 0.25rem 0.75rem 0.5rem 1.125rem; padding: 0.625rem 0.75rem; font-size: 0.8125rem; }
+  .conv-confirm > span { flex-basis: 100%; }
+  .conv-confirm a { color: inherit; }
   /* A reply: the message replied to, above the box while writing and at the
      top of the reply once sent, as chat apps show it. */
   .reply-bar { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0 0 0.5rem; padding: 0.375rem 0.375rem 0.375rem 0.625rem; border-left: 2px solid var(--accent); border-radius: 0.375rem; background: rgba(var(--fg-rgb),0.05); font-size: 0.8125rem; line-height: 1.4; color: var(--muted); }
@@ -4330,17 +4339,66 @@
           (!c.id ? '' : '<div class="activity-item-time">' + (c.updated_at && count ? timeAgo(c.updated_at) + ' · ' + count + (count === 1 ? ' message' : ' messages') : 'Nothing yet') + '</div>') +
         '</div>' +
       '</div>' +
+      (c.id && count ? '<button type="button" class="conv-delete" aria-label="Delete conversation" title="Delete conversation" onclick="askDeleteConversation(\'' + c.id + '\', this)"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' : '') +
     '</div>';
   }
+
+  // Deleting a project's conversation asks first beneath its row, as Delete
+  // asks on a project's card: what goes and what stays. The project stays,
+  // and the next message about it starts a new conversation there
+  // (project-rules.js deleteConversation). Chat has no x: it is the one
+  // general conversation, cleared by Clear conversation history.
+  window.askDeleteConversation = function(id, button) {
+    var row = button.closest('.activity-item');
+    var open = row.nextElementSibling;
+    if (open && open.classList.contains('conv-confirm')) { open.querySelector('.project-confirm-keep').focus(); return; }
+    var p = ((_conversations && _conversations.projects) || []).find(function(x) { return x.id === id; });
+    if (!p) return;
+    var box = document.createElement('div');
+    box.className = 'project-confirm conv-confirm';
+    box.setAttribute('role', 'group');
+    var said = document.createElement('span');
+    said.append('Delete the ' + p.emoji + ' ' + p.name + ' conversation and its Context Notes? The project itself stays, and can be deleted on the dashboard’s ');
+    var tab = document.createElement('a');
+    tab.href = '#'; tab.textContent = 'Projects tab';
+    tab.addEventListener('click', function(e) { e.preventDefault(); if (window.openDashSlide) window.openDashSlide('#projects'); });
+    said.append(tab, '.');
+    var yes = document.createElement('button');
+    yes.type = 'button'; yes.className = 'project-confirm-yes'; yes.textContent = 'Delete';
+    yes.addEventListener('click', function() {
+      yes.disabled = true;
+      fetch('/api/conversation?project=' + encodeURIComponent(id), { method: 'DELETE' })
+        .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { if (!r.ok) throw new Error(d.error || 'Could not delete the conversation.'); }); })
+        .then(function() {
+          if (_openProject && _openProject.id === id) window.openConversation(null);
+          else loadActivityFeed();
+        })
+        .catch(function(e) { yes.disabled = false; said.textContent = e.message; });
+    });
+    var keep = document.createElement('button');
+    keep.type = 'button'; keep.className = 'project-confirm-keep'; keep.textContent = 'Keep it';
+    keep.addEventListener('click', function() { box.remove(); button.focus(); });
+    box.append(said, yes, keep);
+    row.after(box);
+    keep.focus();
+  };
 
   function loadActivityFeed() {
     fetch('/api/conversations').then(function(r) { return r.json(); }).then(function(data) {
       var list = document.getElementById('activityList');
       if (!list || !data || !data.chat) return;
+      // The list holds conversations with something in them; the one open
+      // here stays in it while empty (a project just made, or one whose
+      // conversation was deleted and is open again).
+      var projects = data.projects || [];
+      if (_openProject && !projects.some(function(p) { return p.id === _openProject.id; })) {
+        projects = [{ id: _openProject.id, emoji: _openProject.emoji, name: _openProject.name, updated_at: null, message_count: 0 }].concat(projects);
+      }
+      data.projects = projects;
       _conversations = data;
       var html = conversationRow({ id: null, updated_at: data.chat.updated_at, message_count: data.chat.message_count });
       html += '<div class="conv-heading">Projects</div>';
-      html += (data.projects || []).map(conversationRow).join('');
+      html += projects.map(conversationRow).join('');
       html += '<a class="conv-new" href="#" onclick="event.preventDefault();if(window.openDashSlide)window.openDashSlide(\'#projects\')">' + ((data.projects || []).length ? '+ New project' : 'Start a project on the dashboard') + '</a>';
       list.innerHTML = html;
     }).catch(function() {});
@@ -4387,7 +4445,7 @@
     fetch('/api/conversation' + (projectId ? '?project=' + encodeURIComponent(projectId) : ''))
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(conv) {
-        if (conv && conv.project) { _openProject = conv.project; input.setAttribute('placeholder', composerPlaceholder()); projectHead(); }
+        if (conv && conv.project) { _openProject = conv.project; input.setAttribute('placeholder', composerPlaceholder()); projectHead(); if (!found) loadActivityFeed(); }
         if (conv && conv.messages) shownInThread(conv.messages).forEach(showStored);
         [300, 600, 1000].forEach(function(ms) { setTimeout(scrollToBottom, ms); });
       })

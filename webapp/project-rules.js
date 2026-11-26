@@ -173,12 +173,7 @@ async function deleteProject(db, userId, id) {
   const chats = (threads || []).map((t) => String(t.id));
   const { error } = await db.from("projects").delete().eq("user_id", userId).eq("id", id);
   if (error) return { error };
-  if (chats.length) {
-    const gone = await db.from("data_cache").delete().eq("user_id", userId).eq("source", "conversation").in("data->>chat", chats);
-    if (gone.error) console.error("[projects] kept turns not deleted:", gone.error.message);
-    const notes = await db.from("data_vectors").delete().eq("user_id", userId).eq("item_type", "conversation_summary").in("source_metadata->>thread_id", chats);
-    if (notes.error) console.error("[projects] Context Notes not deleted:", notes.error.message);
-  }
+  await forgetConversations(db, userId, chats);
   if (p?.name) {
     // Deleted either way; only the reminder not to make it again is lost.
     const kept = await db.from("projects").insert({ user_id: userId, name: p.name, status: "declined", last_touched: new Date().toISOString() });
@@ -187,4 +182,31 @@ async function deleteProject(db, userId, id) {
   return {};
 }
 
-module.exports = { isMark, markKey, firstMark, onlyMark, splitReply, takenBy, note, link, file, synced, typed, withContext, merged, mergeConversations, deleteProject, MAX_CONTEXT };
+// The turns kept word for word from these conversations and the Context Notes
+// made from them, which nothing else ties to a conversation once it has gone.
+async function forgetConversations(db, userId, chats) {
+  if (!chats.length) return;
+  const gone = await db.from("data_cache").delete().eq("user_id", userId).eq("source", "conversation").in("data->>chat", chats);
+  if (gone.error) console.error("[projects] kept turns not deleted:", gone.error.message);
+  const notes = await db.from("data_vectors").delete().eq("user_id", userId).eq("item_type", "conversation_summary").in("source_metadata->>thread_id", chats);
+  if (notes.error) console.error("[projects] Context Notes not deleted:", notes.error.message);
+}
+
+// Deleting a project's conversation, from the web chat's list: its messages,
+// the turns kept from it and its Context Notes go, as when the project is
+// deleted, and the project stays with its page, files and notes. Closedhand
+// works from the project's record, not its messages, and the next message
+// about the project starts a new conversation (lib/projects.js
+// enterConversation).
+async function deleteConversation(db, userId, projectId) {
+  const { data: threads, error: readErr } = await db.from("conversation_threads").select("id").eq("user_id", userId).eq("project_id", projectId);
+  if (readErr) return { error: readErr };
+  const chats = (threads || []).map((t) => String(t.id));
+  if (!chats.length) return {};
+  const { error } = await db.from("conversation_threads").delete().eq("user_id", userId).eq("project_id", projectId);
+  if (error) return { error };
+  await forgetConversations(db, userId, chats);
+  return {};
+}
+
+module.exports = { isMark, markKey, firstMark, onlyMark, splitReply, takenBy, note, link, file, synced, typed, withContext, merged, mergeConversations, deleteProject, deleteConversation, MAX_CONTEXT };

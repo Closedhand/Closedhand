@@ -23,12 +23,6 @@
 .project-quiet:hover, .project-quiet:focus-visible { color: var(--fg); }
 .project-quiet.danger, .project-quiet.danger:hover { color: var(--danger); }
 .project-quiet:disabled { opacity: 0.5; cursor: default; }
-/* Delete asks in the card, in the page's words: red, and Keep it a quiet link. */
-.project-confirm { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.875rem; padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--bg); border: 1px solid rgba(var(--danger-rgb),0.35); font-size: 0.875rem; cursor: default; }
-.project-confirm > span { flex: 1 1 16rem; }
-.project-confirm-yes { font: inherit; font-weight: 500; color: var(--danger); background: none; border: 1px solid var(--danger); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
-.project-confirm-yes:hover { background: rgba(var(--danger-rgb),0.08); }
-.project-confirm-keep { font: inherit; font-size: 0.8125rem; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 
 .project-form { display: grid; gap: 1.125rem; }
 #project-new { padding: 1.125rem; margin: 0 0 1rem; border: 1px solid rgba(var(--fg-rgb),0.16); border-radius: 0.75rem; background: var(--raised); }

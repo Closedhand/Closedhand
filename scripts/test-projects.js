@@ -869,3 +869,66 @@ test("the web chat and Search Chat leave out the note of what came earlier", asy
   const listed = await call("GET /api/conversations", {});
   assert.equal(listed.chat.message_count, 2);
 });
+
+// A project's conversation can be deleted from the web chat's list and the
+// project stays; the list holds conversations with something in them.
+test("deleting a project's conversation keeps the project, and the list shows only conversations with something in them", async () => {
+  const tables = {
+    projects: [move(), wedding(), { ...wedding({ id: "cccc3333-garden", name: "Garden", emoji: "🌱" }) }],
+    conversation_threads: [
+      { id: "t-move", project_id: "aaaa1111-move", updated_at: "2026-11-23T10:00:00Z", messages: [{ role: "user", content: "📦 van?" }, { role: "assistant", content: "📦 Saturday." }] },
+      { id: "t-wedding", project_id: "bbbb2222-wedding", updated_at: "2026-11-22T10:00:00Z", messages: [] },
+      { id: "t-chat", project_id: null, is_active: true, updated_at: "2026-11-23T11:00:00Z", messages: [{ role: "user", content: "hi" }] },
+    ],
+    data_cache: [
+      { id: "k1", source: "conversation", "data->>chat": "t-move" },
+      { id: "k2", source: "conversation", "data->>chat": "t-chat" },
+    ],
+    data_vectors: [
+      { id: "n1", item_type: "conversation_summary", "source_metadata->>thread_id": "t-move" },
+      { id: "n2", item_type: "conversation_summary", "source_metadata->>thread_id": "t-chat" },
+    ],
+  };
+  const { db } = fakeDb(tables);
+  const routes = {};
+  const app = new Proxy({}, { get: (_, verb) => (route, ...handlers) => { routes[`${String(verb).toUpperCase()} ${route}`] = handlers.at(-1); } });
+  const load = Module._load;
+  Module._load = function (request) {
+    if (request === "multer") return Object.assign(() => ({ array: () => (q, r, next) => next(), single: () => (q, r, next) => next() }), { memoryStorage: () => ({}) });
+    return load.apply(this, arguments);
+  };
+  try { require("../webapp/projects").register(app, { db, userId: () => "u1", withAppearance: (x) => x }); }
+  finally { Module._load = load; }
+  const call = (route, query) => new Promise((resolve) => {
+    let code = 200;
+    const res = { status(c) { code = c; return res; }, set() { return res; }, json: (body) => resolve({ code, body }), send: (body) => resolve({ code, body }) };
+    routes[route]({ query, params: {} }, res);
+  });
+  const before = await call("GET /api/conversations", {});
+  assert.deepEqual(before.body.projects.map((p) => p.id), ["aaaa1111-move"], "an empty conversation and a project without one are not listed");
+  const gone = await call("DELETE /api/conversation", { project: "aaaa1111-move" });
+  assert.deepEqual(gone, { code: 200, body: { success: true } });
+  assert.deepEqual(tables.conversation_threads.map((t) => t.id), ["t-wedding", "t-chat"], "its conversation goes, Chat stays");
+  assert.deepEqual(tables.data_cache.map((r) => r.id), ["k2"], "and the turns kept from it");
+  assert.deepEqual(tables.data_vectors.map((r) => r.id), ["n2"], "and its Context Notes");
+  assert.equal(tables.projects.length, 3, "the project stays");
+  assert.deepEqual((await call("GET /api/conversations", {})).body.projects, []);
+  assert.equal((await call("DELETE /api/conversation", { project: "nope" })).code, 404);
+  // The next message about it starts a new conversation (lib/projects.js).
+  assert.match(read("lib/projects.js"), /if \(!thread\) \{\n\s*const made = await supabase\.from\("conversation_threads"\)\n\s*\.insert\(\{ user_id: userId, project_id: p\.id/);
+
+  // In the web chat: an x on a project's row with messages, never on Chat,
+  // asking first in the dashboard's words and look; the open one stays listed.
+  const webChat = read("webapp/views/index.html");
+  assert.match(webChat, /\(c\.id && count \? '<button type="button" class="conv-delete" aria-label="Delete conversation"/);
+  assert.match(webChat, /' conversation and its Context Notes\? The project itself stays, and can be deleted on the dashboard’s '\);/);
+  assert.match(webChat, /box\.className = 'project-confirm conv-confirm';/);
+  assert.match(webChat, /fetch\('\/api\/conversation\?project=' \+ encodeURIComponent\(id\), \{ method: 'DELETE' \}\)/);
+  assert.match(webChat, /if \(_openProject && _openProject\.id === id\) window\.openConversation\(null\);/, "deleting the open one goes back to Chat");
+  assert.match(webChat, /if \(_openProject && !projects\.some\(function\(p\) \{ return p\.id === _openProject\.id; \}\)\) \{/);
+  assert.match(webChat, /\.activity-item:hover \.conv-delete, \.conv-delete:focus-visible \{ opacity: 1; \}/);
+  assert.match(webChat, /@media \(hover: none\) \{ \.conv-delete \{ opacity: 1; \} \}/, "where nothing hovers, the x is always there");
+  const shared = read("webapp/public/interface.css");
+  assert.match(shared, /\.project-confirm-yes \{ font: inherit; font-weight: 500; color: var\(--danger\);/, "one look for asking first, shared");
+  assert.doesNotMatch(read("webapp/public/projects.css"), /\.project-confirm/);
+});

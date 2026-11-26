@@ -370,6 +370,14 @@ body.dashboard-page { display: block; background: var(--bg); color: var(--ui-tex
 .preference-copy small > span { white-space: nowrap; }
 .preference-remove { flex: 0 0 2rem; width: 2rem; min-height: 2rem; border: 0; background: none; color: var(--ui-muted); font: inherit; font-size: 1.375rem; cursor: pointer; }
 .preference-remove:hover { color: var(--danger); }
+/* Deleting asks first, in place, in one look wherever it is: what goes and
+   what stays, Delete in red, and Keep it a quiet link (a project's card on
+   the dashboard, a project's conversation in the web chat's list). */
+.project-confirm { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.875rem; padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--bg); border: 1px solid rgba(var(--danger-rgb),0.35); font-size: 0.875rem; cursor: default; }
+.project-confirm > span { flex: 1 1 16rem; }
+.project-confirm-yes { font: inherit; font-weight: 500; color: var(--danger); background: none; border: 1px solid var(--danger); border-radius: 62.4375rem; padding: 0.3125rem 0.875rem; cursor: pointer; }
+.project-confirm-yes:hover { background: rgba(var(--danger-rgb),0.08); }
+.project-confirm-keep { font: inherit; font-size: 0.8125rem; color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 .preference-row input:focus-visible, .preference-remove:focus-visible, .notification-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 0.1875rem; }
 @media (max-width: 520px) {
   .dashboard-link-section { padding: 1.5rem 0; }
