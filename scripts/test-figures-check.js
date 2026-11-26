@@ -50,3 +50,16 @@ test('it runs only on answers that compare figures, before the answer is sent', 
   assert.ok(at > 0 && at < engine.indexOf('finalText = require("./follow-on").withBreaks(finalText);'));
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'lib', 'tools', 'definitions.js'), 'utf8'), /This is the one source for weather/);
 });
+
+// "$7,780, about £5,937.23" is one amount converted: read as a sum it was
+// "corrected" into £7,780, about $5,937.23. Two currencies said to be equal
+// are a conversion however close they are; a sum in one currency is checked.
+test('figures in two currencies said to be equal are a conversion, never a sum to correct', async () => {
+  const totals = 'Running totals now: **$7,780**, about **£5,937.23**.';
+  assert.equal(fc.judge({ sentence: totals, left: [7780], relation: '=', right: [5937.23] }), null);
+  assert.equal(fc.judge({ sentence: 'That is 1,150 USD, or 877.61 GBP.', left: [1150], relation: '=', right: [877.61] }), null, 'written as codes too');
+  assert.match(fc.judge({ sentence: 'Together $990 and $160 come to $1,250.', left: [990, 160], relation: '=', right: [1250] }), /990 \+ 160 = 1150/, 'a sum in one currency is still checked');
+  const answer = `10 × $110 = **$1,100 = £839.45**. ${totals}`;
+  replies = [JSON.stringify({ claims: [{ sentence: totals, left: [7780], relation: '=', right: [5937.23] }] })];
+  assert.equal(await fc.correct({ userId: 'u1', store: {}, answer }), answer, 'the answer goes as written');
+});
