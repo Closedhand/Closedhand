@@ -698,9 +698,19 @@
   @media (pointer: coarse), (max-width: 600px) { .message.bot .msg-tool { width: 2.75rem; height: 2.75rem; } }
   .msg-time { font-size: var(--chat-meta); color: rgba(var(--fg-rgb),0.58); white-space: nowrap; }
   /* Back to the latest message, when the reader has scrolled up. */
-  .scroll-latest { position: fixed; right: 1.75rem; z-index: 12; width: 2.125rem; height: 2.125rem; border-radius: 50%; border: 1px solid rgba(var(--fg-rgb),0.14); background: rgba(var(--raised-rgb),0.92); color: rgba(var(--fg-rgb),0.8); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0.375rem 1.25rem rgba(var(--shade-rgb),0.4); opacity: 0; transform: translateY(0.375rem); pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
+  /* Back to the latest, when the reader is above the end: a round arrow,
+     with a ring turning round it while Closedhand works below, opening into
+     New message in the accent when a reply lands there (latestArrow). */
+  .scroll-latest { position: fixed; right: 1.75rem; z-index: 12; display: flex; align-items: center; justify-content: center; gap: 0; height: 2.25rem; min-width: 2.25rem; padding: 0 0.6875rem; border-radius: 62.4375rem; border: 1px solid rgba(var(--fg-rgb),0.16); background: rgba(var(--raised-rgb),0.95); color: rgba(var(--fg-rgb),0.82); font: inherit; font-size: 0.8125rem; font-weight: 500; cursor: pointer; box-shadow: 0 0.375rem 1.25rem rgba(var(--shade-rgb),0.35); -webkit-backdrop-filter: blur(0.5rem); backdrop-filter: blur(0.5rem); opacity: 0; transform: translateY(0.5rem) scale(0.9); pointer-events: none; transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2), gap 0.3s ease, color 0.2s, border-color 0.2s; }
   .scroll-latest.show { opacity: 1; transform: none; pointer-events: auto; }
-  .scroll-latest:hover { color: var(--fg); border-color: rgba(var(--fg-rgb),0.3); }
+  .scroll-latest:hover { color: var(--fg); border-color: rgba(var(--fg-rgb),0.32); }
+  .scroll-latest-text { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0; transition: max-width 0.35s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.25s ease; }
+  .scroll-latest.fresh { gap: 0.4375rem; color: var(--accent); border-color: rgba(var(--accent-rgb),0.45); animation: latestNudge 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+  .scroll-latest.fresh .scroll-latest-text { max-width: 7rem; opacity: 1; }
+  @keyframes latestNudge { 0% { transform: translateY(0.25rem) scale(0.94); } 60% { transform: translateY(-0.125rem) scale(1.03); } 100% { transform: none; } }
+  .scroll-latest.working:not(.fresh)::before { content: ""; position: absolute; inset: -0.1875rem; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--accent); animation: latestTurn 1.1s linear infinite; }
+  @keyframes latestTurn { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .scroll-latest, .scroll-latest-text { transition: none; } .scroll-latest.fresh { animation: none; } .scroll-latest.working:not(.fresh)::before { animation: none; border-color: rgba(var(--accent-rgb),0.5); } }
   .message {
     max-width: 85%;
     padding: var(--chat-pad);
@@ -777,14 +787,17 @@
     padding-left: 1.25rem;
     font-family: 'DM Sans', sans-serif;
   }
+  /* One thread down the steps, through the middle of every dot and of the
+     spinner on the step being worked on: the line sat a few pixels right of
+     them, so the whole thing looked off. */
   .timeline::before {
     content: '';
     position: absolute;
-    left: 0.3125rem;
-    top: 0.25rem;
-    bottom: 0.25rem;
+    left: calc(0.3125rem - 0.5px);
+    top: 0.8rem;
+    bottom: 0.8rem;
     width: 1px;
-    background: rgba(var(--fg-rgb),0.08);
+    background: rgba(var(--fg-rgb),0.16);
   }
   .tl-row {
     display: flex;
@@ -794,18 +807,19 @@
     position: relative;
     animation: tlSlideIn 0.25s ease;
     font-size: 0.8125rem;
+    line-height: 1.4;
   }
   @keyframes tlSlideIn {
     from { opacity: 0; transform: translateY(0.375rem); }
     to { opacity: 1; transform: translateY(0); }
   }
   .tl-dot {
-    width: 0.625rem;
-    height: 0.625rem;
+    width: 0.5rem;
+    height: 0.5rem;
     border-radius: 50%;
     flex-shrink: 0;
-    margin-top: 0.1875rem;
-    margin-left: -1.5625rem;
+    margin-top: calc((1.4em - 0.5rem) / 2);
+    margin-left: -1.1875rem;
     position: relative;
     z-index: 1;
     transition: background 0.5s ease, box-shadow 0.5s ease;
@@ -820,7 +834,7 @@
     box-shadow: 0 0 0.5rem rgba(var(--accent-rgb),0.4);
     animation: tlPulse 1.2s ease-in-out infinite;
   }
-  .tl-dot.done { background: var(--ok); box-shadow: none; }
+  .tl-dot.done { background: rgba(var(--ok-rgb),0.8); box-shadow: none; }
   .tl-dot.error { background: var(--accent-strong); box-shadow: none; }
   .tl-dot.stalled { background: var(--accent-strong); box-shadow: 0 0 0.375rem rgba(var(--accent-rgb),0.3); animation: tlPulse 1s ease-in-out infinite; }
   @keyframes tlPulse {
@@ -831,26 +845,20 @@
   .tl-desc { color: var(--text-secondary, var(--muted)); }
   .tl-desc.active { color: var(--text-primary, var(--fg)); }
   .tl-desc.muted { color: var(--text-tertiary, rgba(var(--fg-rgb),0.5)); }
-  .tl-badge {
-    font-size: 0.625rem;
-    padding: 1px 0.4375rem;
-    border-radius: 0.25rem;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-    flex-shrink: 0;
-  }
-  .tl-badge.success { background: rgba(var(--ok-rgb),0.15); color: var(--ok); }
-  .tl-badge.fail { background: rgba(var(--danger-rgb),0.15); color: var(--danger); }
+  /* A step done is its dot; one that went wrong says so, in red. The same
+     steps one after another are one line with how many (×3). */
+  .tl-count { color: rgba(var(--fg-rgb),0.45); font-variant-numeric: tabular-nums; }
+  .tl-fail { color: var(--danger); flex-shrink: 0; }
   .tl-elapsed { color: var(--text-tertiary, rgba(var(--fg-rgb),0.5)); font-size: 0.6875rem; margin-left: auto; flex-shrink: 0; }
   .tl-collapse { font-size: 0.6875rem; color: var(--text-tertiary, rgba(var(--fg-rgb),0.5)); padding: 2px 0 2px 1.25rem; }
   .tl-thinking {
-    display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; position: relative;
+    display: flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0; position: relative;
   }
-  /* A fixed box, so a wider or taller symbol never moves the line. */
+  /* A fixed box centred on the line, so a wider or taller symbol never moves
+     it, and the words start where every step's do. */
   .tl-spinner {
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-    width: 1rem; height: 1.125rem; overflow: hidden;
+    width: 1rem; height: 1.125rem; overflow: hidden; margin-left: -1.4375rem; position: relative; z-index: 1;
     font-size: 0.9375rem; line-height: 1; color: var(--accent, var(--accent));
     text-shadow: 0 0 0.375rem rgba(var(--accent-strong-rgb),0.35);
   }
@@ -860,7 +868,6 @@
   @keyframes tlFadeOut { to { opacity: 0; transform: translateY(-0.5rem); } }
   @media (max-width: 767px) {
     .tl-thinking-text { animation: none; }
-    .tl-badge { font-size: 0.5625rem; }
   }
 
   @keyframes typingBounce {
@@ -2226,7 +2233,7 @@
   <div class="activity-scrim" id="activityScrim" onclick="toggleMobileActivity()"></div>
 
   <!-- CHAT STATE: messages + docked input at bottom -->
-  <button class="scroll-latest" id="scrollLatest" type="button" aria-label="Latest message" onclick="scrollToBottom()"><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+  <button class="scroll-latest" id="scrollLatest" type="button" aria-label="Go to the latest message" onclick="scrollToBottom(true, true)"><span class="scroll-latest-text">New message</span><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
   <div class="chat-messages" id="chatMessages">
     <div class="typing-indicator" id="typingIndicator">
       <div id="statusArea" style="display:flex;flex-direction:column;gap:2px;width:100%;"></div>
@@ -4187,7 +4194,8 @@
     // A live message is stamped now; history passes its own stamp, or null when it has none.
     attachMsgTools(div, typeof text === 'string' ? text : '', ts === undefined ? new Date().toISOString() : ts, ts === undefined, via);
     messagesEl.insertBefore(div, typingEl);
-    scrollToBottom();
+    // Their own message, just sent, always shows; anything else keeps their place.
+    scrollToBottom(role === 'user' && ts === undefined);
   }
 
   var typingStatusEl = document.getElementById('typingStatus');
@@ -4326,25 +4334,33 @@
 
     var html = '<div class="timeline">';
 
+    // The same step done again and again ("Searching data" four times) is
+    // one line with how many; a step that went wrong stands on its own.
+    var steps = [];
+    for (var c = 0; c < completed.length; c++) {
+      var item = completed[c];
+      var desc = item.end.description || (item.start ? item.start.description : '') || 'Working on it';
+      var isFail = item.end.success === false;
+      var last = steps[steps.length - 1];
+      if (last && !isFail && !last.fail && last.desc === desc) { last.count++; last.elapsed += item.end.elapsed || 0; continue; }
+      steps.push({ desc: desc, fail: isFail, count: 1, elapsed: item.end.elapsed || 0 });
+    }
+
     // Collapsed count
-    if (completed.length > maxVisible) {
-      html += '<div class="tl-collapse">' + (completed.length - maxVisible) + ' earlier steps</div>';
+    if (steps.length > maxVisible) {
+      html += '<div class="tl-collapse">' + (steps.length - maxVisible) + ' earlier steps</div>';
     }
 
     // Completed tools
-    var visibleCompleted = completed.slice(-maxVisible);
-    for (var c = 0; c < visibleCompleted.length; c++) {
-      var item = visibleCompleted[c];
-      var desc = item.end.description || (item.start ? item.start.description : '') || 'Working on it';
-      var elapsed = item.end.elapsed;
-      var elapsedStr = elapsed ? '<span class="tl-elapsed">' + formatElapsed(elapsed) + '</span>' : '';
-      var isFail = item.end.success === false;
+    var visibleSteps = steps.slice(-maxVisible);
+    for (var v = 0; v < visibleSteps.length; v++) {
+      var step = visibleSteps[v];
       html += '<div class="tl-row">';
-      html += '<div class="tl-dot ' + (isFail ? 'error' : 'done') + '"></div>';
+      html += '<div class="tl-dot ' + (step.fail ? 'error' : 'done') + '"></div>';
       html += '<div class="tl-body">';
-      html += '<span class="tl-desc muted">' + escapeHtml(desc) + '</span>';
-      html += '<span class="tl-badge ' + (isFail ? 'fail' : 'success') + '">' + (isFail ? 'Error' : 'Done') + '</span>';
-      html += elapsedStr;
+      html += '<span class="tl-desc muted">' + escapeHtml(step.desc) + (step.count > 1 ? ' <span class="tl-count">\u00d7' + step.count + '</span>' : '') + '</span>';
+      if (step.fail) html += '<span class="tl-fail">Didn\u2019t work</span>';
+      html += step.elapsed ? '<span class="tl-elapsed">' + formatElapsed(step.elapsed) + '</span>' : '';
       html += '</div></div>';
     }
 
@@ -4532,7 +4548,7 @@
         if (keep && !shownJustNow(keep._raw, 'user')) messagesEl.insertBefore(keep, typingEl);
         // And the work running for this conversation, its line under the rest.
         pollAgentStatus();
-        [300, 600, 1000].forEach(function(ms) { setTimeout(scrollToBottom, ms); });
+        [300, 600, 1000].forEach(function(ms) { setTimeout(function () { scrollToBottom(true); }, ms); });
       })
       .catch(function() {});
   };
@@ -4646,7 +4662,7 @@
       earlier.forEach(showStored);
       var all = messagesEl.querySelectorAll('.message');
       for (var i = before; i < all.length; i++) if (first) messagesEl.insertBefore(all[i], first);
-      scrollToBottom();
+      scrollToBottom(true);
     }).catch(function () {});
   }
 
@@ -4758,13 +4774,23 @@
     return new Date(dateStr).toLocaleDateString();
   }
 
-  function scrollToBottom() {
+  // The conversation keeps to its end while the reader is there. Scrolled up
+  // to read, it stays where they are: it used to jump to the end at every
+  // status and every word written. What arrives meanwhile shows on the arrow
+  // instead. Their own message, opening a conversation and the arrow always
+  // go to the end (force).
+  var _atEnd = true;
+  function scrollToBottom(force, smooth) {
+    if (force !== true && !_atEnd) return;
+    _atEnd = true;
     requestAnimationFrame(function() {
-      messagesEl.scrollTop = messagesEl.scrollHeight + 500;
+      if (smooth) messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+      else messagesEl.scrollTop = messagesEl.scrollHeight + 500;
     });
   }
-  // The arrow shows once the reader is well above the end, and sits just
-  // above the floating input, wherever that is.
+  // The arrow: it shows once the reader is above the end, just above the
+  // floating input. While Closedhand works below it a ring turns around it;
+  // when a reply lands it opens into New message; at the end it goes.
   (function latestArrow() {
     var btn = document.getElementById('scrollLatest');
     if (!btn || !messagesEl) return;
@@ -4774,14 +4800,24 @@
       btn.style.bottom = Math.max(16, window.innerHeight - top + 14) + 'px';
     };
     var update = function() {
-      var away = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight > 240;
+      var gap = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
       var inChat = document.body.classList.contains('chat-active');
-      btn.classList.toggle('show', away && inChat);
-      if (away && inChat) place();
+      var away = inChat && gap > 120;
+      if (!away) btn.classList.remove('fresh');
+      btn.classList.toggle('working', away && !!messagesEl.querySelector('#typingIndicator.visible, .message.bot.writing, .agent-live:not(.done), #statusArea .timeline'));
+      btn.classList.toggle('show', away);
+      if (away) place();
     };
-    messagesEl.addEventListener('scroll', update, { passive: true });
+    messagesEl.addEventListener('scroll', function () {
+      _atEnd = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 64;
+      update();
+    }, { passive: true });
     window.addEventListener('resize', update);
-    new MutationObserver(update).observe(messagesEl, { childList: true });
+    new MutationObserver(function (changes) {
+      // A reply landing while they read above: New message.
+      if (!_atEnd && changes.some(function (c) { return [].some.call(c.addedNodes, function (n) { return n.nodeType === 1 && n.classList.contains('message') && n.classList.contains('bot') && !n.classList.contains('writing'); }); })) btn.classList.add('fresh');
+      update();
+    }).observe(messagesEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   })();
 
   // A page opened from a link in the web chat shows beside the conversation.

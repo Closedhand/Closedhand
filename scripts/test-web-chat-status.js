@@ -25,3 +25,45 @@ test("the working star turns smoothly: no symbol a phone draws as an emoji, a ca
   assert.match(page, /\.tl-spinner \{\n    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;\n    width: 1rem; height: 1.125rem; overflow: hidden;/);
   assert.match(page, /prefers-reduced-motion: reduce\)'\)\.matches\) return;/, "still for anyone who asks for less motion");
 });
+
+// The steps' timeline: one thread through the middle of every dot and of the
+// spinner (it sat a few pixels right of them), the same step done again as
+// one line with how many, no small-capital DONE, a step gone wrong in red.
+test("the timeline's line runs through every dot and the spinner, and repeated steps are one line", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  const rem = (re) => Number(page.match(re)[1]);
+  const pad = rem(/\.timeline \{\n\s*position: relative;\n\s*padding-left: ([\d.]+)rem;/);
+  const line = rem(/\.timeline::before \{[^}]*left: calc\(([\d.]+)rem - 0\.5px\);/);
+  const dot = page.match(/\.tl-dot \{\n\s*width: ([\d.]+)rem;[\s\S]*?margin-left: (-[\d.]+)rem;/);
+  const spin = page.match(/\.tl-spinner \{[^}]*width: ([\d.]+)rem;[^}]*margin-left: (-[\d.]+)rem;/);
+  assert.equal(pad + Number(dot[2]) + Number(dot[1]) / 2, line, "each dot's middle is on the line");
+  assert.equal(pad + Number(spin[2]) + Number(spin[1]) / 2, line, "and the spinner's");
+  assert.doesNotMatch(page, /tl-badge|'Done'<\/span>/, "no DONE badge");
+  const start = page.indexOf("  function renderActivityFeed(events) {");
+  const area = { innerHTML: "" };
+  const box = { document: { getElementById: () => area }, window: { innerWidth: 1200 }, Date, Object, startSpinner() {}, _spinnerChars: ["*"], _spinnerIdx: 0, _spinnerInterval: null, clearInterval() {} };
+  require("node:vm").runInNewContext(page.slice(start, page.indexOf("\n  }\n", page.indexOf("    area.innerHTML = html;", start)) + 4)
+    + page.slice(page.indexOf("  function formatElapsed(ms) {"), page.indexOf("  function escapeHtml(str) {"))
+    + page.slice(page.indexOf("  function escapeHtml(str) {"), page.indexOf("\n  }\n", page.indexOf("  function escapeHtml(str) {")) + 4) + "\nthis.render = renderActivityFeed;", box);
+  const step = (n, description, success = true) => [{ type: "tool_start", toolName: "t" + n, timestamp: n, description }, { type: "tool_end", toolName: "t" + n, timestamp: n + 1, description, success, elapsed: 1000 }];
+  box.render([...step(1, "Searching data"), ...step(2, "Searching data"), ...step(3, "Searching data"), ...step(4, "Reading web pages", false), { type: "thinking", timestamp: 9 }]);
+  assert.equal((area.innerHTML.match(/class="tl-row"/g) || []).length, 2, "three of the same step are one line");
+  assert.match(area.innerHTML, /Searching data <span class="tl-count">×3<\/span>/);
+  assert.match(area.innerHTML, /<span class="tl-fail">Didn’t work<\/span>/);
+});
+
+// Scrolled up to read, the conversation stays put; what arrives shows on the
+// arrow: a turning ring while Closedhand works, New message when a reply
+// lands. Their own message, opening a conversation and the arrow go to the end.
+test("reading above the end is never jolted down; the arrow says what is new below", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /function scrollToBottom\(force, smooth\) \{\n\s*if \(force !== true && !_atEnd\) return;/);
+  assert.match(page, /_atEnd = messagesEl\.scrollHeight - messagesEl\.scrollTop - messagesEl\.clientHeight < 64;/);
+  assert.match(page, /scrollToBottom\(role === 'user' && ts === undefined\);/, "their own message, just sent");
+  assert.match(page, /setTimeout\(function \(\) \{ scrollToBottom\(true\); \}, ms\);/, "opening a conversation");
+  assert.match(page, /onclick="scrollToBottom\(true, true\)"><span class="scroll-latest-text">New message<\/span>/);
+  assert.match(page, /n\.classList\.contains\('message'\) && n\.classList\.contains\('bot'\) && !n\.classList\.contains\('writing'\)[^\n]*btn\.classList\.add\('fresh'\)/, "a reply landing while away");
+  assert.match(page, /btn\.classList\.toggle\('working', away && !!messagesEl\.querySelector\('#typingIndicator\.visible, \.message\.bot\.writing, \.agent-live:not\(\.done\), #statusArea \.timeline'\)\);/);
+  assert.match(page, /\.scroll-latest\.working:not\(\.fresh\)::before \{[^}]*animation: latestTurn/);
+  assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{ \.scroll-latest, \.scroll-latest-text \{ transition: none; \}/);
+});
