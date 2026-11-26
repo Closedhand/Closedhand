@@ -161,8 +161,53 @@ test("the pictures and files Closedhand sent in a turn go with it to the other a
   assert.deepEqual(wa.splice(0).map((m) => m[0]), ["me", "closedhand"], "a file from another turn never goes with this one");
 
   const messaging = read("lib/messaging.js");
-  assert.match(messaging, /const userId = ctx\.activeUserId, said = ctx\.currentAsk && userId && ctx\.currentAsk\[userId\];\n\s*if \(said && Buffer\.isBuffer\(buffer\)\) \{/);
-  assert.match(messaging, /require\("\.\/one-chat"\)\.noteFile\(userId, said, \{ buffer, filename, mimeType, id, \.\.\.\(madeFrom \? \{ madeFrom: String\(madeFrom\)\.slice\(0, 1200\) \} : \{\}\), \.\.\.\(shows \? \{ shows: String\(shows\)\.slice\(0, 800\) \} : \{\}\) \}\);/);
+  assert.match(messaging, /if \(!oneChat\.turnsOwn\(userId\)\) oneChat\.fileElsewhere\(userId, platform, \{ buffer, filename, mimeType \}\);\n\s*else if \(said\) oneChat\.noteFile\(userId, said, \{ buffer, filename, mimeType, id, \.\.\.\(madeFrom \? \{ madeFrom: String\(madeFrom\)\.slice\(0, 1200\) \} : \{\}\), \.\.\.\(shows \? \{ shows: String\(shows\)\.slice\(0, 800\) \} : \{\}\) \}\);/);
+});
+
+// A task started in the web chat sent its sales order there alone, and told
+// WhatsApp it was "above"; never kept either, the PDF could not be added to
+// the draft it was made for. A file sent outside a turn is kept and goes to
+// the other app at once; a turn's own still goes with the turn.
+test("a file sent outside a turn is kept and reaches the other app at once; a turn's own waits for the turn", async (t) => {
+  const web = [], wa = [], kept = [];
+  const stubs = {
+    "./web-chat-ws": { hasWebChatConnection: () => true, sendToUser: (userId, msg) => web.push(msg) },
+    "./platforms/whatsapp-linked": { selfChat: () => "447700900001@s.whatsapp.net", mirrorPersonToSelf: async () => {}, sendLinkedMessage: async () => {},
+      sendLinkedDocument: async (jid, buffer, name) => wa.push([jid, name]) },
+    "./attachments": { saveAttachment: (userId, f, description) => { kept.push([f.fileName, f.direction, description]); return "att_" + kept.length; } },
+  };
+  const oneChat = load(stubs, t);
+  const full = require.resolve("../lib/messaging");
+  delete require.cache[full];
+  const real = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (request === "./one-chat") return oneChat;
+    if (Object.prototype.hasOwnProperty.call(stubs, request)) return stubs[request];
+    return real.call(this, request, parent, isMain);
+  };
+  t.after(() => { Module._load = real; delete require.cache[full]; });
+  const messaging = require(full);
+  const ctx = require("../lib/context");
+  const was = { userId: ctx.activeUserId, ask: ctx.currentAsk };
+  t.after(() => { ctx.activeUserId = was.userId; ctx.currentAsk = was.ask; });
+  ctx.activeUserId = "u1"; ctx.currentAsk = { u1: "redo the order for Fixture Padel" };
+  const tick = () => new Promise((r) => setImmediate(r));
+
+  assert.equal(await messaging.sendDocumentToPlatform("web", "u1", Buffer.from("%PDF"), "Sales-Order-Fixture.pdf", "application/pdf"), "att_1", "the id it is kept under");
+  await tick();
+  assert.equal(web.filter((m) => m.type === "file").length, 1, "the web chat, where the task was started");
+  assert.deepEqual(wa.splice(0), [["447700900001@s.whatsapp.net", "Sales-Order-Fixture.pdf"]], "and WhatsApp, at once");
+  assert.deepEqual(kept.splice(0), [["Sales-Order-Fixture.pdf", "chat", "Sent in the chat: Sales-Order-Fixture.pdf"]], "kept, so it can be attached to a draft");
+
+  web.length = 0;
+  await oneChat.asTurn("u1", () => messaging.sendDocumentToPlatform("web", "u1", Buffer.from("JPEG"), "chart.png", "image/png"));
+  await tick();
+  assert.equal(wa.length, 0, "a turn's own file goes with the turn, not before it");
+  await oneChat.after({ userId: "u1", via: "web", said: "redo the order for Fixture Padel", reply: "Here it is." });
+  assert.deepEqual(wa.splice(0), [["447700900001@s.whatsapp.net", "chart.png"]]);
+  assert.equal(kept.length, 1);
+  // The task is told the id, to add it to an email or draft by attachment_ids.
+  assert.match(read("lib/tools/handlers.js"), /const kept = await sendDocument\(ctx\.activeChatId, Buffer\.from\(file\.content, "base64"\), file\.filename, file\.mime_type\);\n[^\n]*\n\s*const sent = `Sent \$\{file\.filename\} \(\$\{\(file\.size \/ 1024\)\.toFixed\(1\)\}KB\) to the user\$\{kept \? `, kept as \$\{kept\}: add it to an email or draft with attachment_ids` : ""\}`;/);
 });
 
 // Looking back, a picture Closedhand sent was gone: only the words of the

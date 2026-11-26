@@ -75,7 +75,7 @@ test("a file from the sandbox computer is sent wherever the person is, and an in
     const context = {
       Buffer, console: { warn() {}, error() {} },
       ctx: { activeUserId: "owner", activeChatId: "self", activePlatform: platform },
-      toolInput: { path: `/workspace/${name}` }, sendDocument: async (...args) => deliveries.push(args),
+      toolInput: { path: `/workspace/${name}` }, sendDocument: async (...args) => { deliveries.push(args); return null; },
       require: (n) => {
         if (n === "../sandbox") return { ensureSandbox: async () => {}, sandboxFileDownload: async () => ({ filename: name, mime_type: mime, content: "YQ==", size: 1 }) };
         throw Error(n);
