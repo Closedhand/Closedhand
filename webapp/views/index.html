@@ -992,7 +992,7 @@
     .docked-input:focus-within textarea { min-height: 4.375rem !important; }
     .docked-input:focus-within .input-box-wrap { border-color: rgba(var(--accent-strong-rgb),0.3) !important; box-shadow: 0 0 1.25rem rgba(var(--accent-strong-rgb),0.08), 0 0 2.5rem rgba(var(--accent-strong-rgb),0.04) !important; }
     .docked-input:focus-within .input-box { background: rgba(var(--raised-rgb),0.65) !important; }
-    body.chat-active .chat-messages { padding-bottom: 1.5rem !important; }
+    body.chat-active .chat-messages { padding-bottom: 3.25rem !important; }
     body.chat-active { overflow: hidden; height: 100dvh; }
     body.chat-active .page { height: 100dvh !important; }
 
@@ -1465,9 +1465,12 @@
      and its bottom is masked, so the thread fades out before it reaches the
      box and never shows through it. The fade eases out over a short stretch
      and the thread softens into it under a blur that grows toward the box: a
-     long straight fade read as a milky band laid over a picture. */
+     long straight fade read as a milky band laid over a picture. The list
+     ends with room as deep as the fade and the blur, so scrolled to the end
+     the last message, its buttons and the line saying Closedhand is working
+     sit clear of both: with less, they stayed faded under the box. */
   body.chat-active .chat-messages {
-    padding-bottom: 1.5rem;
+    padding-bottom: 3.25rem;
     -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3rem), rgba(0,0,0,.93) calc(100% - 2.5rem), rgba(0,0,0,.78) calc(100% - 1.9rem), rgba(0,0,0,.55) calc(100% - 1.35rem), rgba(0,0,0,.3) calc(100% - .85rem), rgba(0,0,0,.1) calc(100% - .4rem), transparent 100%);
     mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 3rem), rgba(0,0,0,.93) calc(100% - 2.5rem), rgba(0,0,0,.78) calc(100% - 1.9rem), rgba(0,0,0,.55) calc(100% - 1.35rem), rgba(0,0,0,.3) calc(100% - .85rem), rgba(0,0,0,.1) calc(100% - .4rem), transparent 100%);
   }
@@ -4091,7 +4094,7 @@
       files.forEach(function(f) {
         if (f.type && f.type.startsWith('image/')) {
           var img = document.createElement('img');
-          img.src = 'data:' + f.type + ';base64,' + f.data;
+          img.src = f.url || 'data:' + f.type + ';base64,' + f.data;
           img.style.cssText = 'max-width:12.5rem;max-height:9.375rem;border-radius:0.625rem;display:block;margin-bottom:0.5rem;';
           div.appendChild(img);
         } else if (f.name) {
@@ -4494,10 +4497,23 @@
   // A message from the stored conversation, with the pictures and files that
   // came with it above it, as they came (lib/one-chat.js keepFiles).
   function showStored(m) {
-    (m.role === 'assistant' && Array.isArray(m.files) ? m.files : []).forEach(function (f) {
-      addFileMessage({ filename: f.name, mediaType: f.mime, size: f.size, url: '/api/files/' + encodeURIComponent(f.id) + '/download' });
-    });
-    addMessage(m.content, m.role === 'user' ? 'user' : 'bot', null, m.ts || null, m.via || null);
+    var files = Array.isArray(m.files) ? m.files : [];
+    var url = function (f) { return '/api/files/' + encodeURIComponent(f.id) + '/download'; };
+    if (m.role === 'user') {
+      addMessage(theirOwn(m), 'user', files.map(function (f) { return { name: f.name, type: f.mime || '', url: url(f) }; }), m.ts || null, m.via || null);
+      return;
+    }
+    files.forEach(function (f) { addFileMessage({ filename: f.name, mediaType: f.mime, size: f.size, url: url(f) }); });
+    addMessage(m.content, 'bot', null, m.ts || null, m.via || null);
+  }
+  // What the person sent: their words, kept beside the label Closedhand's LLM
+  // reads for a file they sent ("[User uploaded file: ... what the picture
+  // shows]"), which once showed as their message. Older messages have only
+  // the label, which is taken off.
+  var UPLOAD_LABEL = /^\s*\[User uploaded (?:file: [^\s.]+|\d+ images|a file)\.[\s\S]*\]\s*/;
+  function theirOwn(m) {
+    if (typeof m.said === 'string') return m.said;
+    return String(m.content || '').replace(UPLOAD_LABEL, '');
   }
 
   // Starting to type from the opening screen carries on the one conversation:
@@ -4507,7 +4523,7 @@
       if (!conv || !conv.messages || _openProject) return;
       var first = messagesEl.querySelector('.message');
       var shown = [].map.call(messagesEl.querySelectorAll('.message'), function (el) { return el._raw; });
-      var earlier = shownInThread(conv.messages).slice(-30).filter(function (m) { return shown.indexOf(m.content) === -1; });
+      var earlier = shownInThread(conv.messages).slice(-30).filter(function (m) { return shown.indexOf(m.role === 'user' ? theirOwn(m) : m.content) === -1; });
       var before = messagesEl.querySelectorAll('.message').length;
       earlier.forEach(showStored);
       var all = messagesEl.querySelectorAll('.message');
@@ -4524,12 +4540,13 @@
   // own log has only its own replies, and a WhatsApp conversation followed in
   // a tab left open was missing from it until reloaded.
   function sameWords(t) { return String(t || '').replace(REPLY_PREFIX, '').replace(/\s+/g, ' ').trim(); }
+  function shownText(m) { return m.role === 'user' ? theirOwn(m) : m.content; }
   function missedSince(stored, shown) {
     var seen = shown.slice(-20).map(sameWords);
     for (var s = shown.length - 1; s >= 0 && s >= shown.length - 10; s--) {
       for (var i = stored.length - 1; i >= 0; i--) {
-        if (sameWords(stored[i].content) === sameWords(shown[s])) {
-          return stored.slice(i + 1).filter(function (m) { return seen.indexOf(sameWords(m.content)) === -1; });
+        if (sameWords(shownText(stored[i])) === sameWords(shown[s])) {
+          return stored.slice(i + 1).filter(function (m) { return seen.indexOf(sameWords(shownText(m))) === -1; });
         }
       }
     }
@@ -4564,7 +4581,7 @@
     for (var i = 0; i < messages.length; i++) {
       var m = messages[i];
       if (typeof m.content !== 'string' || !m.content.trim()) continue;
-      if (/^\[[^\]]*\]$/.test(m.content.trim())) {
+      if (/^\[[^\]]*\]$/.test(m.content.trim()) && !(Array.isArray(m.files) && m.files.length)) {
         var next = messages[i + 1];
         if (next && next.role === 'assistant' && String(next.content).trim() === 'OK, cancelled.') i++;
         continue;

@@ -134,7 +134,8 @@ test("the turn's hook, proactive messages and the web chat page", () => {
   assert.match(page, /if \(msg\.type === 'elsewhere'\) \{ showElsewhere\(msg\); return; \}/);
   assert.match(page, /where\.textContent = 'on ' \+ VIA_NAMES\[via\];/);
   assert.match(page, /var firstOfVisit = !hasMessages && !_openProject;\n(\s*\/\/[^\n]*\n)*\s*if \(spoken === true && !hasMessages && window\.talkFirst && window\.talkFirst\(\)\) holdForAnswer\(\); else enterChatMode\(\);\n\s*if \(firstOfVisit\) loadEarlier\(\);/, "typing (or talking) from the opening screen carries the conversation on");
-  assert.match(page, /addMessage\(m\.content, m\.role === 'user' \? 'user' : 'bot', null, m\.ts \|\| null, m\.via \|\| null\);/, "history says which app too");
+  assert.match(page, /addMessage\(theirOwn\(m\), 'user', [^\n]*, m\.ts \|\| null, m\.via \|\| null\);/, "history says which app too");
+  assert.match(page, /addMessage\(m\.content, 'bot', null, m\.ts \|\| null, m\.via \|\| null\);/);
 });
 
 // A picture made in the web chat once reached WhatsApp only as the words
@@ -225,7 +226,8 @@ test("the files a turn sent are named on its answer, so looking back shows them"
   assert.match(messaging, /id = require\("\.\/attachments"\)\.saveAttachment\(userId, \{ buffer, fileName: filename, mediaType: mimeType, ext, isImage: PICTURE\.test\(mimeType \|\| ""\), direction: "chat" \}, `Sent in the chat: \$\{filename\}`\);/, "kept as it is sent");
   assert.match(read("lib/engine.js"), /if \(oneChat\.keepFiles\(userId, userMessage, require\("\.\/conversation"\)\.getConversation\(userId\), before\)\) ctx\.activeUserStore\?\.markDirty\?\.\("conversations"\);/);
   const page = read("webapp/views/index.html");
-  assert.match(page, /addFileMessage\(\{ filename: f\.name, mediaType: f\.mime, size: f\.size, url: '\/api\/files\/' \+ encodeURIComponent\(f\.id\) \+ '\/download' \}\);/);
+  assert.match(page, /var url = function \(f\) \{ return '\/api\/files\/' \+ encodeURIComponent\(f\.id\) \+ '\/download'; \};/);
+  assert.match(page, /files\.forEach\(function \(f\) \{ addFileMessage\(\{ filename: f\.name, mediaType: f\.mime, size: f\.size, url: url\(f\) \}\); \}\);/);
   assert.match(page, /if \(conv && conv\.messages\) shownInThread\(conv\.messages\)\.forEach\(showStored\);/);
   assert.match(page, /earlier\.forEach\(showStored\);/);
 });

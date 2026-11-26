@@ -102,7 +102,7 @@ test("a reopened conversation shows what was said, not Closedhand's bookkeeping"
 });
 
 test("coming back to the tab, or a connection coming back, shows what arrived meanwhile, from every app", () => {
-  const prefix = page.match(/  var REPLY_PREFIX = .*;\n/)[0];
+  const prefix = page.match(/  var REPLY_PREFIX = .*;\n/)[0] + page.match(/  var UPLOAD_LABEL = .*;\n  function theirOwn\(m\) \{[\s\S]*?\n  \}\n/)[0];
   const start = page.indexOf("  function sameWords(t) {");
   const box = {};
   vm.runInNewContext(prefix + page.slice(start, page.indexOf("\n  }\n", page.indexOf("  function missedSince(stored, shown) {", start)) + 4) + "\nthis.f = missedSince;", box);
@@ -118,6 +118,19 @@ test("coming back to the tab, or a connection coming back, shows what arrived me
   assert.deepEqual(f(["On it, back in about ten minutes.", "make it near the station"]), ["Three good ones: …", "Reminder: iCloud storage"], "their words shown live without the quoted reply still count as shown");
   assert.deepEqual(f(["Three good ones: …", "Reminder: iCloud storage"]), [], "nothing new");
   assert.deepEqual(f([]), [], "an empty page has nothing to anchor on");
+  // A picture sent to an LLM that cannot see is kept with what was read from
+  // it, for the LLM; the person's own words beside it are what was shown. The
+  // description once came back as a "missed" message of theirs.
+  const picture = [
+    { role: "user", content: "[User uploaded file: att_1. Based on the image provided, here is a detailed description: a blue notice box [i] reading £10,550.] does this look right?", said: "does this look right?", files: [{ id: "att_1", name: "shot.jpg", mime: "image/jpeg" }] },
+    { role: "assistant", content: "No - it's about £4,040 too high." },
+  ];
+  assert.deepEqual([...box.f(picture, ["does this look right?"])].map((m) => m.content), ["No - it's about £4,040 too high."], "their message as typed counts as shown");
+  const before = [{ role: "user", content: "[User uploaded file: att_2. A receipt for £12.] is this the right total?" }, { role: "assistant", content: "Yes." }];
+  assert.deepEqual([...box.f(before, ["is this the right total?"])].map((m) => m.content), ["Yes."], "and an older one with only the label");
+  assert.match(page, /addMessage\(theirOwn\(m\), 'user', files\.map\(function \(f\) \{ return \{ name: f\.name, type: f\.mime \|\| '', url: url\(f\) \}; \}\), m\.ts \|\| null, m\.via \|\| null\);/, "shown as their words with the picture, never the description");
+  assert.match(page, /img\.src = f\.url \|\| 'data:' \+ f\.type \+ ';base64,' \+ f\.data;/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8"), /conversation\.push\(\{ role: "user", content: `\$\{uploadLabel\} \$\{caption\}`, said: caption, \.\.\.\(sent\.length \? \{ files: sent \} : \{\}\) \}\);/);
   assert.equal((page.match(/var REPLY_PREFIX = /g) || []).length, 1, "one reading of a quoted reply");
   assert.match(page, /div\._raw = raw;/, "each message keeps the text as sent");
   assert.match(page, /fetch\('\/api\/conversation' \+ \(projectId \? '\?project=' \+ encodeURIComponent\(projectId\) : ''\)\)[\s\S]{0,400}missedSince\(shownInThread\(conv\.messages\), shown\)/, "read from the conversation open here, Chat or a project's");
