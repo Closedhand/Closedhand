@@ -406,7 +406,7 @@ test("the pass after a turn: a project message updates that project only; any ot
 test("the engine, tools and claims check use projects", () => {
   const engine = read("lib/engine.js");
   assert.match(engine, /const marked = projects\.markReply\(userId, finalText\);\n[\s\S]{0,200}?finalText = require\("\.\/plain-dashes"\)\.noEmDashes\(marked\.text\);\n\s*conversation\.push\(\{ role: "assistant", content: finalText \}\);/);
-  assert.match(engine, /const project = await projects\.openTurn\(userId, userMessage, \{ projectId: opts\.project \|\| null \}\)[\s\S]{0,1600}const reply = await ask\(userId, userMessage, fileData, chatId, false, turnOpts\);[\s\S]{0,800}\n\s*\} finally \{\n\s*if \(project\) await project\.close\(\)/);
+  assert.match(engine, /const project = await projects\.openTurn\(userId, userMessage, \{ projectId: opts\.project \|\| null \}\)[\s\S]{0,2000}const reply = await ask\(userId, userMessage, fileData, chatId, false, turnOpts\);[\s\S]{0,800}\n\s*\} finally \{\n\s*if \(project\) await project\.close\(\)/);
   assert.match(engine, /const filedId = marked\.projectId;/);
   assert.match(engine, /if \(attachmentId && filed && filed\.how !== "offer"\) \{\n\s*const many = imageSet && imageSet\.length > 1;\n\s*projects\.addFiles\(userId, filed\.id,/);
   assert.match(engine, /if \(tool\.coreWithProjects\) return projects\.hasProjects\(ctx\.activeUserId\);/);
@@ -931,4 +931,19 @@ test("deleting a project's conversation keeps the project, and the list shows on
   const shared = read("webapp/public/interface.css");
   assert.match(shared, /\.project-confirm-yes \{ font: inherit; font-weight: 500; color: var\(--danger\);/, "one look for asking first, shared");
   assert.doesNotMatch(read("webapp/public/projects.css"), /\.project-confirm/);
+});
+
+// A message typed in Chat that went into a project (its topic, or a
+// back-and-forth carried on there) ran there unseen: after a reload it and
+// the task it started were nowhere in Chat. The web chat is told, and opens
+// the project's conversation with the message at its end.
+test("a message that went into a project it was not sent to opens that project's conversation in the web chat", () => {
+  const engine = read("lib/engine.js");
+  assert.match(engine, /if \(project && project\.project && project\.project\.id !== \(opts\.project \|\| null\) && typeof opts\.onProject === "function"\) \{\n\s*try \{ opts\.onProject\(project\.project\); \}/);
+  assert.ok(engine.indexOf("opts.onProject(project.project)") > engine.indexOf("projects.openTurn(userId, userMessage"), "once the turn knows its project");
+  assert.match(read("lib/web-chat-ws.js"), /onProject\(p\) \{\n\s*sendToUser\(userId, \{ type: "in_project", project: \{ id: p\.id, emoji: p\.emoji \|\| null, name: p\.name \|\| "" \} \}\);/);
+  const page = read("webapp/views/index.html");
+  assert.match(page, /if \(msg\.type === 'in_project'\) \{ movedTo\(msg\.project\); return; \}/);
+  assert.match(page, /function movedTo\(p\) \{\n\s*if \(!p \|\| !p\.id \|\| \(_openProject && _openProject\.id === p\.id\)\) return;\n\s*var mine = \[\]\.slice\.call\(messagesEl\.querySelectorAll\('\.message\.user'\)\)\.pop\(\) \|\| null;\n\s*window\.openConversation\(p\.id, mine\);/);
+  assert.match(page, /if \(keep && !shownJustNow\(keep\._raw, 'user'\)\) messagesEl\.insertBefore\(keep, typingEl\);/, "the message stays in view, once");
 });
