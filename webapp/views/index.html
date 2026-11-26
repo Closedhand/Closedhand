@@ -3649,7 +3649,8 @@
       chatWs.onopen = function() {
         while (pendingMessages.length > 0) {
           var pm = pendingMessages.shift();
-          chatWs.send(JSON.stringify(typeof pm === 'string' ? { type: 'chat', text: pm } : pm));
+          if (pm && pm.type === 'chat' && pm.cid) sendChat(pm);
+          else chatWs.send(JSON.stringify(typeof pm === 'string' ? { type: 'chat', text: pm } : pm));
         }
         if (_chatWasOpen) catchUp();
         _chatWasOpen = true;
@@ -3660,6 +3661,8 @@
           if (window.ClosedHandSpeech && window.ClosedHandSpeech.receive(msg)) return;
           if (_awaitingSpoken) speakReply(msg);
           if (_holding && /^(status|stream_start|stream_token|message|file|error)$/.test(msg.type)) talkHandover();
+          // The server has the message (sendChat): nothing to send again.
+          if (msg.type === 'received') { var got = _unreceived[msg.cid]; if (got) { clearTimeout(got.timer); delete _unreceived[msg.cid]; } return; }
           // Background progress is not a reply, so it never touches the reply watchdog.
           if (msg.type === 'agent_progress') { agentLiveLine(msg); return; }
           // The home page's conversation went in (or did not): carryFirst goes on.
@@ -3828,17 +3831,39 @@
     // Sent: the box is empty again and may close, with its usual words.
     updateComposing();
     input.setAttribute('placeholder', composerPlaceholder());
-    var deliver = function() {
-      if (chatWs && chatWs.readyState === 1) {
-        chatWs.send(JSON.stringify(payload));
-      } else {
-        pendingMessages.push(payload);
-        connectChat();
-      }
-    };
-    deliver();
+    sendChat(payload);
     _awaitingReply = true;
     armResponseWatchdog();
+  }
+
+  // Every message waits for the server's receipt. A connection that looks
+  // open but has quietly died (a laptop waking, a network change) took
+  // messages and delivered none, and six minutes on the page said the request
+  // had stalled. No receipt in 8 seconds: that connection is dropped, a new
+  // one made and the message sent again; the server takes each one once
+  // (lib/web-chat-ws.js seenBefore).
+  var _unreceived = {};
+  function sendChat(payload) {
+    if (!payload.cid) payload.cid = (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)).replace(/[^a-z0-9]/g, '');
+    var entry = _unreceived[payload.cid] || (_unreceived[payload.cid] = { payload: payload });
+    clearTimeout(entry.timer);
+    if (chatWs && chatWs.readyState === 1) chatWs.send(JSON.stringify(payload));
+    else { if (pendingMessages.indexOf(payload) === -1) pendingMessages.push(payload); connectChat(); }
+    var wait = function () {
+      entry.timer = setTimeout(function () {
+        if (!_unreceived[payload.cid]) return;
+        // Still going out (a big file on a slow connection): not dead, wait on.
+        if (chatWs && chatWs.readyState === 1 && chatWs.bufferedAmount > 0) { wait(); return; }
+        if (pendingMessages.indexOf(payload) === -1) pendingMessages.unshift(payload);
+        var dead = chatWs;
+        chatWs = null;
+        if (dead) { dead.onclose = null; dead.onmessage = null; try { dead.close(); } catch (e) {} }
+        connectChat();
+        // Trying until a connection opens, which sends it again (onopen).
+        wait();
+      }, 8000);
+    };
+    wait();
   }
 
   function addFileMessage(msg) {

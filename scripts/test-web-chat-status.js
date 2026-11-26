@@ -67,3 +67,24 @@ test("reading above the end is never jolted down; the arrow says what is new bel
   assert.match(page, /\.scroll-latest\.working:not\(\.fresh\)::before \{[^}]*animation: latestTurn/);
   assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{ \.scroll-latest, \.scroll-latest-text \{ transition: none; \}/);
 });
+
+// A connection that looked open but had quietly died took the message and
+// delivered nothing, and six minutes on the page said the request stalled.
+// Each message now waits for the server's receipt and is sent again on a new
+// connection without one; the server takes each one once.
+test("a message is sent until the server has it, and taken once", () => {
+  const ws = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "lib", "web-chat-ws.js"), "utf8");
+  const box = { Map, Date };
+  require("node:vm").runInNewContext(ws.slice(ws.indexOf("const recentlySent = new Map();"), ws.indexOf("\n}\n", ws.indexOf("function seenBefore(")) + 3) + "\nthis.seen = seenBefore;", box);
+  assert.equal(box.seen("u1", "abc123def", 1000), false, "the first time it is taken");
+  assert.equal(box.seen("u1", "abc123def", 2000), true, "sent again after a lost receipt: not answered twice");
+  assert.equal(box.seen("u2", "abc123def", 2000), false, "per person");
+  assert.equal(box.seen("u1", "abc123def", 1000 + 31 * 60 * 1000), false, "forgotten after half an hour");
+  assert.match(ws, /ws\.send\(JSON\.stringify\(\{ type: "received", cid: msg\.cid \}\)\);\n\s*if \(seenBefore\(userId, msg\.cid\)\) return;/, "the receipt goes at once");
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /if \(msg\.type === 'received'\) \{ var got = _unreceived\[msg\.cid\]; if \(got\) \{ clearTimeout\(got\.timer\); delete _unreceived\[msg\.cid\]; \} return; \}/);
+  assert.match(page, /if \(chatWs && chatWs\.readyState === 1 && chatWs\.bufferedAmount > 0\) \{ wait\(\); return; \}/, "a big file still going out is not a dead connection");
+  assert.match(page, /var dead = chatWs;\n\s*chatWs = null;\n\s*if \(dead\) \{ dead\.onclose = null; dead\.onmessage = null; try \{ dead\.close\(\); \} catch \(e\) \{\} \}\n\s*connectChat\(\);/);
+  assert.match(page, /if \(pm && pm\.type === 'chat' && pm\.cid\) sendChat\(pm\);/, "sent again on the new connection, still waiting for its receipt");
+  assert.match(page, /\n\s*sendChat\(payload\);\n\s*_awaitingReply = true;/);
+});
