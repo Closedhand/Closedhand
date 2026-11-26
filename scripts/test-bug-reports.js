@@ -26,6 +26,8 @@ function tables({ threads = [], archive = [] } = {}) {
         filters.push((r) => rx.test(String(r.data.text))); return q;
       },
       in: (k, ids) => { filters.push((r) => ids.includes(r.external_id)); return q; },
+      not: (k, op, v) => { if (k === "project_id") filters.push((r) => r.project_id != null); return q; },
+      gt: (k, v) => { if (k === "updated_at") filters.push((r) => String(r.updated_at || "") > v); return q; },
       limit: (n) => { cap = n; return q; },
       then: (ok) => ok({ data: (name === "conversation_threads" ? threads : archive).filter((r) => filters.every((f) => f(r))).slice(0, cap), error: null }),
     };
@@ -150,6 +152,23 @@ test("the replied-to message is found in a project's conversation or the archive
   const nowhere = reporter();
   const ask = await nowhere.api.fileBugReport({ userId: "alice", text: replyTo("A message from long before anything kept"), platform: "telegram" });
   assert.match(ask, /the last 10 messages of this chat/);
+});
+
+// A back-and-forth carried on in a project's own conversation without the
+// emoji: a /bug about it once carried Chat's older turns and not the reply.
+test("/bug on its own carries the conversation the last exchange ran in: a project's when it went on there, else the open one", async () => {
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const project = (updated, at) => ({ project_id: "p-fixture", updated_at: updated, messages: [{ role: "user", content: "next box is 9 harbour", ts: at }, { role: "assistant", content: "🎾 9 × $75 = $675", ts: at }] });
+  const went = async (threads, chatAt) => {
+    const r = reporter(tables({ threads }));
+    r.ctx.store.conversations.alice.forEach((m) => { m.ts = chatAt; });
+    await r.api.fileBugReport({ userId: "alice", text: "/bug why the caveat?", platform: "web" });
+    await r.api.handleBugSendReply("alice", "yes");
+    return r.calls[0].body.transcript.map((t) => t.content);
+  };
+  assert.deepEqual(await went([project(ago(2), ago(2))], ago(12)), ["next box is 9 harbour", "🎾 9 × $75 = $675"], "it went on in the project: that conversation");
+  assert.deepEqual(await went([project(ago(20), ago(20))], ago(5)), ["When does my dentist appointment move to?", "Thursday at 3."], "Chat had the last word: Chat");
+  assert.deepEqual(await went([project(ago(90), ago(90))], ago(120)), ["When does my dentist appointment move to?", "Thursday at 3."], "a project talked in long ago is not where it went on");
 });
 
 test("a quote holding a ] is still read as /bug, on every app's form", () => {
