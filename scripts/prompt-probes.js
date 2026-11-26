@@ -90,6 +90,20 @@ const PAYROLL = { results: [
   { id: "m_702", from: "Fixture Payroll <billing@fixturepayroll.example>", subject: "Subscription transfer accepted", date: "2026-11-24", body: "The transfer of your Fixture Payroll subscription has been accepted. Sample Loaf Ltd is now the subscriber and will be invoiced directly from 1 December." },
   { id: "m_703", from: "Sample Accounts <invoices@sampleaccounts.example>", subject: "Invoice SA-0412", date: "2026-11-18", body: "Bookkeeping, November: £240. Fixture Payroll recharge: £32. Total £272, due 30 November." },
 ], source_counts: { gmail: 3 }, note: "Full messages shown; nothing more to read." };
+// The same after a correction, as it happened: Closedhand said an invoice
+// still held a recharge, the person said it was settled and moved as they had
+// asked, and the reply called their own earlier email a loose end. Here
+// nothing is left open, so any loose end is that.
+const RECHARGE = "Sample Accounts' invoice SA-0412 for £272 is due on 30 November. It still includes the £32 Fixture Payroll recharge, though Fixture Payroll now bills Sample Loaf directly, so you'd be paying for it twice.";
+const SETTLED = { results: [
+  ...PAYROLL.results,
+  { id: "m_704", from: "Robin <robin@sampleloaf.example>", to: "Jo Fixture <jo@sampleaccounts.example>", subject: "Re: Invoice SA-0412", date: "2026-11-25", body: "Hi Jo, I've settled SA-0412 less the £32 Fixture Payroll recharge, as the subscription is ours now. Thanks, Robin" },
+  { id: "m_705", from: "Jo Fixture <jo@sampleaccounts.example>", to: "Robin <robin@sampleloaf.example>", subject: "Re: Invoice SA-0412", date: "2026-11-26", body: "Thanks Robin, £240 received and the recharge is off from December. All square. Jo" },
+], source_counts: { gmail: 5 }, note: "Full messages shown; nothing more to read." };
+// A sentence calling something stale or a loose end, unless it is about
+// Closedhand's own message ("my earlier message was out of date" is the
+// right correction): the sentence, or null.
+const theirsCalledStale = (t) => t.split(/(?<=[.!?:])\s+/).find((x) => (CALLS_STALE.test(x) || /loose end/i.test(x)) && !/\bmy\b/i.test(x)) || null;
 // Calling what they wrote then wrong because things changed after it. Not
 // "loose end" alone: a reply still owed by someone else is one, rightly.
 const CALLS_STALE = /out of date|outdated|no longer (true|accurate|correct)|(isn'?t|is not|not) (true|accurate|correct) (now|any ?more)|worth correcting|correct(ing)? (it|that|this|the|your) (email|line|wording|statement)|was true (when|at the time)|true at the time|(email|line|it|that) (is|was) (now )?(wrong|inaccurate|stale|out of date)/i;
@@ -213,6 +227,9 @@ const PROBES = [
     pass: (r) => /dentist/i.test(textOf(r)) && (!/priya/i.test(textOf(r)) || /cancel/i.test(textOf(r))), note: (r) => (!textOf(r) ? "still looking" : !/priya/i.test(textOf(r)) ? "left out" : /cancel/i.test(textOf(r)) ? "said it was cancelled" : "LISTED AS ON") },
   // What they wrote is read as of when they wrote it: an email sent before the
   // change it asked for is not a loose end once the change is made.
+  { name: "earlier_message_after_correction", drop: { line: "Raise only what is specific and real" }, steps: 2, found: (c) => (/search_cache|read_cached_record/.test(c.name) ? SETTLED : null),
+    messages: [A(RECHARGE), U(`[replying to Closedhand's message: "${RECHARGE.slice(0, 160)}"]\nNo, I settled SA-0412 without the recharge, and the subscription moved to us, like I asked Jo. Check.`), ...toolTurn("search_cache", { query: "SA-0412 Fixture Payroll" }, SETTLED)],
+    pass: (r) => !!textOf(r) && !theirsCalledStale(textOf(r)), note: (r) => (!textOf(r) ? "still looking" : theirsCalledStale(textOf(r)) || "read in its time") },
   { name: "earlier_message_read_in_its_time", drop: { line: "Raise only what is specific and real" }, steps: 2, found: (c) => (/search_cache|read_cached_record/.test(c.name) ? PAYROLL : null),
     messages: [U("Is the Fixture Payroll subscription billed to us directly now, or are Sample Accounts still recharging it?"), ...toolTurn("search_cache", { query: "Fixture Payroll subscription" }, PAYROLL)],
     pass: (r) => /direct|sample loaf/i.test(textOf(r)) && !CALLS_STALE.test(textOf(r)), note: (r) => (!textOf(r) ? "still looking" : (textOf(r).match(CALLS_STALE) || ["read in its time"])[0]) },
