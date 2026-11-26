@@ -17,7 +17,8 @@ test('signed cookies refuse tampering, expiry and the wrong purpose', () => {
   assert.equal(session.open(secret, 'session', sealed).owner, 'x');
   assert.equal(session.open(secret, 'signin', sealed), null);
   assert.equal(session.open('t'.repeat(40), 'session', sealed), null);
-  assert.equal(session.open(secret, 'session', sealed.slice(0, -2) + 'AA'), null);
+  // Always a change: a cookie that already ended in AA once passed for tampered.
+  assert.equal(session.open(secret, 'session', sealed.slice(0, -2) + (sealed.endsWith('AA') ? 'BB' : 'AA')), null);
   assert.equal(session.open(secret, 'session', session.seal(secret, 'session', { owner: 'x', exp: Date.now() - 1 })), null);
   assert.throws(() => session.createSessions({ secret: 'short' }), /at least 32/);
 });
