@@ -86,7 +86,7 @@ const DAY = 24 * 3600 * 1000;
 // An account signed in with an invented Google account.
 const ACCOUNT_KEY = 'k'.repeat(44);
 // A paid month's fair use set to 15 here, so the sums below read plainly; unset, it is 20.
-const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, INCLUDED_AI_FAIR_USE_USD: '15', INCLUDED_AI_TRIAL_USD: '10', ...more });
+const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, INCLUDED_AI_FAIR_USE_USD: '15', INCLUDED_AI_TRIAL_USD: '10', INCLUDED_AI_MAINTAINER_USD: '15', ...more });
 let people = 0;
 const owner = (db, subject = 'g-' + (++people), email = null) => { const id = crypto.randomUUID(); db?.owners.set(id, { provider: 'google', subject, email, email_verified: !!email }); return id; };
 // Each claim from its own connection unless a test says otherwise.
@@ -379,6 +379,25 @@ test('the maintainer\'s account gets a month of fair use, never free days, never
   assert.equal(await now.collect(keeper), null, 'its computer already has it');
   const guest = await now.forOwner(owner(db, 'g-guest', 'guest@example.com'), from());
   assert.ok(guest && [...near.keys.values()].at(-1).limit === 10, 'anyone else gets the usual free days');
+}));
+
+// The maintainer's own Closedhand has no fair use: its month is a ceiling of
+// its own (INCLUDED_AI_MAINTAINER_USD), only there for a runaway job, and a
+// change to it applies within the month.
+test('the maintainer\'s month is a ceiling of its own, not fair use, and a change to it applies at once', quiet(async () => {
+  const near = nearAi(), db = database();
+  assert.equal(create({ db, env: env({ INCLUDED_AI_MAINTAINER_USD: '' }) }).maintainerUsd, 500, 'unless set');
+  const ai = create({ db, env: env({ OPERATOR_EMAILS: 'keeper@example.com', INCLUDED_AI_MAINTAINER_USD: '200' }), request: near.request });
+  const keeper = owner(db, 'g-keeper3', 'keeper@example.com');
+  await ai.forOwner(keeper, from());
+  const [id, key] = [...near.keys][0];
+  assert.equal(key.limit, 200, 'the ceiling, not the 15 of fair use');
+  key.usage = 160;
+  const raised = create({ db, env: env({ OPERATOR_EMAILS: 'keeper@example.com', INCLUDED_AI_MAINTAINER_USD: '500' }), request: near.request });
+  await raised.collect(keeper);
+  assert.equal(near.keys.get(id).limit, 500, 'raised mid-month, at once');
+  await raised.collect(keeper);
+  assert.equal(near.keys.get(id).limit, 500);
 }));
 
 test('the maintainer\'s month renews on the first with the same carry-over, and a key held from before starts its first month at the hourly check', quiet(async () => {

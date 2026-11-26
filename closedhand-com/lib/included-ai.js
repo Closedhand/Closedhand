@@ -76,6 +76,9 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   const fairUse = fairUseUsd(env);
   const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 20);
   const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 7);
+  // The maintainer's own month: no fair use, only a ceiling a runaway job
+  // would meet, so their Closedhand is never held to what subscribers get.
+  const maintainerUsd = Number(env.INCLUDED_AI_MAINTAINER_USD || 500);
   // Ten, so an office or a household sharing one connection all get theirs,
   // while one connection can't collect it again and again.
   const perConnection = Number(env.INCLUDED_AI_PER_CONNECTION || 10);
@@ -110,8 +113,8 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     const held = (await db.query('SELECT * FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rows[0];
     const oldId = held && held.key_id;
     const old = held && held.maintainer ? await keys.keyNow(oldId, { fresh: true }) : null;
-    const month = old && held.base_for ? Number(old.limit) - (Number(held.base_usd) || 0) : fairUse;
-    const left = old ? Math.max(0, Number(old.limit) - Number(old.usage)) : fairUse;
+    const month = old && held.base_for ? Number(old.limit) - (Number(held.base_usd) || 0) : maintainerUsd;
+    const left = old ? Math.max(0, Number(old.limit) - Number(old.usage)) : maintainerUsd;
     const made = await makeKey(ownerId, left);
     const base = cents(left - month), since = old && held.base_for ? new Date(held.base_for) : calendarMonth(), carry = old ? Number(held.carry_usd) || 0 : 0;
     const saved = held
@@ -124,9 +127,11 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return { key: made.key, models: roles() };
   }
 
-  // The maintainer's key held to this month: as the month begins, the same
-  // fair use from the use it has now, with the same carry-over. A key from
-  // before closedhand.com knew whose it was starts its first month now.
+  // The maintainer's key held to this month: as the month begins, their
+  // month's ceiling from the use it has now, with the same carry-over. A key
+  // from before closedhand.com knew whose it was starts its first month now.
+  // Within the month the ceiling follows the setting, so a change to it
+  // applies at once.
   async function maintainerMonth(ownerId, held) {
     const key = await keys.keyNow(held.key_id, { fresh: true });
     if (!key) {
@@ -134,9 +139,13 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
       return;
     }
     const month = calendarMonth();
-    if (held.maintainer && !held.stopped_at && held.base_for && new Date(held.base_for).getTime() === month.getTime()) return;
+    if (held.maintainer && !held.stopped_at && held.base_for && new Date(held.base_for).getTime() === month.getTime()) {
+      const want = cents((Number(held.base_usd) || 0) + maintainerUsd + (Number(held.carry_usd) || 0));
+      if (Math.abs(Number(key.limit) - want) >= 0.01) await keys.setLimit(held.key_id, want);
+      return;
+    }
     const { base, carry } = await beginMonth(ownerId, held, key, month);
-    await keys.setLimit(held.key_id, base + fairUse + carry);
+    await keys.setLimit(held.key_id, base + maintainerUsd + carry);
     await db.query('UPDATE included_ai_keys SET maintainer = true, stopped_at = NULL, updated_at = now() WHERE owner_id = $1', [ownerId]);
   }
 
@@ -529,7 +538,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, hadFreeMonth, freeUntil, forget, offered, current, enabled, collect, subscribe, subscription, paying, carryOn, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
+  return { forOwner, hadFreeMonth, freeUntil, maintainerUsd, forget, offered, current, enabled, collect, subscribe, subscription, paying, carryOn, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
 module.exports = { create, connection, fairUseUsd };

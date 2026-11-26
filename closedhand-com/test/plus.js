@@ -79,7 +79,7 @@ function world({ polarFails = null, managed = true } = {}) {
     NEAR_REFRESH_TOKEN: managed ? SIGN_IN : '', NEAR_USER_AGENT: managed ? BROWSER : '', TOKEN_ENCRYPTION_KEY: 'k'.repeat(44),
     // A paid month's fair use in round numbers; free days, and a free key
     // below, have a limit of 10.
-    INCLUDED_AI_FAIR_USE_USD: '20', INCLUDED_AI_TRIAL_USD: '10',
+    INCLUDED_AI_FAIR_USE_USD: '20', INCLUDED_AI_TRIAL_USD: '10', INCLUDED_AI_MAINTAINER_USD: '60',
     // The maintainer's own account (lib/maintainer.js), invented.
     OPERATOR_EMAILS: 'keeper@example.com',
     POLAR_ACCESS_TOKEN: 'polar-token', POLAR_WEBHOOK_SECRET: SECRET, POLAR_PLUS_PRODUCT_ID: PLUS, POLAR_EXTEND_PRODUCT_ID: EXTEND,
@@ -452,17 +452,17 @@ test('the maintainer\'s key keeps its month whatever their Polar subscription do
   w.keys.set(key, { name: 'Closedhand ' + id, key: 'sk-' + crypto.randomBytes(16).toString('hex'), limit: 10, usage: 0 });
   await db.query('INSERT INTO included_ai_keys (owner_id, key_id, granted_usd) VALUES ($1, $2, 10)', [id, key]);
   assert.equal(await w.includedAi.collect(id), null, 'its computer has the key');
-  assert.equal(w.keys.get(key).limit, 30, 'its first month: 20 of fair use and the 10 left, carried in');
+  assert.equal(w.keys.get(key).limit, 70, "its first month: the maintainer's 60, no fair use, and the 10 left, carried in");
   await w.plus.handle(subscription('subscription.active', id, { id: 'sub_keeper' }));
   await settled(id);
-  assert.equal(w.keys.get(key).limit, 30, 'a subscription changes nothing');
+  assert.equal(w.keys.get(key).limit, 70, 'a subscription changes nothing');
   w.keys.get(key).usage = 7;
   await w.plus.handle(subscription('subscription.revoked', id, { id: 'sub_keeper', status: 'canceled', cancel: true }));
   await settled(id);
-  assert.equal(w.keys.get(key).limit, 30, 'nor does its ending');
+  assert.equal(w.keys.get(key).limit, 70, 'nor does its ending');
   await db.query("UPDATE included_ai_keys SET ends_at = now() - interval '1 day' WHERE owner_id = $1", [id]);
   await w.includedAi.sweep();
-  assert.equal(w.keys.get(key).limit, 30, 'and the sweep leaves it');
+  assert.equal(w.keys.get(key).limit, 70, 'and the sweep leaves it');
   const row = (await db.query('SELECT maintainer, stopped_at FROM included_ai_keys WHERE owner_id = $1', [id])).rows[0];
   assert.deepEqual([row.maintainer, row.stopped_at], [true, null]);
   assert.equal((await require('../lib/plan').planFor(db, { OPERATOR_EMAILS: 'keeper@example.com' }, id)).name, 'maintainer');

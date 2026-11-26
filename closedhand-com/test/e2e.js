@@ -17,8 +17,9 @@ const MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated';
 const passKeys = crypto.generateKeyPairSync('ed25519');
 
 const env = {
-  // A month's fair use in round numbers, as plus.js and ahead.js have it.
-  INCLUDED_AI_FAIR_USE_USD: '20',
+  // A month's fair use in round numbers, as plus.js and ahead.js have it,
+  // and the maintainer's own month, a ceiling apart from it.
+  INCLUDED_AI_FAIR_USE_USD: '20', INCLUDED_AI_MAINTAINER_USD: '60',
   BASE_URL: 'https://closedhand.com', SESSION_SECRET: crypto.randomBytes(32).toString('hex'),
   TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY, PHONE_ENROLLMENT_ENABLED: '1',
   RELAY_ADDRESS: 'relay.closedhand.ai:443', RELAY_CONTROL_HOST: 'relay.closedhand.ai', RELAY_PIN: crypto.createHash('sha256').update('the relay certificate').digest('base64url'),
@@ -879,11 +880,11 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     const row = (await db.query("SELECT k.* FROM included_ai_keys k JOIN owners o ON o.id = k.owner_id WHERE o.subject = 'g-quinn'")).rows[0];
     assert.ok(keys.has(row.key_id), 'NEAR\'s id for the key');
     // Quinn is the maintainer here (OPERATOR_EMAILS): Managed Models with no
-    // charge, a month of fair use as a subscriber has, never free days.
+    // charge and no fair use, only the maintainer's ceiling, never free days.
     assert.equal(Number(row.granted_usd), 0);
     assert.equal(row.maintainer, true);
     assert.equal(row.ends_at, null, 'no end');
-    assert.equal([...keys.values()][0].limit, 20, 'a month of fair use');
+    assert.equal([...keys.values()][0].limit, 60, "the maintainer's ceiling, not fair use");
     assert.ok(!JSON.stringify(row).includes(done.included_ai.key), 'the key itself is not kept');
     assert.equal([...keys.values()][0].name, 'Closedhand ' + row.owner_id, 'named by the account, not its email');
     // The computer can ask which models are current, and only a known computer.
@@ -894,7 +895,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.deepEqual(asked.models, done.included_ai.models);
     const firstOfNext = (() => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(); })();
     assert.deepEqual(asked.plan, { name: 'maintainer', renews_at: firstOfNext, fair_use_renews_at: firstOfNext, email: false }, 'and that it is the maintainer\'s, renewing on the first');
-    assert.deepEqual(asked.usage, { limit: 20, used: 0 }, 'and how much of its fair use is used, which a NEAR key can\'t read itself');
+    assert.deepEqual(asked.usage, { limit: 60, used: 0 }, 'and how much of its month is used, which a NEAR key can\'t read itself');
     assert.equal(asked.key, undefined);
     assert.equal(asked.notices, undefined, 'nothing waiting for the maintainer yet');
     assert.deepEqual((await (await call('GET', '/api/account', undefined, { cookie: owner.cookie })).json()).plan, asked.plan, 'the account page is told the same');
@@ -921,7 +922,7 @@ test('claiming a personal URL hands that computer its own AI key, kept here only
     assert.equal(reclaimed.url, 'https://quinn-again.closedhand.ai', 'the claim itself goes on');
     assert.match(reclaimed.included_ai.key, /^sk-/);
     assert.equal(keys.size, 1);
-    assert.equal([...keys.values()][0].limit, 20);
+    assert.equal([...keys.values()][0].limit, 60);
   } finally { other.close(); }
 });
 
