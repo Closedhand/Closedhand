@@ -129,18 +129,27 @@ test('a month of fair use within a paid period: from the day it began, never one
   assert.deepEqual(monthOfPeriod(start, end, new Date('2026-09-01T00:00:00Z')).from, new Date('2026-06-30T09:00:00Z'), 'a renewal not yet paid begins no new month');
 });
 
-test('the subscription every 6 or 12 months: Polar\'s checkout for that length with no free days, and the box ticked first for whatever charges at once', quiet(async () => {
+test('the subscription every 6 or 12 months: Polar\'s checkout for that length, free until the free days end, and the box ticked first for whatever charges at once', quiet(async () => {
   const w = world();
-  const fresh = await person(), had = await person({ freeUsage: 0 });
+  const fresh = await person(), had = await person({ freeUsage: 0 }), ended = await person({ freeUsage: 0 });
+  await db.query("UPDATE included_ai_keys SET ends_at = now() - interval '1 day' WHERE owner_id = $1", [ended]);
   assert.equal(await w.plus.cannotSubscribe({ id: fresh }, 1, false), null, 'monthly with the free days first charges nothing now');
-  assert.equal(await w.plus.cannotSubscribe({ id: had }, 1, false), AGREE, 'monthly without them charges at once');
-  assert.equal(await w.plus.cannotSubscribe({ id: fresh }, 6, false), AGREE, 'every 6 months charges at once, free days or not');
+  assert.equal(await w.plus.cannotSubscribe({ id: had }, 1, false), null, 'during the free days nothing is charged until they end');
+  assert.equal(await w.plus.cannotSubscribe({ id: had }, 6, false), null, 'whatever the length');
+  assert.equal(await w.plus.cannotSubscribe({ id: ended }, 1, false), AGREE, 'once they have ended, it charges at once');
+  assert.equal(await w.plus.cannotSubscribe({ id: fresh }, 6, false), AGREE, 'never had them: every 6 months charges at once');
   assert.equal(await w.plus.cannotSubscribe({ id: had }, 12, true), null);
   assert.equal(await w.plus.cannotSubscribe({ id: had }, 3, true), 'Choose every month, every 6 months or every 12 months.');
   assert.equal(await w.plus.checkout({ id: fresh, email: 'ahead@example.com' }, undefined, 12), 'https://polar.sh/checkout/fixture-1212');
   const sent = w.calls.at(-1).body;
   assert.deepEqual([sent.products, sent.allow_trial, sent.trial_interval, sent.success_url, sent.metadata], [[TWELVE], false, undefined, 'https://closedhand.com/account?plus=welcome', { owner_id: fresh }],
-    'the free days are for the monthly subscription only');
+    'never had them: the 7 days come with the monthly subscription only');
+  await w.plus.checkout({ id: had }, undefined, 12);
+  assert.deepEqual([w.calls.at(-1).body.products, w.calls.at(-1).body.trial_interval, w.calls.at(-1).body.trial_interval_count], [[TWELVE], 'day', 14], 'during them: first charged when they end');
+  assert.equal((await w.plus.state(had)).free_until, (await db.query('SELECT ends_at FROM included_ai_keys WHERE owner_id = $1', [had])).rows[0].ends_at.toISOString(), 'and the account page says when');
+  assert.equal((await w.plus.state(ended)).free_until, undefined);
+  await w.plus.checkout({ id: ended });
+  assert.equal(w.calls.at(-1).body.allow_trial, false);
   assert.deepEqual(await w.plus.longerPrices('GB'), [{ months: 6, price: '£130', monthly: '£21.67' }, { months: 12, price: '£230', monthly: '£19.17' }]);
   assert.deepEqual(await w.plus.longerPrices('US'), [{ months: 6, price: '$162', monthly: '$27' }, { months: 12, price: '$288', monthly: '$24' }]);
   const off = world({ POLAR_12_MONTHS_PRODUCT_ID: '' });
@@ -196,7 +205,7 @@ test('the maintainer hears when a subscription starts and when someone pays ahea
   const trial = await person(), t = await who(trial);
   await w.plus.handle(subscription(trial, { product: PLUS, start, end: addMonths(start, 1), status: 'trialing' }));
   await w.plus.handle(subscription(trial, { product: PLUS, start, end: addMonths(start, 1) }));
-  assert.deepEqual(await told(trial), [`Closedhand: ${t.email} (Google), ${t.hostname} started the subscription, renewing every month, with its 7 free days first.`], 'the free days ending in a payment is the same subscription');
+  assert.deepEqual(await told(trial), [`Closedhand: ${t.email} (Google), ${t.hostname} started the subscription, renewing every month, with free days first.`], 'the free days ending in a payment is the same subscription');
 
   const ahead = await person({ freeUsage: 2 }), a = await who(ahead);
   await w.ahead.checkout({ id: ahead }, { months: 3, agreed: true });
@@ -221,7 +230,7 @@ test('paying 3 months ahead in crypto starts a plan with a month of fair use and
   const w = world();
   const id = await person({ freeUsage: 2 });
   assert.equal(await w.ahead.checkout({ id }, { months: 3, agreed: true }), 'https://closedhand.com/pay/' + w.state.made[0].id);
-  assert.deepEqual(w.state.made[0].body, { amount: '90', currency: 'USD', metadata: { ownerId: id, months: 3 }, checkout: { redirectURL: 'https://closedhand.com/account?plus=ahead', redirectAutomatically: true, paymentMethods: ['USDT-ETHEREUM', 'USDT-POLYGON'] } },
+  assert.deepEqual(w.state.made[0].body, { amount: '120', currency: 'USD', metadata: { ownerId: id, months: 3 }, checkout: { redirectURL: 'https://closedhand.com/account?plus=ahead', redirectAutomatically: true, paymentMethods: ['USDT-ETHEREUM', 'USDT-POLYGON'] } },
     'an invoice in US dollars carrying the account and months, and nothing about the payer, paid in USDT only: Bitcoin is left out for now');
   const made = w.state.made[0].id;
   w.state.invoices.get(made).status = 'Settled';
@@ -231,7 +240,7 @@ test('paying 3 months ahead in crypto starts a plan with a month of fair use and
   assert.equal(new Date(plan.ends_at).getTime(), addMonths(plan.starts_at, 3).getTime(), 'three calendar months from now');
   assert.equal((await keyOf(id)).limit, 32, 'what it used (2), a month of fair use (20) and what the free days left (10)');
   assert.deepEqual((await db.query('SELECT id, kind, months, amount_cents, currency FROM ahead_payments WHERE owner_id = $1', [id])).rows,
-    [{ id: 'btcpay:' + made, kind: 'plan', months: 3, amount_cents: 9000, currency: 'usd' }], 'the invoice, its months, amount and nothing about the payer');
+    [{ id: 'btcpay:' + made, kind: 'plan', months: 3, amount_cents: 12000, currency: 'usd' }], 'the invoice, its months, amount and nothing about the payer');
   const told = await planFor(db, w.env, id);
   assert.deepEqual([told.name, told.ends_at, told.fair_use_renews_at, told.extended], ['ahead', new Date(plan.ends_at).toISOString(), addMonths(plan.starts_at, 1).toISOString(), false],
     "this month's fair use renews a month from the day the plan began");
@@ -277,7 +286,7 @@ test('carrying on in crypto adds a month of fair use to this month of a plan, on
   await w.ahead.settled(w.state.made[0].id);
   assert.equal((await keyOf(id)).limit, 32);
   assert.equal(await w.ahead.checkout({ id }, { extend: true, agreed: true }), 'https://closedhand.com/pay/' + w.state.made[1].id);
-  assert.deepEqual(w.state.made[1].body, { amount: '30', currency: 'USD', metadata: { ownerId: id, extend: true }, checkout: { redirectURL: 'https://closedhand.com/account?plus=carrying', redirectAutomatically: true, paymentMethods: ['USDT-ETHEREUM', 'USDT-POLYGON'] } });
+  assert.deepEqual(w.state.made[1].body, { amount: '39.99', currency: 'USD', metadata: { ownerId: id, extend: true }, checkout: { redirectURL: 'https://closedhand.com/account?plus=carrying', redirectAutomatically: true, paymentMethods: ['USDT-ETHEREUM', 'USDT-POLYGON'] } });
   w.state.invoices.get(w.state.made[1].id).status = 'Settled';
   assert.equal(await w.ahead.settled(w.state.made[1].id), 'carried on to the end of the month');
   assert.equal(await w.ahead.settled(w.state.made[1].id), 'already counted');
@@ -290,7 +299,7 @@ test('carrying on in crypto adds a month of fair use to this month of a plan, on
   assert.equal(await w.ahead.settled('InvTwice0001'), 'nothing to carry on');
   assert.equal((await keyOf(id)).limit, 52);
   assert.deepEqual((await w.ahead.cryptoPayments(id)).map(p => [p.what, p.months, p.crypto, p.amount]).sort(),
-    [['ahead', 3, true, '$90.00'], ['extend', undefined, true, '$30.00'], ['extend', undefined, true, '$30.00']], 'My Account lists them, with nothing about how but that it was crypto');
+    [['ahead', 3, true, '$120.00'], ['extend', undefined, true, '$30.00'], ['extend', undefined, true, '$39.99']], 'My Account lists them, with nothing about how but that it was crypto');
 }));
 
 test('a settled crypto invoice is read back from BTCPay itself; anything else changes nothing', quiet(async () => {
@@ -375,8 +384,8 @@ test('each month of a plan has its own fair use from the day it began, with the 
 test('what paying ahead in crypto costs, in dollars, each length with its price a month, and carrying on', quiet(async () => {
   const w = world();
   assert.deepEqual(w.ahead.options(), {
-    crypto: [{ months: 3, price: '$90', monthly: '$30' }, { months: 6, price: '$168', monthly: '$28' }, { months: 9, price: '$243', monthly: '$27' }],
-    extend: '$30',
+    crypto: [{ months: 3, price: '$120', monthly: '$40' }, { months: 6, price: '$224', monthly: '$37.33' }, { months: 9, price: '$324', monthly: '$36' }],
+    extend: '$39.99',
   });
   const off = world({ BTCPAY_API_KEY: '' });
   assert.equal(off.ahead.cryptoOn(), false, 'crypto is off while its settings are missing');

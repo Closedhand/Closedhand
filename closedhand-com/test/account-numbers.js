@@ -127,7 +127,7 @@ test('using Closedhand anonymously is paid for first: the claim waits with no ac
   assert.match(asked.json.url, /^https:\/\/closedhand\.com\/pay\/InvNumber\d+$/, "closedhand.com's own payment page");
   const made = invoices.at(-1);
   assert.deepEqual(Object.keys(made.body.metadata).sort(), ['months', 'pendingClaim'], 'the invoice names the waiting claim and the months, nothing about the person');
-  assert.deepEqual([made.body.amount, made.body.currency, made.body.metadata.months], ['90', 'USD', 3]);
+  assert.deepEqual([made.body.amount, made.body.currency, made.body.metadata.months], ['120', 'USD', 3]);
   assert.deepEqual(made.body.checkout.paymentMethods, ['USDT-ETHEREUM', 'USDT-POLYGON'], 'paid in USDT only, as every invoice: Bitcoin is left out for now');
   assert.equal((await db.query("SELECT count(*)::int AS n FROM owners WHERE provider = 'anonymous'")).rows[0].n, 0, 'no account before the payment');
   assert.deepEqual((await poll(copy)).json, { state: 'waiting' });
@@ -180,7 +180,7 @@ test('an invoice that lapses lets the claim go, a payment after that makes nothi
   await ask(copy);
   const latest = await ask(copy, { port: 3000, acceptedTerms: true, months: 6 });
   assert.equal((await db.query('SELECT count(*)::int AS n FROM anonymous_pending WHERE secret_hash = $1', [copy.hash])).rows[0].n, 1);
-  assert.equal(invoices.at(-1).body.amount, '168');
+  assert.equal(invoices.at(-1).body.amount, '224');
   // No webhook: the computer's next question reads the invoice back.
   status.set(invoiceOf(latest.json.url), 'Settled');
   await db.query("UPDATE anonymous_pending SET checked_at = now() - interval '1 minute' WHERE secret_hash = $1", [copy.hash]);

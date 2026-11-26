@@ -187,6 +187,10 @@ test('the Closedhand account: shown only as closedhand.com states it, and delete
     plus: { available: true, active: true, every: 6, renews_at: '2027-05-06T00:00:00Z', prices: { plus: '$30', extend: '$30', every: '$162' } } } })).account());
   assert.deepEqual([longer.plan.fair_use_renews_at, longer.plan.extended, longer.plus.every, longer.plus.prices.every], ['2026-12-06T00:00:00.000Z', true, 6, '$162']);
   assert.equal(plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', plus: { available: true, every: 5 } } })).account()).plus.every, undefined, 'only 6 or 12');
+  // In the free days: when they end, a date and nothing else.
+  const freeDays = async (until) => plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', plus: { available: true, active: false, free_until: until } } })).account());
+  assert.equal((await freeDays('2026-12-03T10:00:00Z')).plus.free_until, '2026-12-03T10:00:00.000Z');
+  assert.equal((await freeDays('<b>soon</b>')).plus.free_until, undefined, 'never anything but a date');
   // Paid ahead in crypto, and carrying on that way.
   const paidAhead = plain(await registration({ ...saved }, reply({ account: { provider: 'google', url: 'https://amber-fox-42.closedhand.ai', plan: { name: 'ahead', email: true, ends_at: '2027-05-06T00:00:00Z', fair_use_renews_at: '2026-12-06T00:00:00Z' },
     plus: { available: true, active: false, ahead_until: '2027-05-06T00:00:00Z', crypto: [{ months: 3, price: '$90', monthly: '$30' }], crypto_extend: '$30' } } })).account());

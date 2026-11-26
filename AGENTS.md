@@ -281,7 +281,9 @@ these rules; where a rule makes a screen worse, change the rule here, never quie
   pushed. Each person has 7 free days of the uncensored LLM, ever, which need no card; an
   account made with an account number has none, and pays ahead in crypto only. Someone who did not
   get them then has the subscription's first 7 days free instead (Polar's trial: the card is
-  taken at checkout, nothing is charged until they end, and Polar emails three days before). It is
+  taken at checkout, nothing is charged until they end, and Polar emails three days before). Subscribing
+  during the free days, whatever the length, charges nothing until they end, and they run on as they
+  were, on their own limit; the paid months' fair use begins with the first payment. It is
   said plainly, with the day it ends and the price after, never as urgency or bait. The free days'
   end is mentioned only in their last three days, and an offer of what comes next puts keeping
   the uncensored LLM first and the person's own LLM provider second. When their own LLM provider turns

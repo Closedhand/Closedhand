@@ -798,7 +798,9 @@ test("the free days are one number: the setting, the card trial and every senten
   const site = read("closedhand-com/lib/included-ai.js");
   const days = Number(/INCLUDED_AI_TRIAL_DAYS \|\| (\d+)\)/.exec(site)[1]);
   assert.equal(days, 7);
-  assert.match(read("closedhand-com/lib/plus.js"), /trial_interval: 'day', trial_interval_count: includedAi\.trialDays/, "a subscription's free days are the same number");
+  const plus = read("closedhand-com/lib/plus.js");
+  assert.match(plus, /return every === 1 && await freeMonth\(ownerId\) \? includedAi\.trialDays : 0;/, "a subscription's free days are the same number");
+  assert.match(plus, /trial_interval: 'day', trial_interval_count: trial/);
   const said = ["README.md", "AGENTS.md", "lib/engine.js", "lib/included-ai.js", "webapp/included-ai.js", "webapp/views/dashboard.html", "webapp/views/terms.html", "webapp/views/privacy.html",
     "closedhand-com/views/terms.html", "closedhand-com/views/privacy.html", "closedhand-com/views/pricing.html", "closedhand-com/public/account.js", "closedhand-com/public/ask.js",
     "closedhand-com/public/pricing.js", "closedhand-com/lib/plus.js", "closedhand-com/lib/capacity.js", "closedhand-com/lib/misuse.js"];

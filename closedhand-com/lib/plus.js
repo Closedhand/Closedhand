@@ -106,7 +106,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
       const { name } = await notices.who(ownerId);
       const renews = every > 1 ? `every ${every} months` : 'every month';
       await notices.queue(status === 'trialing'
-        ? `Closedhand: ${name} started the subscription, renewing ${renews}, with its 7 free days first.`
+        ? `Closedhand: ${name} started the subscription, renewing ${renews}, with free days first.`
         : `Closedhand: ${name} subscribed, renewing ${renews}.`);
     } catch (e) { console.error('[operator] notice:', e.message); }
   }
@@ -151,6 +151,9 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
     const plan = ahead && ownerId ? await ahead.running(ownerId) : null;
     const used = active || plan ? await includedAi.usage(ownerId).catch(() => null) : null;
     const month = active ? fairUseMonth(sub) : null;
+    // In the free days set up at claiming: a subscription taken now first
+    // charges when they end (trialDays).
+    const freeUntil = !sub && ownerId && enabled() ? await includedAi.freeUntil(ownerId) : null;
     return {
       available: enabled(),
       active,
@@ -161,6 +164,7 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
       // In its free first month, or able to start with one.
       ...(active && sub.status === 'trialing' ? { trial: true } : {}),
       ...(ownerId && await freeMonth(ownerId) ? { free_month: true } : {}),
+      ...(freeUntil ? { free_until: freeUntil.toISOString() } : {}),
       ...(active && until ? (sub.cancel_at_period_end ? { ends_at: until } : { renews_at: until }) : {}),
       // This month of fair use carried on already, by card or in crypto.
       extended: active ? !!month && !!sub.extended_for && new Date(sub.extended_for).getTime() === month.from.getTime() : !!plan && ahead.extended(plan),
@@ -235,20 +239,31 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
   // Polar's checkout for one product, tied to this account by its own ID, so
   // the webhooks that follow can name it. origin: the personal URL that frames
   // it in My Account, which Polar then lets show it.
-  // Each person has 7 free days of Managed Models, set up when they claim
-  // their personal URL; someone who did not get them then has them as the
-  // subscription's first 7 days instead (INCLUDED_AI_TRIAL_DAYS, so both
-  // free periods are the same length): Polar takes the card, charges nothing
-  // until they end and emails three days before they do (Polar's trials).
-  // Once had, never again; any trial set on the product in Polar is turned off
-  // for everyone else.
+  // Each person has 7 free days of Managed Models, once, set up when they
+  // claim their personal URL. Subscribing during them charges nothing until
+  // they end, whatever the length: the subscription carries on from there.
+  // Someone who did not get them then (another sign-up from the same
+  // connection, or none to give at the time) has them as the monthly
+  // subscription's first 7 days instead (INCLUDED_AI_TRIAL_DAYS, so both are
+  // the same length). Either way Polar takes the card, charges nothing until
+  // they end and emails three days before they do (Polar's trials). Any trial
+  // set on the product in Polar is turned off for everyone else.
   async function freeMonth(ownerId) {
     return enabled() && !!ownerId && !(await row(ownerId)) && !(await includedAi.hadFreeMonth(ownerId));
   }
-  async function checkoutFor(owner, product, back, origin, trial = false, extra = {}) {
+  // The days free before a subscription taken now first charges, or 0 when
+  // it charges at once. Polar's trials run in whole days, so a day begun
+  // counts whole.
+  async function trialDays(ownerId, every = 1) {
+    if (!enabled() || !ownerId || await row(ownerId)) return 0;
+    const until = await includedAi.freeUntil(ownerId);
+    if (until) return Math.max(1, Math.ceil((until.getTime() - Date.now()) / 86400000));
+    return every === 1 && await freeMonth(ownerId) ? includedAi.trialDays : 0;
+  }
+  async function checkoutFor(owner, product, back, origin, trial = 0, extra = {}) {
     const made = await api('/v1/checkouts/', 'POST', {
       products: [product],
-      ...(trial ? { trial_interval: 'day', trial_interval_count: includedAi.trialDays } : { allow_trial: false }),
+      ...(trial > 0 ? { trial_interval: 'day', trial_interval_count: trial } : { allow_trial: false }),
       external_customer_id: owner.id,
       ...(owner.email ? { customer_email: owner.email } : {}),
       success_url: baseUrl + '/account?plus=' + back,
@@ -258,19 +273,18 @@ function create({ db, env = process.env, request = fetch, includedAi, ahead = nu
     if (typeof made?.url !== 'string' || !made.url.startsWith('https://')) throw new Error('Polar did not return a checkout');
     return made.url;
   }
-  // Subscribing every month, or every 6 or 12 months. Only the monthly one
-  // starts with the free days, for someone who never had them.
-  const checkout = async (owner, origin, every = 1) => every === 1
-    ? checkoutFor(owner, plusProduct, 'welcome', origin, await freeMonth(owner.id))
-    : checkoutFor(owner, longProducts[every], 'welcome', origin);
+  // Subscribing every month, or every 6 or 12 months, free until the free
+  // days end (trialDays).
+  const checkout = async (owner, origin, every = 1) =>
+    checkoutFor(owner, every === 1 ? plusProduct : longProducts[every], 'welcome', origin, await trialDays(owner.id, every));
   const extend = (owner, origin) => checkoutFor(owner, extendProduct, 'extended', origin);
   // Why subscribing this way can't start now, as words for the person, or
   // null when it can: the lengths there are, and agreeing first to a payment
-  // that charges at once (any but the monthly one with free days first).
+  // that charges at once (any with no free days first).
   async function cannotSubscribe(owner, every, agreed) {
     if (await isAnonymous(db, owner.id)) return CARDLESS;
     if (![1, 6, 12].includes(every) || (every > 1 && !longerOn())) return 'Choose every month, every 6 months or every 12 months.';
-    if (agreed !== true && !(every === 1 && await freeMonth(owner.id))) return AGREE;
+    if (agreed !== true && !(await trialDays(owner.id, every))) return AGREE;
     return null;
   }
 

@@ -69,12 +69,12 @@ function connection(ip) {
 }
 
 // A paid month's fair use, in one place: the misuse watch had its own, 15.
-const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 25);
+const fairUseUsd = (env) => Number(env.INCLUDED_AI_FAIR_USE_USD || 50);
 
 function create({ db, env = process.env, request = fetch, notices = null }) {
   const keys = require('./included-ai-near').create({ db, env, request, notices });
   const fairUse = fairUseUsd(env);
-  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 10);
+  const trialUsd = Number(env.INCLUDED_AI_TRIAL_USD || 20);
   const trialDays = Number(env.INCLUDED_AI_TRIAL_DAYS || 7);
   // Ten, so an office or a household sharing one connection all get theirs,
   // while one connection can't collect it again and again.
@@ -151,6 +151,12 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   async function hadFreeMonth(ownerId) {
     if ((await db.query('SELECT 1 FROM included_ai_keys WHERE owner_id = $1', [ownerId])).rowCount) return true;
     return (await db.query('SELECT 1 FROM starter_grants WHERE person_hash = $1', [await personOf(ownerId)])).rowCount > 0;
+  }
+  // When this person's free days end, while they still run, or null: a
+  // subscription taken during them first charges then (lib/plus.js).
+  async function freeUntil(ownerId) {
+    const held = (await db.query('SELECT ends_at FROM included_ai_keys WHERE owner_id = $1 AND stopped_at IS NULL AND ends_at > now() AND NOT maintainer', [ownerId])).rows[0];
+    return held ? new Date(held.ends_at) : null;
   }
 
   // The key for an account that has just claimed its personal URL, from the
@@ -283,7 +289,10 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
   // The month of fair use a subscription is in, by the day it began.
   const monthOf = sub => (sub.current_period_start ? new Date(sub.current_period_start).getTime() : 0);
   // This month's fair use: another month's when the person paid to carry on in it.
-  const allowanceFor = sub => fairUse * (sub.extended_for && new Date(sub.extended_for).getTime() === monthOf(sub) ? 2 : 1);
+  // A trial at Polar is the person's free days, on the free days' terms: the
+  // paid months' fair use begins with the first payment.
+  const allowanceFor = sub => sub.status === 'trialing' ? trialUsd
+    : fairUse * (sub.extended_for && new Date(sub.extended_for).getTime() === monthOf(sub) ? 2 : 1);
 
   // A subscriber's key, made now: no free-days limits apply. Saved first, so two
   // requests at once can't both hand one out; the loser's key is deleted.
@@ -362,6 +371,9 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
       await db.query('DELETE FROM included_ai_keys WHERE owner_id = $1 AND key_id = $2', [ownerId, held.key_id]);
       return false;
     }
+    // Subscribed during the free days set up at claiming: they run on as they
+    // were, and the paid months begin when they end.
+    if (sub.status === 'trialing' && !held.base_for && Number(held.granted_usd) > 0) return true;
     let base = Number(held.base_usd) || 0, carry = Number(held.carry_usd) || 0;
     if (!held.base_for || new Date(held.base_for).getTime() !== monthOf(sub)) {
       if (sub.status === 'past_due' && held.base_for) return true;
@@ -517,7 +529,7 @@ function create({ db, env = process.env, request = fetch, notices = null }) {
     return enabled() ? roles() : null;
   }
 
-  return { forOwner, hadFreeMonth, forget, offered, current, enabled, collect, subscribe, subscription, paying, carryOn, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
+  return { forOwner, hadFreeMonth, freeUntil, forget, offered, current, enabled, collect, subscribe, subscription, paying, carryOn, end, sweep, settle, allKeys, spentThisMonth, spendSplit, credit, forOperator, forAsking, usage, fairUse, trialUsd, trialDays, label: keys ? keys.label : null, topUp: keys ? keys.topUp : null };
 }
 
 module.exports = { create, connection, fairUseUsd };

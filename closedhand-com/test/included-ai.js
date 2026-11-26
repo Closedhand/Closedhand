@@ -86,7 +86,7 @@ const DAY = 24 * 3600 * 1000;
 // An account signed in with an invented Google account.
 const ACCOUNT_KEY = 'k'.repeat(44);
 // A paid month's fair use set to 15 here, so the sums below read plainly; unset, it is 20.
-const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, INCLUDED_AI_FAIR_USE_USD: '15', ...more });
+const env = (more = {}) => ({ NEAR_REFRESH_TOKEN: SIGN_IN, NEAR_USER_AGENT: BROWSER, TOKEN_ENCRYPTION_KEY: ACCOUNT_KEY, INCLUDED_AI_FAIR_USE_USD: '15', INCLUDED_AI_TRIAL_USD: '10', ...more });
 let people = 0;
 const owner = (db, subject = 'g-' + (++people), email = null) => { const id = crypto.randomUUID(); db?.owners.set(id, { provider: 'google', subject, email, email_verified: !!email }); return id; };
 // Each claim from its own connection unless a test says otherwise.
@@ -349,8 +349,9 @@ test('this month\'s spend, apart: the maintainer\'s own keys closedhand.com did 
 // on the first of each month with the same carry-over, never free days, and
 // never stopped by the sweep or a subscription ending.
 const thisMonth = () => { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)); };
-test('a month of fair use is 20 unless set', () => {
-  assert.equal(create({ db: database(), env: env({ INCLUDED_AI_FAIR_USE_USD: '' }) }).fairUse, 25);
+test('a month of fair use is 50 and the free days 20 unless set', () => {
+  const unset = create({ db: database(), env: env({ INCLUDED_AI_FAIR_USE_USD: '', INCLUDED_AI_TRIAL_USD: '' }) });
+  assert.deepEqual([unset.fairUse, unset.trialUsd, unset.trialDays], [50, 20, 7]);
 });
 
 test('the maintainer\'s account gets a month of fair use, never free days, never stopped, and claiming again carries on', quiet(async () => {

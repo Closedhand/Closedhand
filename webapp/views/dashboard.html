@@ -4608,18 +4608,21 @@
           : "Subscribe to keep " + llmName() + " every month, so you need no LLM provider of your own"
           + (plan.email ? ", and for Closedhand's own email address" : "") + ". " + llmName() + " runs in a TEE, so nobody but you can read anything that goes in or comes out."
           // Never had the free days: the subscription's first 7 days are them (Polar's trial).
-          + (p.free_month ? " The first 7 days are free, then " + (prices.plus || "a monthly price") + " a month." : "");
+          + (p.free_month ? " The first 7 days are free, then " + (prices.plus || "a monthly price") + " a month." : "")
+          // In the free days: subscribing now charges nothing until they end
+          // (the day said only in their last three days).
+          + (p.free_until ? " Subscribe now and nothing is charged until your free 7 days end" + (Date.parse(p.free_until) - Date.now() <= 3 * 86400000 ? " on " + day(p.free_until) : "") + "." : "");
         $("my-plus-get").textContent = p.free_month ? "Subscribe \u00b7 7 days free" : (wasPlus ? "Subscribe again" : "Subscribe") + (prices.plus ? " \u00b7 " + prices.plus + " a month" : "");
         $("my-plus-extend").textContent = "Carry on to the end of the month" + (extendPrice ? " \u00b7 " + extendPrice : "");
         if (p.active && p.trial && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your free 7 days run until " + day(p.ends_at) + ", then your subscription ends and nothing is charged."); }
-        else if (p.active && p.trial) { status("Free 7 days", "on"); if (p.renews_at) state.push("Your free 7 days run until " + day(p.renews_at) + ", then your subscription renews at " + (prices.plus || "its monthly price") + " a month."); }
+        else if (p.active && p.trial) { status("Free 7 days", "on"); if (p.renews_at) state.push("Your free 7 days run until " + day(p.renews_at) + ", then your subscription renews " + (p.every ? "every " + p.every + " months" + (prices.every ? " at " + prices.every : "") + "." : "at " + (prices.plus || "its monthly price") + " a month.")); }
         else if (p.active && p.ends_at) { status("Cancelled", "cancelled"); state.push("Your subscription stays on until " + when(p.ends_at) + ", then ends."); }
         else if (p.active) { status("Active", "on"); state.push("Your subscription gives you " + llmName() + (p.renews_at ? (p.every ? " and renews every " + p.every + " months, next on " : " and renews on ") + when(p.renews_at) : "") + "."); }
         if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
         $("my-plus-fine").textContent = p.active || crypto || account.anonymous ? "" : "Cancel any time.";
         $("my-plus-fine").hidden = !$("my-plus-fine").textContent;
         // The box shows above any button that charges at once.
-        $("my-agree").hidden = $("my-plus-extend").hidden && ($("my-plus-get").hidden || !!p.free_month) && $("my-ahead").hidden;
+        $("my-agree").hidden = $("my-plus-extend").hidden && ($("my-plus-get").hidden || !!p.free_month || !!p.free_until) && $("my-ahead").hidden;
       }
       $("my-plan-state").textContent = state.join(" ");
       $("my-plan-state").hidden = !state.length;
@@ -4660,11 +4663,12 @@
     // ahead in crypto. By card in Polar's form over this page; in crypto on
     // closedhand.com's own payment page: once its invoice is made, the button
     // becomes the way there, opened in a tab of its own. Anything that
-    // charges at once waits for the box: all but the monthly subscription
-    // with its free days first.
+    // charges at once waits for the box: all but a subscription with free
+    // days first (the monthly one for someone who never had them, or any
+    // length during them).
     async function payFor(kind, months, button) {
       const p = (myAccountShown && myAccountShown.plus) || {};
-      const free = kind === "plus" && months === 1 && !!p.free_month;
+      const free = kind === "plus" && ((months === 1 && !!p.free_month) || !!p.free_until);
       const agree = document.getElementById("my-agree-box");
       if (!free && !agree.checked) return needsField(document.getElementById("my-agree"), "Tick the box first: this payment starts straight away.", agree);
       const crypto = kind === "ahead" || (kind === "extend" && !!p.ahead_until);

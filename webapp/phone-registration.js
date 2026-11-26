@@ -326,7 +326,7 @@ async function account() {
       ...(plan.name === 'ended' ? { was: ['plus', 'first-month', 'ahead'].includes(plan.was) ? plan.was : null, ended_at: date(plan.ended_at) } : {}) } : null,
     used: typeof found.used === 'number' && found.used >= 0 && found.used <= 1 ? found.used : null,
     plus: plus ? { available: plus.available === true, active: plus.active === true, extended: plus.extended === true, nearly: plus.nearly === true,
-      ...(plus.trial === true ? { trial: true } : {}), ...(plus.free_month === true ? { free_month: true } : {}),
+      ...(plus.trial === true ? { trial: true } : {}), ...(plus.free_month === true ? { free_month: true } : {}), ...(date(plus.free_until) ? { free_until: date(plus.free_until) } : {}),
       ends_at: date(plus.ends_at), renews_at: date(plus.renews_at), prices: { plus: text(prices.plus), extend: text(prices.extend), ...(text(prices.every) ? { every: text(prices.every) } : {}) },
       ...([6, 12].includes(plus.every) ? { every: plus.every } : {}),
       // Paid ahead in crypto until when; the other ways to pay, each length

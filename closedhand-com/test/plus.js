@@ -77,8 +77,9 @@ function world({ polarFails = null, managed = true } = {}) {
   };
   const env = {
     NEAR_REFRESH_TOKEN: managed ? SIGN_IN : '', NEAR_USER_AGENT: managed ? BROWSER : '', TOKEN_ENCRYPTION_KEY: 'k'.repeat(44),
-    // A paid month's fair use in round numbers; a free key below has a limit of 10.
-    INCLUDED_AI_FAIR_USE_USD: '20',
+    // A paid month's fair use in round numbers; free days, and a free key
+    // below, have a limit of 10.
+    INCLUDED_AI_FAIR_USE_USD: '20', INCLUDED_AI_TRIAL_USD: '10',
     // The maintainer's own account (lib/maintainer.js), invented.
     OPERATOR_EMAILS: 'keeper@example.com',
     POLAR_ACCESS_TOKEN: 'polar-token', POLAR_WEBHOOK_SECRET: SECRET, POLAR_PLUS_PRODUCT_ID: PLUS, POLAR_EXTEND_PRODUCT_ID: EXTEND,
@@ -616,4 +617,33 @@ test("someone who never had the free month gets it as the subscription's first m
   assert.equal(w.calls.at(-1).body.allow_trial, false);
   assert.equal(w.calls.at(-1).body.trial_interval, undefined);
   assert.equal((await planFor(db, {}, p.id)).plus_trial, undefined);
+});
+
+// One 7 free days per person, from claiming: subscribing during them charges
+// nothing until they end, and they run on as they were, on their own limit;
+// the paid months begin with the first payment. Someone who never had them
+// has them as the monthly subscription's first 7 days, on the same terms.
+test('subscribing during the free days keeps them as they were until they end, then the paid months begin; free days at checkout are on the same terms', async () => {
+  const w = world();
+  const p = await person({ freeKey: { usage: 3 } }, w);
+  const ends = new Date(Date.now() + (2 * 24 + 3) * 3600000);
+  await db.query('UPDATE included_ai_keys SET ends_at = $2 WHERE owner_id = $1', [p.id, ends]);
+  assert.equal((await w.plus.state(p.id)).free_until, ends.toISOString(), 'the account page says when they end');
+  assert.equal(await w.plus.cannotSubscribe({ id: p.id }, 1, false), null, 'nothing is charged now, so no box to tick');
+  await w.plus.checkout({ id: p.id });
+  assert.deepEqual([w.calls.at(-1).body.trial_interval, w.calls.at(-1).body.trial_interval_count], ['day', 3], 'free until they end, a day begun counting whole');
+  await w.plus.handle(subscription('subscription.created', p.id, { status: 'trialing', start: new Date().toISOString(), end: ends.toISOString() }));
+  await settled(p.id);
+  assert.equal((await heldKey(w, p.id)).limit, 10, 'the free days run on as they were, never a paid month before the payment');
+  const trying = await w.plus.state(p.id);
+  assert.deepEqual([trying.active, trying.trial, trying.free_until], [true, true, undefined]);
+  await w.plus.handle(subscription('subscription.updated', p.id, { status: 'active', start: ends.toISOString(), end: new Date(ends.getTime() + 30 * 86400000).toISOString() }));
+  await settled(p.id);
+  assert.equal((await heldKey(w, p.id)).limit, 30, 'the first payment: the 3 used, a month of fair use, and the 7 the free days left');
+
+  const never = await person({}, w);
+  await w.plus.handle(subscription('subscription.created', never.id, { status: 'trialing' }));
+  await settled(never.id);
+  assert.ok(await w.includedAi.collect(never.id));
+  assert.equal((await heldKey(w, never.id)).limit, 10, "never had them: the subscription's first 7 days are them, on the free days' limit");
 });

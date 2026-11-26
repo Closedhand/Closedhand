@@ -40,8 +40,8 @@ function create({ db, env = process.env, request = fetch, includedAi, notices = 
   };
   // Prices in US dollars, a month's worth a little dearer than by card for the
   // same length, which covers moving the coins on; carrying on costs a month.
-  const cryptoUsd = { 3: Number(env.CRYPTO_3_MONTHS_USD || 90), 6: Number(env.CRYPTO_6_MONTHS_USD || 168), 9: Number(env.CRYPTO_9_MONTHS_USD || 243) };
-  const extendUsd = Number(env.CRYPTO_EXTEND_USD || 30);
+  const cryptoUsd = { 3: Number(env.CRYPTO_3_MONTHS_USD || 120), 6: Number(env.CRYPTO_6_MONTHS_USD || 224), 9: Number(env.CRYPTO_9_MONTHS_USD || 324) };
+  const extendUsd = Number(env.CRYPTO_EXTEND_USD || 39.99);
   // What an invoice may be paid with: USDT on Ethereum and Polygon, whose free
   // public servers keep up while BTCPay reads every block of an open invoice.
   // Tron's throttles that reading unless signed up for a key, and BSC makes

@@ -121,14 +121,17 @@
     else $('plus-about').replaceChildren('Subscribe to keep ', about, ' every month, so you need no LLM provider of your own'
       + (email ? ", and for Closedhand's own email address" : '') + '. ' + model + ' runs in a TEE, so nobody but you can read anything that goes in or comes out.'
       // Never had the free days: the subscription's first 7 days are them (Polar's trial).
-      + (p.free_month ? ' The first 7 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : ''));
+      + (p.free_month ? ' The first 7 days are free, then ' + (prices.plus || 'a monthly price') + ' a month.' : '')
+      // In the free days: subscribing now charges nothing until they end (the
+      // day said only in their last three days).
+      + (p.free_until ? ' Subscribe now and nothing is charged until your free 7 days end' + (Date.parse(p.free_until) - Date.now() <= 3 * 86400000 ? ' on ' + day(p.free_until) : '') + '.' : ''));
     $('plus-get').hidden = p.active || crypto || !!data.anonymous;
     $('plus-get').textContent = p.free_month ? 'Subscribe · 7 days free' : 'Subscribe' + (prices.plus ? ' · ' + prices.plus + ' a month' : '');
     $('plus-manage').hidden = !p.active;
     // A date months away says its year.
     const when = iso => (p.every ? longDay : day)(iso);
     if (p.active && p.trial && p.ends_at) state.push('Your free 7 days run until ' + day(p.ends_at) + ', then your subscription ends and nothing is charged.');
-    else if (p.active && p.trial && p.renews_at) state.push('Your free 7 days run until ' + day(p.renews_at) + ', then your subscription renews at ' + (prices.plus || 'its monthly price') + ' a month.');
+    else if (p.active && p.trial && p.renews_at) state.push('Your free 7 days run until ' + day(p.renews_at) + ', then your subscription renews ' + (p.every ? 'every ' + p.every + ' months.' : 'at ' + (prices.plus || 'its monthly price') + ' a month.'));
     else if (p.active && p.ends_at) state.push('Ends on ' + when(p.ends_at) + '.');
     else if (p.active) state.push('Your subscription gives you ' + model + (p.renews_at ? (p.every ? ' and renews every ' + p.every + ' months, next on ' : ' and renews on ') + when(p.renews_at) : '') + '.');
     if ((p.active || crypto) && p.nearly) state.push(p.extended ? "You've used most of this month's fair use, carried on to the end of the month." : "You've used most of this month's fair use.");
@@ -141,7 +144,7 @@
     $('plus-fine').hidden = !$('plus-fine').textContent;
     ways(p, crypto);
     // The box shows above any button that charges at once.
-    $('agree').hidden = $('plus-extend').hidden && !(!$('plus-get').hidden && !p.free_month) && $('ahead').hidden;
+    $('agree').hidden = $('plus-extend').hidden && !(!$('plus-get').hidden && !free(p)) && $('ahead').hidden;
   }
   // The other ways to pay: the subscription every 6 or 12 months, each a
   // button with its price and what that comes to a month, and paying ahead in
@@ -160,7 +163,7 @@
     };
     $('ahead-about').textContent = crypto ? 'Pay ahead again in crypto to move the end on, priced in US dollars.' : longer.length ? 'Or subscribe every 6 or 12 months, for less a month.' : '';
     $('ahead-about').hidden = !$('ahead-about').textContent;
-    $('plus-longer').replaceChildren(...longer.map(o => button(o, 'Every ' + o.months + ' months', b => pay('/api/plus/checkout', { months: o.months }, b))));
+    $('plus-longer').replaceChildren(...longer.map(o => button(o, 'Every ' + o.months + ' months', b => p.free_until ? goTo('/api/plus/checkout', b, { months: o.months }) : pay('/api/plus/checkout', { months: o.months }, b))));
     $('plus-longer').hidden = !longer.length;
     $('ahead-crypto').replaceChildren(...coins.map(o => button(o, o.months + ' months', b => pay('/api/ahead/checkout', { months: o.months }, b))));
     $('ahead-crypto-label').textContent = 'In crypto, paid once and never renewed, priced in US dollars:';
@@ -185,18 +188,20 @@
   }
   $('ahead-crypto-show').addEventListener('click', () => { $('ahead-crypto').hidden = false; $('ahead-crypto-label').hidden = false; $('ahead-crypto-show').hidden = true; });
   // Each button asks closedhand.com for Polar's page and goes there.
-  async function goTo(path, button) {
+  async function goTo(path, button, body = {}) {
     button.disabled = true; say('Opening…');
     try {
-      const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.url) throw new Error(result.error || 'Could not reach the payment service just now. Please try again.');
       location.assign(result.url);
     } catch (e) { say(e.message, true); button.disabled = false; }
   }
-  // Subscribing monthly with the free days first charges nothing now; else
-  // the box comes first.
-  $('plus-get').addEventListener('click', () => data.plus?.free_month ? goTo('/api/plus/checkout', $('plus-get')) : pay('/api/plus/checkout', { months: 1 }, $('plus-get')));
+  // Subscribing with free days first charges nothing now; else the box comes
+  // first. Free days first: the monthly subscription for someone who never
+  // had them, or any length during them.
+  const free = p => !!p?.free_month || !!p?.free_until;
+  $('plus-get').addEventListener('click', () => free(data.plus) ? goTo('/api/plus/checkout', $('plus-get')) : pay('/api/plus/checkout', { months: 1 }, $('plus-get')));
   $('plus-extend').addEventListener('click', () => data.plus?.ahead_until ? pay('/api/ahead/checkout', { extend: true }, $('plus-extend')) : pay('/api/plus/extend', {}, $('plus-extend')));
   $('plus-manage').addEventListener('click', () => goTo('/api/plus/manage', $('plus-manage')));
   // Back from Polar's checkout.

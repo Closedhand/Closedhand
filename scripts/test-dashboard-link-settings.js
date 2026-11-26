@@ -349,6 +349,20 @@ test("My Account shows the Closedhand account whole, and Delete account says exa
   free.state.openPolar = (...args) => free.calls.push(["polar", JSON.stringify(args)]);
   await free.state.payFor("plus", 1, free.el("my-plus-get"));
   assert.deepEqual(free.calls.at(-1), ["polar", JSON.stringify(["checkout", "plus", { months: 1, agreed: false }])]);
+  // In the free days: subscribing at any length charges nothing until they
+  // end, said with the day only in their last three days.
+  const freeAccount = (until) => accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "first-month", ends_at: until },
+    plus: { available: true, active: false, free_until: until, longer, prices: { plus: "$30" } } } } }));
+  const early = freeAccount(new Date(Date.now() + 6 * 86400000).toISOString());
+  await early.state.loadMyAccount();
+  assert.match(early.el("my-plus-about").textContent, / Subscribe now and nothing is charged until your free 7 days end\.$/);
+  const lateUntil = new Date(Date.now() + 2 * 86400000).toISOString(), late = freeAccount(lateUntil);
+  await late.state.loadMyAccount();
+  assert.match(late.el("my-plus-about").textContent, new RegExp(" Subscribe now and nothing is charged until your free 7 days end on " + new Date(lateUntil).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) + "\\.$"));
+  late.state.openPolar = (...args) => late.calls.push(["polar", JSON.stringify(args)]);
+  late.el("my-agree-box").checked = false;
+  await late.el("my-longer").children[0].on();
+  assert.deepEqual(late.calls.at(-1), ["polar", JSON.stringify(["checkout", "plus", { months: 6, agreed: false }])], "every 6 months too, with no box to tick");
   // Subscribed every 6 months: said with its year, and the rest is My Account's as for any subscription.
   const six = accountPage(() => ({ body: { account: { provider: "google", url: "https://amber-fox-42.closedhand.ai", plan: { name: "plus", every: 6, renews_at: "2027-05-06T09:00:00.000Z", fair_use_renews_at: soon }, used: 0.3,
     plus: { available: true, active: true, every: 6, renews_at: "2027-05-06T09:00:00.000Z", longer, crypto, prices: { plus: "$30", extend: "$30", every: "$162" } } } } }));
