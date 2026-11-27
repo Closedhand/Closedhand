@@ -533,10 +533,22 @@
       if (kind === "checking") { text = "Checking " + chatName + "…"; tone = "wait"; }
       else if (kind === "passed") { text = autoSave && saved ? "Works. Saving…" : "Checked and working. Use these models below to start using them."; tone = autoSave && saved ? "wait" : "ok"; }
       else if (kind === "saved" && justSaved) { text = "In use. New messages use " + chatName + "."; tone = "ok"; }
-      else if (kind === "failed") { text = (check.visionNeeded ? "The image and video model didn't pass the check" : chatName + " didn't pass the check") + (inUse ? ", so " + inUse + " stays in use." : ".") + " The details are below."; tone = "fail"; }
+      else if (kind === "failed") { text = (check.visionNeeded ? "The image and video model didn't pass the check" : chatName + " didn't pass the check") + (inUse ? ", so " + inUse + " stays in use." : "."); tone = "fail"; }
       line.textContent = text;
       line.className = "model-pick-status" + (tone ? " is-" + tone : "");
       line.hidden = !text;
+      // Why it failed is in the check below: one step there, never a jump by
+      // itself, which pulled people away from the picker on every change.
+      if (kind === "failed") {
+        var why = document.createElement("button");
+        why.type = "button"; why.className = "model-pick-why"; why.textContent = "See why";
+        why.onclick = function () {
+          var panel = region("check");
+          panel.scrollIntoView({ behavior: "smooth", block: "center" });
+          var title = region("check-title"); title.tabIndex = -1; title.focus({ preventScroll: true });
+        };
+        line.append(why);
+      }
     }
     function scheduleLoad(kind) {
       clearTimeout(loadTimers[kind]);

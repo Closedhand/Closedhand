@@ -168,6 +168,13 @@ test('in setup the checked models wait for Use these models', async () => {
   assert.equal(ui.region('pick-status').textContent, 'Checked and working. Use these models below to start using them.');
 });
 
+test('a change that fails the check says so under the picker, with a way to why', async () => {
+  const src = fs.readFileSync(require.resolve('../webapp/public/model-settings.js'), 'utf8');
+  assert.match(src, /chatName \+ " didn't pass the check"\) \+ \(inUse \? ", so " \+ inUse \+ " stays in use\." : "\."\)/);
+  assert.match(src, /why\.textContent = "See why";/);
+  assert.match(src, /panel\.scrollIntoView\(\{ behavior: "smooth", block: "center" \}\);/);
+});
+
 test('typing is debounced and only the chosen provider receives the latest key', async () => {
   const ui = await mount(call => call.path === '/models' ? catalog : { config: null });
   ui.choose('provider', 'openai'); ui.type('apiKey', 'first'); ui.type('apiKey', 'latest'); await ui.timers();

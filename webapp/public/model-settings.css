@@ -41,6 +41,7 @@
 .model-pick-status.is-ok { color: var(--ok); }
 .model-pick-status.is-ok::before { content: "\2713"; }
 .model-pick-status.is-fail { color: var(--danger); }
+.model-pick-why { font: inherit; color: var(--fg); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 0.1875rem; cursor: pointer; }
 @keyframes modelPickTurn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .model-pick-status.is-wait::before { animation: none; } }
 .model-check { padding: 1.5rem; border: 1px solid rgba(var(--fg-rgb),0.4); border-radius: 0.75rem; display: grid; gap: 1.25rem; }
