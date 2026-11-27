@@ -197,6 +197,17 @@ test("a running live line stays at the bottom of the conversation", () => {
   assert.match(page, /var wasWriting = dropWriting\(\), lastBefore = endOfThread\(\)\.previousElementSibling;/);
 });
 
+// A reply still being written was squeezed to a sliver once the list
+// scrolled, its words spilling out below: its min-height dropped the flex
+// item's own, so every message keeps its height.
+test("a reply being written keeps its bubble round its words", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /  \.message \{\n    flex-shrink: 0;/);
+  assert.match(page, /\.message\.bot\.writing \{ min-height: 1\.5rem; overflow: hidden; border-color: rgba\(var\(--accent-rgb\),0\.3\);/);
+  assert.match(page, /\.message\.bot\.writing::after \{[^}]*animation: writingSweep/);
+  assert.match(page, /\.message\.bot\.writing::after \{ animation: none; background: none; \}/, "still for anyone who asks for less motion");
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.

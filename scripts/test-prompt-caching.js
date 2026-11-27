@@ -182,3 +182,15 @@ test('a forced tool choice goes unforced to a model that refuses one', async () 
   await wire.request({ ...anthropic, model: 'claude-new-9' }, { messages: [{ role: 'user', content: 'x' }], tools: [tool], tool_choice: { type: 'tool', name: 'report' } });
   assert.deepEqual(bodies.map((b) => b.tool_choice.type), ['tool', 'auto', 'auto']);
 });
+
+// Anthropic says an account out of credit with a 400, and mid-stream as an
+// error event; the person heard "couldn't get an answer in time". Both are a
+// 402 now, which the chat says as the provider needing credit.
+test('out of credit on Anthropic is a 402, not a hiccup', async () => {
+  global.fetch = async () => ({ ok: false, status: 400, headers: new Map(), json: async () => ({ error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.' } }) });
+  const e = await wire.request(anthropic, { messages: [{ role: 'user', content: 'x' }] }).catch((x) => x);
+  assert.equal(e.status, 402);
+  assert.match(e.message, /returned HTTP 402\. The provider says this account needs payment or more credit\./);
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'model-wire.js'), 'utf8');
+  assert.match(src, /OUT_OF_CREDIT\.test\(String\(event\.error\?\.message \|\| ""\)\) \? 402 : 500/, 'and part way through a reply');
+});

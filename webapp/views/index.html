@@ -719,6 +719,7 @@
   @keyframes latestTurn { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .scroll-latest, .scroll-latest-text { transition: none; } .scroll-latest.fresh { animation: none; } .scroll-latest.working:not(.fresh)::before { animation: none; border-color: rgba(var(--accent-rgb),0.5); } }
   .message {
+    flex-shrink: 0;
     max-width: 85%;
     padding: var(--chat-pad);
     border-radius: 1.125rem;
@@ -780,13 +781,21 @@
      Its words show as they come, a little muted, with a stroke of the brush
      breathing where the next ones will go: here to read, not yet the reply.
      The finished reply, checked, takes its place at full strength. */
-  .message.bot.writing { min-height: 1.5rem; }
+  /* A reply still being written: muted words with the brush mark after them,
+     in a bubble whose edge glows faintly warm and over which a soft sheen
+     passes, until the finished reply takes its place. Its min-height once
+     let the scrolling list squeeze it to a sliver, the words spilling out
+     below: a set min-height drops a flex item's own (its content), so it
+     and every message keep their height (flex-shrink 0). */
+  .message.bot.writing { min-height: 1.5rem; overflow: hidden; border-color: rgba(var(--accent-rgb),0.3); box-shadow: 0 0 1.5rem -0.625rem rgba(var(--accent-rgb),0.35); }
+  .message.bot.writing::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(var(--fg-rgb),0.06) 50%, transparent 65%); background-size: 250% 100%; animation: writingSweep 2.4s ease-in-out infinite; }
+  @keyframes writingSweep { from { background-position: 120% 0; } to { background-position: -120% 0; } }
   .message.bot.writing .writing-words { opacity: 0.68; }
   .writing-mark { display: inline-block; width: 1.5em; height: 0.42em; margin-left: 0.35em; vertical-align: 0.05em; background: var(--accent, var(--accent-strong)); -webkit-mask: url(/brush-underline.svg) center / 100% 100% no-repeat; mask: url(/brush-underline.svg) center / 100% 100% no-repeat; transform-origin: left center; animation: writingBreathe 1.2s ease-in-out infinite; }
   @keyframes writingBreathe { 0%, 100% { opacity: 0.3; transform: scaleX(0.55); } 50% { opacity: 1; transform: scaleX(1); } }
   .message.bot.settled { animation: replySettle 0.5s ease-out; }
   @keyframes replySettle { from { opacity: 0.68; } to { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .writing-mark { animation: none; opacity: 0.7; } .message.bot.settled { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .writing-mark { animation: none; opacity: 0.7; } .message.bot.settled { animation: none; } .message.bot.writing::after { animation: none; background: none; } }
 
   /* === Activity Timeline === */
   .timeline {

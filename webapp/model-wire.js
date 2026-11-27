@@ -388,6 +388,10 @@ function hideKeys(text, conn) {
 const KEY_AS_MODEL = "That looks like an API key, not a model ID, so Closedhand didn't send it anywhere. To use another provider, choose it under Provider and paste the key in its API key box.";
 // Models that refused to skip thinking; their fast jobs think as little as they allow.
 const mustThink = new Set();
+// Anthropic says an account out of credit with HTTP 400 ("Your credit
+// balance is too low"), not 402: read as 402, the person hears their
+// provider needs credit, not that an answer took too long.
+const OUT_OF_CREDIT = /credit balance is too low|purchase credits/i;
 // Models that refuse a forced tool choice ("tool_choice: type tool and any
 // are not supported"): Claude Opus 5.5, Sonnet 5.5, Fable and Mythos 5.1 and
 // 5.2, and any other that says so (learnt from its 400). They are asked with
@@ -525,7 +529,8 @@ function anthropicPieces(onText) {
       } else if (event.type === "content_block_stop" && block && json[event.index] !== undefined) {
         try { block.input = json[event.index] ? JSON.parse(json[event.index]) : {}; } catch { failed = failed || cutShort(); }
       } else if (event.type === "message_delta") message = { ...message, ...d, usage: { ...message?.usage, ...event.usage } };
-      else if (event.type === "error") failed = Object.assign(new Error("The model provider returned an error part way through its reply."), { status: event.error?.type === "overloaded_error" ? 529 : 500 });
+      // Out of credit part way through is said as that, not as a hiccup.
+      else if (event.type === "error") failed = Object.assign(new Error("The model provider returned an error part way through its reply."), { status: event.error?.type === "overloaded_error" ? 529 : OUT_OF_CREDIT.test(String(event.error?.message || "")) ? 402 : 500 });
     },
     whole() {
       if (failed) throw failed;
@@ -699,11 +704,12 @@ async function request(conn, params, options = {}) {
     // The provider's own message goes to the log, trimmed, so a 400 can be
     // diagnosed; never to the user, and never the body, which can carry the request.
     if (detail.error?.message) console.warn(`[model-wire] ${conn.provider || conn.backend} HTTP ${response.status}: ${hideKeys(detail.error.message, conn).slice(0, 200)}`);
-    const error = new Error("The model provider returned HTTP " + response.status + ". " + providerProblem(response.status, "Check the model, access and balance."));
-    error.status = response.status;
+    const status = response.status === 400 && OUT_OF_CREDIT.test(said) ? 402 : response.status;
+    const error = new Error("The model provider returned HTTP " + status + ". " + providerProblem(status, "Check the model, access and balance."));
+    error.status = status;
     // OpenRouter refuses a key past its own spending limit with 403, not 402.
     if (response.status === 403 && (detail.error?.metadata?.limit_source === "openrouter_key_limit" || /key limit/i.test(said))) error.code = "key_limit";
-    Object.assign(error, refusal(response, detail, said));
+    Object.assign(error, status === 402 && status !== response.status ? { allowance: true, resetsAt: null, waitable: false } : refusal(response, detail, said));
     throw error;
   }
   if (!live) return convert(await response.json());
