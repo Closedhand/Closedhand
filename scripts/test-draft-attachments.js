@@ -144,3 +144,28 @@ test('every mailbox offers the same: files on a draft edit, and leave_draft on a
   }
   for (const name of ['gmail_reply', 'outlook_reply', 'reply_to_mail']) assert.equal(props(name).properties.leave_draft.type, 'boolean', name);
 });
+
+// A file comes off a draft by name, and with one added in the same edit that
+// is a replacement: files could only be added, and a task made a new draft
+// and deleted the person's own to swap one.
+test("a file comes off a draft by name, the rest left as it was", () => {
+  const g = require("../lib/gmail-draft");
+  const nl = "\r\n";
+  const raw = ["To: a@example.com", "Subject: Re: Stock", "MIME-Version: 1.0", 'Content-Type: multipart/mixed; boundary="B1"', "",
+    "--B1", 'Content-Type: multipart/alternative; boundary="B2"', "", "--B2", "Content-Type: text/plain; charset=UTF-8", "", "Hello", "--B2--",
+    "--B1", 'Content-Type: application/pdf; name="invoice.pdf"', 'Content-Disposition: attachment; filename="invoice.pdf"', "Content-Transfer-Encoding: base64", "", "QUJD",
+    "--B1", 'Content-Type: application/pdf; name="sales-order-v2.pdf"', "Content-Disposition: attachment; filename*=UTF-8''sales-order-v2.pdf", "Content-Transfer-Encoding: base64", "", "REVG",
+    "--B1--", ""].join(nl);
+  assert.deepEqual(g.attachmentNames(raw), ["invoice.pdf", "sales-order-v2.pdf"]);
+  const off = g.removeAttachmentParts(raw, ["Sales-Order-v2.pdf"]);
+  assert.deepEqual(off.removed, ["sales-order-v2.pdf"]);
+  assert.deepEqual(g.attachmentNames(off.raw), ["invoice.pdf"]);
+  assert.ok(off.raw.includes("Hello") && off.raw.trim().endsWith("--B1--"), "the words and the message's end stay");
+  const swapped = g.addAttachmentParts(off.raw, [{ fileName: "sales-order-v3.pdf", mimeType: "application/pdf", buffer: Buffer.from("v3") }]);
+  assert.deepEqual(g.attachmentNames(swapped), ["invoice.pdf", "sales-order-v3.pdf"]);
+  const handlers = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "lib", "tools", "handlers.js"), "utf8");
+  assert.equal((handlers.match(/const dropping = \(Array\.isArray\(toolInput\.remove_attachments\)/g) || []).length, 3, "Gmail, Outlook and other mail alike");
+  assert.match(handlers, /The draft has no file called \$\{absent\.join\(", "\)\}\. It holds: /, "a name not there changes nothing");
+  const defs = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "lib", "tools", "definitions.js"), "utf8");
+  assert.equal((defs.match(/remove_attachments: \{ type: "array"/g) || []).length, 3);
+});
