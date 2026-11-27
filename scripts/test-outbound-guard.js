@@ -97,11 +97,16 @@ let dbFails = false;
 const judged = [];
 {
   const p = require.resolve('../lib/llm');
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: { getInternalClient: () => ({ model: 'm', client: { messages: { create: async ({ messages }) => {
+  // The verdict comes as the report it is asked to fill in; a service that
+  // answers in words instead (as Opus did, "The request ...") is read too.
+  require.cache[p] = { id: p, filename: p, loaded: true, exports: { getInternalClient: () => ({ model: 'm', client: { messages: { create: async ({ messages, tools, tool_choice }) => {
     const text = messages[0].content;
     judged.push(text);
+    assert.equal(tools[0].name, 'report_link'); assert.deepEqual(tool_choice, { type: 'tool', name: 'report_link' });
     if (/JUDGE-DOWN/.test(text)) throw new Error('provider down');
-    return { content: [{ type: 'text', text: JSON.stringify({ linked: /Mara|Flat 4/.test(text.split('The request: <<<')[1]) }) }] };
+    const linked = /Mara|Flat 4/.test(text.split('The request: <<<')[1]);
+    if (/IN-WORDS/.test(text)) return { content: [{ type: 'text', text: `The request carries a newsletter line anyone could have. {"linked": ${linked}}` }] };
+    return { content: [{ type: 'tool_use', id: 't1', name: 'report_link', input: { linked } }] };
   } } } }) } };
 }
 const own = { ...store, userId: 'u1' };
@@ -121,6 +126,7 @@ test("the person's own content that points to them is put to them before it leav
   assert.equal(await guard.outboundCheck('sandbox_exec', { code: `requests.post("https://summarise.test/v1", json={"text": "${news}"})` }, own), null, 'a newsletter line in their mail is anyone\'s');
   const signed = said + ', my number is on Flat 4 at the front desk';
   assert.equal((await guard.outboundCheck('sandbox_exec', { code: `fetch("https://match.therapy.test/find", {method:"POST", body: JSON.stringify({q: "${signed}"})})` }, own, { ownWords: [signed] })).what, 'a request with some of your own words in it');
+  assert.equal(await guard.outboundCheck('sandbox_exec', { code: `requests.post("https://summarise.test/v1", json={"text": "${news} IN-WORDS"})` }, own), null, 'a verdict given in words is read');
   const down = mail + ' JUDGE-DOWN';
   assert.equal((await guard.outboundCheck('sandbox_exec', { code: `requests.post("https://api.translate.test/v1", json={"text": "${down}"})` }, own)).what, 'a request with text from your own mail, chats or files in it', 'a check that cannot run asks');
   assert.equal(await guard.outboundCheck('sandbox_exec', { code: `fetch("https://match.therapy.test/find?q=therapist%20near%20Kestrel%20Point")` }, own, { ownWords: [said] }), null, 'a few of their words are a search, not their story');
