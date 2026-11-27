@@ -95,6 +95,22 @@ test("only what is under the cursor scrolls", () => {
   assert.equal(scrollsByItself(margin), false, "the empty page scrolls the conversation");
 });
 
+// Something long, like a pasted page, opens the chat box further; its grip
+// sizes it by hand; sending gives it back its own size.
+test("the chat box opens for something long and sizes by hand", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /<button class="input-grip" id="inputGrip" type="button" aria-label="Resize the message box"/);
+  assert.match(page, /\.docked-input textarea\.roomy \{ max-height: 45vh !important; \}/);
+  assert.match(page, /@media \(max-width: 899px\) \{ \.docked-input textarea\.roomy \{ max-height: 30vh !important; \} \}/);
+  assert.match(page, /\.docked-input textarea\.sized \{ max-height: none !important; \}/);
+  assert.match(page, /input\.classList\.toggle\('roomy', docked && full > cap \+ 1\);/, "opens further only past its usual height");
+  assert.match(page, /function fitInput\(\) \{\n\s*if \(userHeight\) return;/, "a size set by hand stays while typing");
+  assert.match(page, /return \{ min: parseFloat\(getComputedStyle\(input\)\.minHeight\) \|\| 40, max: Math\.round\(vh \* 0\.75\) \};/);
+  assert.match(page, /input\.value = '';\n\s*resetInputSize\(\);/, "sending resets it");
+  assert.match(page, /grip\.addEventListener\('dblclick'/);
+  assert.match(page, /new ResizeObserver\(function \(\) \{ if \(_atEnd\) messagesEl\.scrollTop = messagesEl\.scrollHeight; update\(\); \}\)\.observe\(messagesEl\);/);
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.

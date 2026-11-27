@@ -942,6 +942,21 @@
     max-width: 56.25rem;
     margin: 0 auto;
   }
+  /* The chat box opens further for something long (.roomy), and its grip
+     sizes it by hand (.sized); see fitInput. */
+  .docked-input .input-textarea-wrap textarea { transition: min-height 0.4s cubic-bezier(0.16,1,0.3,1), height 0.3s cubic-bezier(0.16,1,0.3,1), max-height 0.3s cubic-bezier(0.16,1,0.3,1); }
+  .docked-input textarea.roomy { max-height: 45vh !important; }
+  .docked-input textarea.sized { max-height: none !important; }
+  .docked-input.sizing textarea { transition: none !important; }
+  .docked-input.sizing, .docked-input.sizing * { cursor: ns-resize !important; -webkit-user-select: none; user-select: none; }
+  .input-grip { display: none; }
+  .docked-input .input-grip { display: block; position: absolute; top: 0; left: 50%; z-index: 3; width: 4.5rem; height: 1.25rem; margin: -0.625rem 0 0 -2.25rem; padding: 0; border: 0; background: none; cursor: ns-resize; touch-action: none; opacity: 0; transition: opacity 0.25s ease; }
+  .docked-input .input-grip::before { content: ""; position: absolute; left: 50%; top: 50%; width: 2.25rem; height: 0.3125rem; margin: -0.15625rem 0 0 -1.125rem; border-radius: 1rem; background: rgba(var(--fg-rgb),0.24); box-shadow: 0 0 0 2px rgba(var(--raised-rgb),0.9); transition: width 0.35s cubic-bezier(0.2,0.9,0.3,1.25), margin 0.35s cubic-bezier(0.2,0.9,0.3,1.25), background 0.2s ease; }
+  .docked-input:hover .input-grip, .docked-input:focus-within .input-grip, .docked-input.sizing .input-grip { opacity: 1; }
+  .docked-input .input-grip:hover::before, .docked-input .input-grip:focus-visible::before, .docked-input.sizing .input-grip::before { width: 3.25rem; margin-left: -1.625rem; background: rgba(var(--accent-rgb),0.8); }
+  .docked-input .input-grip:focus-visible { outline: none; }
+  @media (max-width: 899px) { .docked-input textarea.roomy { max-height: 30vh !important; } }
+  @media (prefers-reduced-motion: reduce) { .docked-input .input-textarea-wrap textarea, .docked-input .input-grip::before { transition: none; } }
 
   #fileInput { display: none; }
 
@@ -2260,6 +2275,7 @@
   <div class="docked-input" id="dockedInput">
     <div class="input-box-wrap">
       <span class="edge-glow" aria-hidden="true"></span><span class="edge-run" aria-hidden="true"></span>
+      <button class="input-grip" id="inputGrip" type="button" aria-label="Resize the message box" title="Drag to resize. Double-click to reset."></button>
       <div class="input-box" id="dockedInputBox">
         <!-- textarea and toolbar get moved here in chat mode via JS -->
       </div>
@@ -3207,9 +3223,80 @@
   var isAnonymous = false;
   var hasMessages = false;
 
-  input.addEventListener('input', function() {
+  // The chat box grows with what is written to its usual height. Something
+  // longer, like a pasted page, opens it further (.roomy) so most of it can be
+  // read before it goes. Its grip sizes it by hand, from small to most of the
+  // window; a double click gives it back its own size. Sending resets both.
+  var userHeight = 0;
+  function fitInput() {
+    if (userHeight) return;
+    var docked = !!(dockedInput && dockedInput.contains(input));
+    var was = input.classList.contains('roomy');
+    var from = input.getBoundingClientRect().height;
+    // Measure without the extra room and without easing, then ease from
+    // where the box was to where it goes.
+    input.style.transition = 'none';
+    input.classList.remove('roomy');
     input.style.height = 'auto';
-    input.style.height = input.scrollHeight + 'px';
+    var full = input.scrollHeight;
+    var cap = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+    input.classList.toggle('roomy', was);
+    input.style.height = from + 'px';
+    void input.offsetHeight;
+    input.style.transition = '';
+    input.classList.toggle('roomy', docked && full > cap + 1);
+    input.style.height = full + 'px';
+  }
+  function resetInputSize() {
+    userHeight = 0;
+    input.classList.remove('roomy', 'sized');
+    input.style.height = '';
+  }
+  (function inputGrip() {
+    var grip = document.getElementById('inputGrip');
+    if (!grip) return;
+    var limits = function () {
+      var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      return { min: parseFloat(getComputedStyle(input).minHeight) || 40, max: Math.round(vh * 0.75) };
+    };
+    var size = function (h) {
+      var l = limits();
+      userHeight = Math.round(Math.max(l.min, Math.min(l.max, h)));
+      input.classList.remove('roomy');
+      input.classList.add('sized');
+      input.style.height = userHeight + 'px';
+    };
+    grip.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      var startY = e.clientY, startH = input.getBoundingClientRect().height;
+      grip.setPointerCapture(e.pointerId);
+      dockedInput.classList.add('sizing');
+      var move = function (ev) { size(startH + (startY - ev.clientY)); };
+      var done = function () {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', done);
+        grip.removeEventListener('pointercancel', done);
+        dockedInput.classList.remove('sizing');
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', done);
+      grip.addEventListener('pointercancel', done);
+    });
+    grip.addEventListener('dblclick', function () {
+      userHeight = 0;
+      input.classList.remove('sized');
+      fitInput();
+    });
+    grip.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      size(input.getBoundingClientRect().height + (e.key === 'ArrowUp' ? 32 : -32));
+    });
+  })();
+
+  input.addEventListener('input', function() {
+    fitInput();
     var hasText = input.value.trim().length > 0 || pendingFiles.length > 0;
     sendBtn.disabled = !hasText;
     sendBtn.classList.toggle('active', hasText);
@@ -3218,8 +3305,8 @@
 
   // Reset textarea height on blur so it collapses back to compact size
   input.addEventListener('blur', function() {
-    if (!input.value.trim()) {
-      input.style.height = '';
+    if (!input.value.trim() && !userHeight) {
+      resetInputSize();
     }
   });
 
@@ -3806,7 +3893,7 @@
     if (previewArea) previewArea.remove();
 
     input.value = '';
-    input.style.height = 'auto';
+    resetInputSize();
     sendBtn.disabled = true;
     sendBtn.classList.remove('active');
 
@@ -4838,6 +4925,8 @@
       _atEnd = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 64;
       update();
     }, { passive: true });
+    // The chat box growing takes room from the conversation: at its end, it stays there.
+    new ResizeObserver(function () { if (_atEnd) messagesEl.scrollTop = messagesEl.scrollHeight; update(); }).observe(messagesEl);
     window.addEventListener('resize', update);
     new MutationObserver(function (changes) {
       // A reply landing while they read above: New message.
