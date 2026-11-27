@@ -945,7 +945,7 @@ test("a message that went into a project it was not sent to opens that project's
   const page = read("webapp/views/index.html");
   assert.match(page, /if \(msg\.type === 'in_project'\) \{ movedTo\(msg\.project\); return; \}/);
   assert.match(page, /function movedTo\(p\) \{\n\s*if \(!p \|\| !p\.id \|\| \(_openProject && _openProject\.id === p\.id\)\) return;\n\s*var mine = \[\]\.slice\.call\(messagesEl\.querySelectorAll\('\.message\.user'\)\)\.pop\(\) \|\| null;\n\s*window\.openConversation\(p\.id, mine\);/);
-  assert.match(page, /if \(keep && !shownJustNow\(keep\._raw, 'user'\)\) messagesEl\.insertBefore\(keep, typingEl\);/, "the message stays in view, once");
+  assert.match(page, /if \(keep && !shownJustNow\(keep\._raw, 'user'\)\) messagesEl\.insertBefore\(keep, endOfThread\(\)\);/, "the message stays in view, once");
 });
 
 // Single messages deleted from the web chat: one of yours goes with the

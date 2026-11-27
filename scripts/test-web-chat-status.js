@@ -177,6 +177,17 @@ test("'I'll answer your latest message first' shows after the message it answers
   assert.deepEqual(got, ["first", "second", line, "answer to second", "third", "fourth", line]);
 });
 
+// The live line of work still running stays last: what arrives meanwhile
+// goes above it, so it never reads as the finished result.
+test("a running live line stays at the bottom of the conversation", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /function endOfThread\(\) \{ return messagesEl\.querySelector\('\.agent-live:not\(\.done\)'\) \|\| typingEl; \}/);
+  const before = [...page.matchAll(/messagesEl\.insertBefore\((\w+), (\w+)(?:\(\))?\)/g)].map((m) => m[1] + "->" + m[2]);
+  assert.deepEqual(before.filter((x) => x.endsWith("->typingEl")), ["line->typingEl"], "only the live line itself goes at the very end");
+  assert.ok(before.filter((x) => x.endsWith("->endOfThread")).length >= 3, "messages, files and words being written go above it");
+  assert.match(page, /var wasWriting = dropWriting\(\), lastBefore = endOfThread\(\)\.previousElementSibling;/);
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.

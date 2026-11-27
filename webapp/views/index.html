@@ -3811,11 +3811,11 @@
           // What was being written was not the reply after all (Closedhand went on to do something first).
           else if (msg.type === 'stream_reset') { if (dropWriting() && _awaitingReply) showTyping(); }
           else if (msg.type === 'stream_end') {
-            var wasWriting = dropWriting(), lastBefore = typingEl.previousElementSibling;
+            var wasWriting = dropWriting(), lastBefore = endOfThread().previousElementSibling;
             if (msg.content) addMessage(msg.content, 'bot');
             // The finished reply settles in where its words were, without arriving a second time.
             var landed = lastBefore ? lastBefore.nextElementSibling : messagesEl.querySelector('.message');
-            if (wasWriting && landed && landed !== typingEl && landed.classList.contains('bot')) landed.classList.add('settled');
+            if (wasWriting && landed && landed.classList.contains('message') && landed.classList.contains('bot')) landed.classList.add('settled');
           }
           else if (msg.type === 'activity') {
             receivedRealStatus = true;
@@ -4017,7 +4017,7 @@
     a.style.cssText = 'color:var(--accent);text-decoration:none;';
     div.appendChild(a);
 
-    messagesEl.insertBefore(div, typingEl);
+    messagesEl.insertBefore(div, endOfThread());
     scrollToBottom();
     return div;
   }
@@ -4385,7 +4385,7 @@
     el.className = 'message bot writing';
     el.id = 'streamingMsg';
     el.innerHTML = '<span class="writing-mark"></span>';
-    messagesEl.insertBefore(el, typingEl);
+    messagesEl.insertBefore(el, endOfThread());
     scrollToBottom();
     return el;
   }
@@ -4461,7 +4461,7 @@
     }
     // A live message is stamped now; history passes its own stamp, or null when it has none.
     attachMsgTools(div, typeof text === 'string' ? text : '', ts === undefined ? new Date().toISOString() : ts, ts === undefined, via);
-    messagesEl.insertBefore(div, typingEl);
+    messagesEl.insertBefore(div, endOfThread());
     // Their own message, just sent, always shows; anything else keeps their place.
     scrollToBottom(role === 'user' && ts === undefined);
   }
@@ -4815,7 +4815,7 @@
         if (conv && conv.project) { _openProject = conv.project; input.setAttribute('placeholder', composerPlaceholder()); projectHead(); if (!found) loadActivityFeed(); }
         if (conv && conv.messages) shownInThread(conv.messages).forEach(showStored);
         // The message that moved it here, unless the conversation has it already.
-        if (keep && !shownJustNow(keep._raw, 'user')) messagesEl.insertBefore(keep, typingEl);
+        if (keep && !shownJustNow(keep._raw, 'user')) messagesEl.insertBefore(keep, endOfThread());
         // And the work running for this conversation, its line under the rest.
         pollAgentStatus();
         [300, 600, 1000].forEach(function(ms) { setTimeout(function () { scrollToBottom(true); }, ms); });
@@ -4830,6 +4830,10 @@
   // from the moment it starts (lib/agents.js showLive) and again after a
   // reload or on opening that conversation (pollAgentStatus). The step comes
   // from the server; the clock ticks here.
+  // Where what arrives goes: above a live line still running, so the line
+  // stays last while the work goes on and what came meanwhile never reads as
+  // the finished result; at the end otherwise.
+  function endOfThread() { return messagesEl.querySelector('.agent-live:not(.done)') || typingEl; }
   function agentLiveId(taskId) { return 'agentLive-' + String(taskId || '').replace(/[^\w-]/g, ''); }
   function agentLiveLine(msg) {
     var line = document.getElementById(agentLiveId(msg.taskId));
