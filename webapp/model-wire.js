@@ -342,7 +342,8 @@ function markCache(body) {
     // kept for the hour too.
     body.system = body.system.map((b) => (marked(b) && b.cache_control.type === "ephemeral" ? { ...b, cache_control: LONG_MARK } : b));
   }
-  const last = body.messages[body.messages.length - 1];
+  // The results are marked even with tools announced after them (lib/announced-tools.js).
+  const last = body.messages.findLast(m => m.role !== "system");
   if (last?.role === "user" && Array.isArray(last.content) && last.content.some(b => b.type === "tool_result") && !last.content.some(marked)) {
     const i = last.content.length - 1;
     last.content[i] = { ...last.content[i], cache_control: CACHE_MARK };
@@ -364,6 +365,38 @@ function markCache(body) {
     over--;
   }
   if (over > 0 && Array.isArray(body.tools)) body.tools = body.tools.map(({ cache_control, ...t }) => t);
+}
+// Tools loaded midway are announced in the conversation (lib/announced-tools.js):
+// a system message of tool_addition blocks right after a user message. The
+// tool list stays as it was, so what came before is still read from cache;
+// added to the list, the whole conversation was read again at full price.
+// These models take that (beta inline-tools-2026-09-15). Everywhere else, and
+// where an announcement can't stand (first, or not after a user message), the
+// tools go into the list in the order announced, as before. A request with no
+// tools drops them: it was asked to answer without any.
+const INLINE_TOOLS = /^claude-(?:opus-(?:5-5|5|4-8)|fable-5(?:-[12])?|mythos-5(?:-[12])?|sonnet-5-5|haiku-5-5)\b/;
+const INLINE_BETA = "inline-tools-2026-09-15";
+const noInline = new Set();
+const isAnnouncement = (m) => m?.role === "system" && Array.isArray(m.content) && m.content.some((b) => b?.type === "tool_addition");
+function placeAnnouncedTools(params, inline) {
+  const list = params.messages || [];
+  if (!list.some(isAnnouncement)) return { params, inline: false };
+  const tools = Array.isArray(params.tools) ? [...params.tools] : [];
+  const messages = [];
+  let kept = false;
+  for (const m of list) {
+    if (!isAnnouncement(m)) { messages.push(m); continue; }
+    if (!tools.length) continue;
+    if (inline && messages.length && messages[messages.length - 1].role === "user") { messages.push(m); kept = true; continue; }
+    for (const b of m.content) {
+      const def = b?.type === "tool_addition" ? b.tool?.definition : null;
+      if (!def?.name) continue;
+      const at = tools.findIndex((t) => t.name === def.name);
+      if (at >= 0) tools[at] = { ...def, ...(tools[at].cache_control ? { cache_control: tools[at].cache_control } : {}) };
+      else tools.push(def);
+    }
+  }
+  return { params: { ...params, messages, ...(tools.length ? { tools } : {}) }, inline: kept };
 }
 function identity(conn, model) {
   return createHash("sha256").update([conn.baseUrl, conn.apiKey || "", model].join("|")).digest("hex");
@@ -596,6 +629,9 @@ async function request(conn, params, options = {}) {
   }
   const model = params.model || conn.model;
   if (looksLikeKey(model)) throw Object.assign(new Error(KEY_AS_MODEL), { status: 400, code: "model_id_is_key" });
+  const announced = placeAnnouncedTools(params, conn.backend === "anthropic" && INLINE_TOOLS.test(model) && !noInline.has(model));
+  const asked = params;
+  params = announced.params;
   const cap = conn.capabilities || policy.capabilities(conn, model);
   // Video only goes to a model known to take it; the caller falls back to frames.
   const hasVideo = (params.messages || []).some(m => Array.isArray(m.content) && m.content.some(b => b.type === "video"));
@@ -612,6 +648,7 @@ async function request(conn, params, options = {}) {
   if (conn.backend === "anthropic") {
     headers["x-api-key"] = conn.apiKey;
     headers["anthropic-version"] = "2023-06-01";
+    if (announced.inline) headers["anthropic-beta"] = INLINE_BETA;
     // Claude's reasoning holds only under the system prompt and tools it was
     // written with: Anthropic refuses it once either changes ("bound to a
     // different conversation"), as when a reply loads another tool midway.
@@ -695,6 +732,12 @@ async function request(conn, params, options = {}) {
       && body.messages.some(m => Array.isArray(m.content) && m.content.some(b => ["thinking", "redacted_thinking"].includes(b.type)))) {
       console.warn(`[model-wire] anthropic refused earlier reasoning, sent again without it: ${hideKeys(said, conn).slice(0, 400)}`);
       return request(conn, { ...params, messages: withoutThinking(params.messages) }, options);
+    }
+    // A model or account that won't take announced tools: they go in the list.
+    if (response.status === 400 && announced.inline && /tool_addition|inline-tools|role 'system'|system message/i.test(said)) {
+      noInline.add(model);
+      console.warn(`[model-wire] ${model} would not take tools announced midway, listing them instead: ${hideKeys(said, conn).slice(0, 200)}`);
+      return request(conn, asked, options);
     }
     if (response.status === 400 && conn.backend === "anthropic" && ["tool", "any"].includes(body.tool_choice?.type) && /tool_choice/i.test(said) && /not supported/i.test(said)) {
       unforced.add(model);

@@ -71,6 +71,6 @@ test("tools a conversation loaded stay loaded, in the order loaded, so the provi
   assert.equal(box.kept("u1", "t2").size, 0, "each conversation its own");
   assert.equal(box.kept("u2", "t1").size, 0, "each person their own");
   assert.match(src, /const loadedTools = keptTools\(userId, ctx\.activeThreadId\);\n\s*for \(const name of likelyOnDemandTools\(userMessage, conversation, getOnDemandInternalTools\(\)\)\) loadedTools\.add\(name\);/);
-  assert.match(src, /const iterationTools = \[\.\.\.allTools\];[\s\S]{0,200}for \(const toolName of loadedTools\)/, "each request lists them after the base tools, in that order");
+  assert.match(src, /const iterationTools = \[\.\.\.allTools\];[\s\S]{0,900}announced\.unannounced\(messages, loadedTools, iterationTools, defOf\)/, "each request announces them after the base tools, in that order (lib/announced-tools.js)");
   assert.match(src, /if \(block\.name === "get_tool_details" && !result\.error && result\.name\) \{\n\s*loadedTools\.add\(result\.name\);/, "one looked up mid-reply is kept too");
 });

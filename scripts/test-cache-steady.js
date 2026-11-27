@@ -34,6 +34,7 @@ const llmFile = path.join(root, "lib/llm.js"), storageFile = path.join(root, "li
 const NOTES = Array.from({ length: 40 }, (_, i) => ({ name: `notes_garden_${String.fromCharCode(97 + (i % 26))}${i}`, description: "Garden notes. " + "Keeps what was planted where. ".repeat(33), input_schema: { type: "object", properties: {} } }));
 const sent = [];
 let onFirstCall = () => {};
+let firstUse = { name: "no_such_tool", input: {} };
 const resolve = Module._resolveFilename;
 const load = Module._load;
 Module._resolveFilename = function (request, parent, ...rest) {
@@ -47,10 +48,12 @@ Module._load = function (request, parent, isMain) {
   if (resolved === mcpFile) return { ...load.apply(this, arguments), getUserMcpToolDefs: () => NOTES };
   if (resolved === llmFile) {
     const create = async (params) => {
-      sent.push({ system: params.system.map((b) => b.text).join("\n"), tools: (params.tools || []).map((t) => t.name) });
+      // The tools it can use: the list, then those announced in the conversation (lib/announced-tools.js).
+      const list = (params.tools || []).map((t) => t.name);
+      sent.push({ system: params.system.map((b) => b.text).join("\n"), list, tools: [...list, ...require("../lib/announced-tools").announcedNames(params.messages)], messages: params.messages });
       if (sent.length === 1) {
         onFirstCall();
-        return { content: [{ type: "tool_use", id: "t1", name: "no_such_tool", input: {} }], stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900 } };
+        return { content: [{ type: "tool_use", id: "t1", ...firstUse }], stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900 } };
       }
       return { content: [{ type: "text", text: "Your tomatoes are in bed 3." }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900 } };
     };
@@ -64,11 +67,11 @@ const ctx = require("../lib/context");
 const engine = require("../lib/engine");
 Object.assign(console, quiet);
 
-async function reply(userId, said) {
+async function reply(userId, said, keepConversation = false) {
   sent.length = 0;
   ctx.activeUserId = userId;
   ctx.activeUserStore = { profile: { display_name: "Sam", settings: { preferred_name: "Sam" }, timezone: "Europe/London" }, connections: {}, facts: {}, userRules: [], goals: [] };
-  ctx.store = { conversations: { [userId]: [] }, facts: {}, userRules: [], goals: [] };
+  if (!keepConversation) ctx.store = { conversations: { [userId]: [] }, facts: {}, userRules: [], goals: [] };
   ctx.activePlatform = "web";
   console.log = console.warn = console.error = () => {};
   try { return await engine.ask(userId, said); }
@@ -81,6 +84,8 @@ test("connected tools are chosen with a reply's first call and kept to its end, 
   assert.ok(sent.length >= 2, "two calls in one reply");
   assert.ok(sent[0].tools.some((n) => n.startsWith("notes_garden_")), "the notes tools the message is about load with the first call");
   assert.deepEqual(sent[1].tools, sent[0].tools, "the same tools on the next step");
+  assert.ok(!sent[0].list.some((n) => n.startsWith("notes_garden_")), "announced, not added to the list");
+  assert.deepEqual(sent[1].list, sent[0].list, "the list itself never changes");
 });
 
 test("the system prompt is built with a reply's first call and kept to its end, though a fact is pinned midway", async () => {
@@ -88,4 +93,31 @@ test("the system prompt is built with a reply's first call and kept to its end, 
   await reply("u-cache-b", "Remember that my partner is Ana Fixture, then tell me about the tomatoes");
   assert.ok(sent.length >= 2, "two calls in one reply");
   assert.equal(sent[1].system, sent[0].system, "the same system prompt on the next step");
+});
+
+test("a tool looked up midway is announced after the results, the list unchanged, and a later reply puts it in the same place", async () => {
+  onFirstCall = () => {};
+  firstUse = { name: "get_tool_details", input: { tool_name: "notes_garden_n39" } };
+  try {
+    await reply("u-cache-c", "Is it going to rain later?");
+    assert.ok(sent.length >= 2, "two calls in one reply");
+    assert.ok(!sent[0].tools.includes("notes_garden_n39"), "not loaded before it was looked up");
+    assert.deepEqual(sent[1].list, sent[0].list, "the list stays as it was");
+    const last = sent[1].messages.at(-1);
+    assert.equal(last.role, "system", "announced last, after the results");
+    assert.deepEqual(last.content.map((b) => b.tool.definition.name), ["notes_garden_n39"]);
+    assert.ok(sent[1].messages.at(-2).content.some((b) => b.type === "tool_result"));
+    const conversation = ctx.store.conversations["u-cache-c"];
+    assert.ok(conversation[0].toolsAdded.includes("notes_garden_n39"), "noted on the request's message");
+    // The next reply starts from the conversation: announced right after that message.
+    engine.forgetTurn("u-cache-c", ctx.activeThreadId);
+    firstUse = { name: "no_such_tool", input: {} };
+    await reply("u-cache-c", "And tomorrow?", true);
+    const roles = sent[0].messages.map((m) => m.role);
+    assert.deepEqual(roles.slice(0, 3), ["user", "system", "assistant"]);
+    assert.ok(sent[0].messages[1].content.some((b) => b.tool.definition.name === "notes_garden_n39"));
+    assert.deepEqual(sent[0].list, sent[1].list);
+  } finally {
+    firstUse = { name: "no_such_tool", input: {} };
+  }
 });

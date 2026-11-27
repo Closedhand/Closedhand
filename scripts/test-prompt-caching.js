@@ -201,3 +201,83 @@ test('out of credit on Anthropic is a 402, not a hiccup', async () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'model-wire.js'), 'utf8');
   assert.match(src, /OUT_OF_CREDIT\.test\(String\(event\.error\?\.message \|\| ""\)\) \? 402 : 500/, 'and part way through a reply');
 });
+
+// A tool loaded midway joined the tool list, the very start of what the
+// provider reads, and the whole conversation was read again at full price.
+// Now it is announced in the conversation (lib/announced-tools.js): sent as
+// it is to a model that takes that, as the tool list it was anywhere else.
+const announced = require('../lib/announced-tools');
+const forecast = { name: 'harbour_forecast', description: 'Wind forecast', input_schema: { type: 'object', properties: {} } };
+function captureAll(reply) {
+  const sent = [];
+  global.fetch = async (url, options) => { sent.push({ url, headers: options.headers, body: JSON.parse(options.body) }); return { ok: true, json: async () => reply }; };
+  return sent;
+}
+const done = { content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: {} };
+test('a tool loaded midway is announced to a model that takes it, the tool list untouched and the results still marked', async () => {
+  const sent = captureAll(done);
+  await wire.request({ ...anthropic, model: 'claude-opus-5-5' }, { system: 'You are Closedhand.', messages: [...toolLoop(), announced.announcement([forecast])], tools });
+  const { headers, body } = sent[0];
+  assert.equal(headers['anthropic-beta'], 'inline-tools-2026-09-15');
+  assert.deepEqual(body.tools.map((t) => t.name), ['search_cache'], 'the list stays as it was');
+  assert.deepEqual(body.messages.at(-1), { role: 'system', content: [{ type: 'tool_addition', tool: { type: 'tool_definition', definition: forecast } }] });
+  assert.deepEqual(body.messages.at(-2).content.at(-1).cache_control, { type: 'ephemeral' }, 'the results before it are marked');
+});
+test('anywhere else, and where an announcement cannot stand, the tools go in the list as before', async () => {
+  let sent = captureAll(done);
+  await wire.request({ ...anthropic, model: 'claude-sonnet-5' }, { messages: [...toolLoop(), announced.announcement([forecast])], tools });
+  assert.equal(sent[0].headers['anthropic-beta'], undefined);
+  assert.deepEqual(sent[0].body.tools.map((t) => t.name), ['search_cache', 'harbour_forecast']);
+  assert.equal(sent[0].body.messages.some((m) => m.role === 'system'), false);
+  sent = captureAll({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: {} });
+  await wire.request({ backend: 'custom', baseUrl: 'https://llm.example/v1', apiKey: 'k', model: 'some-model' }, { messages: [...toolLoop(), announced.announcement([forecast])], tools });
+  assert.deepEqual(sent[0].body.tools.map((t) => t.function.name), ['search_cache', 'harbour_forecast']);
+  assert.equal(JSON.stringify(sent[0].body).includes('tool_addition'), false);
+  // First, or after the model's own message: Anthropic refuses it there.
+  sent = captureAll(done);
+  await wire.request({ ...anthropic, model: 'claude-opus-5-5' }, { messages: [announced.announcement([forecast]), { role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }, announced.announcement([{ ...forecast, name: 'tide_table' }]), { role: 'user', content: 'z' }], tools });
+  assert.deepEqual(sent[0].body.tools.map((t) => t.name), ['search_cache', 'harbour_forecast', 'tide_table']);
+  assert.equal(sent[0].headers['anthropic-beta'], undefined);
+  // Asked to answer with no tools: none are announced either.
+  sent = captureAll(done);
+  await wire.request({ ...anthropic, model: 'claude-opus-5-5' }, { messages: [...toolLoop(), announced.announcement([forecast]), { role: 'user', content: 'Sum up.' }] });
+  assert.equal(sent[0].body.tools, undefined);
+  assert.equal(sent[0].body.messages.some((m) => m.role === 'system'), false);
+});
+test('a model that refuses announced tools is asked again with them listed, and from then on', async () => {
+  const bodies = [];
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body); bodies.push({ body, beta: options.headers['anthropic-beta'] });
+    if (body.messages.some((m) => m.role === 'system')) return { ok: false, status: 400, headers: new Map(), json: async () => ({ error: { message: 'messages.3.content.0: `tool_addition` blocks are not supported for this model.' } }) };
+    return { ok: true, json: async () => done };
+  };
+  const ask = () => wire.request({ ...anthropic, model: 'claude-haiku-5-5' }, { messages: [...toolLoop(), announced.announcement([forecast])], tools });
+  await ask(); await ask();
+  assert.deepEqual(bodies.map((b) => b.beta || null), ['inline-tools-2026-09-15', null, null]);
+  assert.deepEqual(bodies.at(-1).body.tools.map((t) => t.name), ['search_cache', 'harbour_forecast']);
+});
+test('a later reply built from the conversation announces each tool where it was announced, so it reads from cache', () => {
+  const defOf = (name) => ({ harbour_forecast: forecast, tide_table: { ...forecast, name: 'tide_table' } })[name] || null;
+  const conversation = [{ role: 'user', content: 'Wind at Elara?' }];
+  // The reply: loaded at its start, then one more after a tool result.
+  let messages = [...conversation];
+  let fresh = announced.unannounced(messages, new Set(['search_cache', 'harbour_forecast']), tools, defOf);
+  assert.deepEqual(fresh.map((d) => d.name), ['harbour_forecast'], 'base tools are never announced');
+  messages.push(announced.announcement(fresh)); announced.record(conversation, ['harbour_forecast']);
+  messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'search_cache', input: {} }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{}' }] });
+  fresh = announced.unannounced(messages, new Set(['harbour_forecast', 'tide_table']), tools, defOf);
+  assert.deepEqual(fresh.map((d) => d.name), ['tide_table'], 'one already announced is not announced again');
+  messages.push(announced.announcement(fresh)); announced.record(conversation, ['tide_table']);
+  conversation.push({ role: 'assistant', content: 'Force 4.' }, { role: 'user', content: 'And tomorrow?' });
+  assert.deepEqual(conversation[0].toolsAdded, ['harbour_forecast', 'tide_table']);
+  // Two later replies from the conversation alone: the same messages before the newest.
+  const next = announced.withAnnouncements(conversation, defOf);
+  assert.deepEqual(next.map((m) => m.role), ['user', 'system', 'assistant', 'user']);
+  assert.deepEqual(next[1].content.map((b) => b.tool.definition.name), ['harbour_forecast', 'tide_table']);
+  conversation.push({ role: 'assistant', content: 'Force 5.' }, { role: 'user', content: 'Thanks' });
+  assert.deepEqual(announced.withAnnouncements(conversation, defOf).slice(0, 4), next);
+  // A reply carried on keeps the announcements it sent, never a second copy.
+  assert.equal(announced.withAnnouncements(messages, defOf).length, messages.length);
+  // A tool that is gone is left out.
+  assert.equal(announced.withAnnouncements([{ role: 'user', content: 'x', toolsAdded: ['gone_tool'] }], defOf).length, 1);
+});
