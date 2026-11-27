@@ -23,8 +23,8 @@ test('a first message: the system prompt and the tools before it are marked, the
   const sent = capture({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: {} });
   await wire.request(anthropic, { system: 'You are Closedhand.', messages: [{ role: 'user', content: 'hi' }], tools });
   const { body } = sent[0];
-  assert.deepEqual(body.system, [{ type: 'text', text: 'You are Closedhand.', cache_control: { type: 'ephemeral' } }]);
-  assert.deepEqual(body.tools.at(-1).cache_control, { type: 'ephemeral' }, 'a changed system prompt alone still reads the tools from cache');
+  assert.deepEqual(body.system, [{ type: 'text', text: 'You are Closedhand.', cache_control: { type: 'ephemeral', ttl: '1h' } }]);
+  assert.deepEqual(body.tools.at(-1).cache_control, { type: 'ephemeral', ttl: '1h' }, 'a changed system prompt alone still reads the tools from cache');
   assert.equal(marks(body), 2);
   assert.equal(JSON.stringify(tools).includes('cache_control'), false, 'the caller keeps its own tools unmarked');
 });
@@ -43,6 +43,13 @@ test('a caller\'s own marks are kept, never doubled, and never more than four in
   await wire.request(anthropic, { system, messages: toolLoop(), tools });
   assert.equal(sent[0].body.system[1].cache_control, undefined, 'the changing tail stays unmarked');
   assert.equal(marks(sent[0].body), 3);
+  // The tools and the system prompt hold between replies, often more than
+  // five minutes apart: kept for an hour, the caller's own mark included;
+  // the step so far keeps five minutes, after them as Anthropic requires.
+  assert.deepEqual(sent[0].body.system[0].cache_control, { type: 'ephemeral', ttl: '1h' });
+  assert.deepEqual(sent[0].body.tools.at(-1).cache_control, { type: 'ephemeral', ttl: '1h' });
+  assert.deepEqual(sent[0].body.messages.at(-1).content.at(-1).cache_control, { type: 'ephemeral' });
+  assert.deepEqual(system[0].cache_control, { type: 'ephemeral' }, 'the caller keeps its own copy as it was');
   const crowded = toolLoop();
   crowded.slice(0, 2).forEach(m => { if (Array.isArray(m.content)) m.content[0].cache_control = { type: 'ephemeral' }; });
   crowded[0] = { role: 'user', content: [{ type: 'text', text: 'a', cache_control: { type: 'ephemeral' } }, { type: 'text', text: 'b', cache_control: { type: 'ephemeral' } }] };
