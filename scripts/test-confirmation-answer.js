@@ -35,3 +35,42 @@ test("only a bare always approves a place for good", () => {
   assert.equal(answer("Always."), "always");
   assert.equal(answer("yes always"), "yes");
 });
+
+// A yes is written and answered for what it was to: a yes to letting a
+// command reach a site was written "Yes, send it." and answered "Sending it
+// now." when nothing was being sent.
+test("a yes says what it was to", () => {
+  const box = {};
+  vm.runInNewContext(src.slice(start, end) + "\nthis.yesTo = yesTo;", box);
+  assert.equal(box.yesTo({ toolName: "gmail_send" }, "yes"), "send it");
+  assert.equal(box.yesTo({ toolName: "sandbox_exec", outbound: { host: "cdn.example.com" } }, "yes"), "let it reach cdn.example.com");
+  assert.equal(box.yesTo({ toolName: "sandbox_exec", outbound: { host: "cdn.example.com" } }, "always"), "always trust cdn.example.com");
+  assert.equal(box.yesTo({ toolName: "gcal_update_event" }, "yes"), "go ahead");
+  assert.equal(box.yesTo({ toolName: "api_request", spend: { ledgerId: "l1" } }, "yes"), "pay for it");
+  const agents = fs.readFileSync(path.join(__dirname, "..", "lib", "agents.js"), "utf8");
+  assert.match(agents, /if \(what === "send it"\) return approved \? "Sending it now\." : "OK, I won't send it\.";/);
+  assert.match(agents, /return approved \? "Doing it now\." : "OK, I won't do it\.";/);
+});
+
+// The card offers "always"; a person who said yes and then "always" means
+// trust the site from now on. It came as a new message, and the chat asked
+// what "always" meant.
+test("'always' just after a yes to a site trusts it from now on", async () => {
+  const approved = [], said = [];
+  const box = { ctx: { recentOutboundYes: {}, activeUserStore: { userId: "u1" } }, Date,
+    getConversation: () => ({ push: (...m) => said.push(...m) }), saveStore: () => {},
+    require: (m) => (m === "./outbound-guard" ? { approveHost: async (store, host) => approved.push(host) } : {}) };
+  vm.runInNewContext(src.slice(start, end) + "\nthis.alwaysAfterYes = alwaysAfterYes;", box);
+  assert.equal(await box.alwaysAfterYes("u1", "always"), null, "nothing said yes to");
+  box.ctx.recentOutboundYes.u1 = { host: "cdn.example.com", at: Date.now() };
+  assert.equal(await box.alwaysAfterYes("u1", "always do that thing"), null, "only a plain always");
+  const reply = await box.alwaysAfterYes("u1", "Always");
+  assert.match(reply, /^OK, I'll trust cdn\.example\.com from now on/);
+  assert.deepEqual(approved, ["cdn.example.com"]);
+  assert.equal(await box.alwaysAfterYes("u1", "always"), null, "once");
+  box.ctx.recentOutboundYes.u1 = { host: "old.example.com", at: Date.now() - 11 * 60 * 1000 };
+  assert.equal(await box.alwaysAfterYes("u1", "always"), null, "not long after");
+  const confirmation = src;
+  assert.match(confirmation, /\} else if \(isYes && pending\.outbound && pending\.outbound\.host\) \{\n\s*ctx\.recentOutboundYes = ctx\.recentOutboundYes \|\| \{\};/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8"), /const trusted = await require\("\.\/confirmation"\)\.alwaysAfterYes\(userId, String\(userMessage\)\)/);
+});

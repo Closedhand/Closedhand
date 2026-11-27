@@ -596,7 +596,13 @@ async function request(conn, params, options = {}) {
     const messages = (params.messages || []).map(m => ({ role: m.role, content: Array.isArray(m.content) ? m.content.filter(b =>
       b.type !== "provider_state" && (!["thinking", "redacted_thinking"].includes(b.type) || b._identity === bound)
     ).map(b => {
-      const { _geminiPart, _identity, ...clean } = b; return clean;
+      // Closedhand's own notes on a block (a card's question, a chat's name,
+      // Gemini's part, the reasoning's identity) start with "_" and are no API
+      // field, so none goes: a task paused for a yes failed when carried on,
+      // refused for one (tool_use._spendCard: Extra inputs are not permitted).
+      const clean = {};
+      for (const k of Object.keys(b)) if (k[0] !== "_") clean[k] = b[k];
+      return clean;
     }) : m.content }));
     body = { model, messages, max_tokens: max, ...controls };
     if (params.system) body.system = params.system;

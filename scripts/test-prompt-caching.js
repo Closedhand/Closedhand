@@ -146,3 +146,16 @@ test('a run of carried-on follow-ups never sends more than four marks, and keeps
   }
   assert.ok(sent.every((s) => marks(s.body) <= 4), "every request");
 });
+
+// A task paused for a yes keeps Closedhand's notes on the paused call
+// (_spendCard, _chatLabel); carried on, Anthropic refused them as extra
+// inputs and the task stopped. No block field starting with "_" is sent.
+test('Closedhand\'s own notes on a block never go to Anthropic', async () => {
+  const sent = capture({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', usage: {} });
+  const messages = toolLoop();
+  Object.assign(messages[1].content[0], { _spendCard: 'Run this?', _chatLabel: 'Sam', _outboundHost: 'example.com' });
+  await wire.request(anthropic, { system: 'You are Closedhand.', messages, tools });
+  const block = sent[0].body.messages[1].content[0];
+  assert.deepEqual(Object.keys(block).sort(), ['id', 'input', 'name', 'type']);
+  assert.equal(messages[1].content[0]._spendCard, 'Run this?', 'the caller keeps its notes');
+});
