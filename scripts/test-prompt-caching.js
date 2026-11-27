@@ -76,7 +76,7 @@ test('OpenAI-style services and Gemini get the same prompt with no caching marks
 const vm = require('node:vm');
 const engineSrc = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'engine.js'), 'utf8');
 const box = {};
-vm.runInNewContext(engineSrc.slice(engineSrc.indexOf('const CACHE_MARK = '), engineSrc.indexOf('\n}\n', engineSrc.indexOf('function withTurnContext(')) + 3) + '\nthis.place = withTurnContext;', box);
+vm.runInNewContext(engineSrc.slice(engineSrc.indexOf('const TURN_MARK = '), engineSrc.indexOf('\n}\n', engineSrc.indexOf('function withTurnContext(')) + 3) + '\nthis.place = withTurnContext;', box);
 const SYSTEM = [{ type: 'text', text: 'You are Closedhand.', cache_control: { type: 'ephemeral' } }];
 const contextFor = (minute) => `Current time: 09:0${minute}. LANGUAGE: reply in English.`;
 const firstMessage = [{ role: 'user', content: 'Book the usual table' }, { role: 'assistant', content: 'Done, 7pm at Rosa\'s.' }, { role: 'user', content: 'Thanks, and remind me at 6' }];
@@ -90,7 +90,7 @@ test('the per-message part goes in front of the newest request, the user\'s word
   assert.equal(last.role, 'user');
   assert.match(last.content[0].text, /^\[Closedhand context for this message, not written by the user\]\nCurrent time: 09:01/);
   assert.equal(JSON.stringify(last.content.at(-1)), JSON.stringify({ type: 'text', text: 'What about Friday?' }));
-  assert.equal(JSON.stringify(placed.at(-2).content.at(-1).cache_control), JSON.stringify({ type: 'ephemeral' }), 'the end of the earlier conversation is marked');
+  assert.equal(JSON.stringify(placed.at(-2).content.at(-1).cache_control), JSON.stringify({ type: 'ephemeral', ttl: '1h' }), 'the end of the earlier conversation is marked, for an hour: replies often come more than five minutes later');
   assert.equal(placed.slice(0, -2).some(m => JSON.stringify(m).includes('cache_control')), false);
   assert.equal(box.place([{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: '{}' }] }], 'x'), null, 'no request, no placement');
 });
@@ -280,4 +280,30 @@ test('a later reply built from the conversation announces each tool where it was
   assert.equal(announced.withAnnouncements(messages, defOf).length, messages.length);
   // A tool that is gone is left out.
   assert.equal(announced.withAnnouncements([{ role: 'user', content: 'x', toolsAdded: ['gone_tool'] }], defOf).length, 1);
+});
+
+test('an hour mark after a reply carried on: the five-minute marks of its steps go, so Anthropic takes the request', async () => {
+  const sent = captureAll(done);
+  const hour = { type: 'ephemeral', ttl: '1h' }, five = { type: 'ephemeral' };
+  const messages = [
+    { role: 'user', content: [{ type: 'text', text: 'What is on today?', cache_control: hour }] },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'search_cache', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{}', cache_control: five }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'Nothing.', cache_control: hour }] },
+    { role: 'user', content: 'And tomorrow?' },
+  ];
+  await wire.request({ ...anthropic, model: 'claude-opus-5-5' }, { system: 'You are Closedhand.', messages, tools });
+  const ttls = [];
+  for (const m of sent[0].body.messages) for (const b of Array.isArray(m.content) ? m.content : []) if (b.cache_control) ttls.push(b.cache_control.ttl || '5m');
+  assert.deepEqual(ttls, ['1h', '1h']);
+  assert.deepEqual(messages[2].content[0].cache_control, five, 'the caller keeps its own copy');
+});
+test('a turn far back behind many announced tools is marked too, so what was stored is still found', () => {
+  const many = announced.announcement(Array.from({ length: 30 }, (_, i) => ({ ...forecast, name: 'tool_' + i })));
+  const list = [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'user', content: 'c' }, many, { role: 'assistant', content: 'd' }, { role: 'user', content: 'e' }];
+  const placed = box.place(list, 'Current time: 09:00.');
+  const marked = placed.map((m) => (Array.isArray(m.content) && m.content.some((b) => b.cache_control) ? m.role : '-'));
+  assert.deepEqual(marked, ['-', 'assistant', '-', '-', 'assistant', '-']);
+  const few = box.place([{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'user', content: 'c' }, announced.announcement([forecast]), { role: 'assistant', content: 'd' }, { role: 'user', content: 'e' }], 'x');
+  assert.equal(few.filter((m) => Array.isArray(m.content) && m.content.some((b) => b.cache_control)).length, 1, 'near enough: one mark');
 });

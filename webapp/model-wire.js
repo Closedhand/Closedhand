@@ -351,6 +351,18 @@ function markCache(body) {
   if (Array.isArray(body.tools) && body.tools.length && !body.tools.some(marked)) {
     body.tools = body.tools.map((t, i) => i === body.tools.length - 1 ? { ...t, cache_control: LONG_MARK } : t);
   }
+  // An hour's mark after a five-minute one is refused. The conversation's
+  // hour marks (lib/engine.js withTurnContext) follow the steps of a reply
+  // carried on, each marked for five minutes: those marks go, as the hour's
+  // mark just after them reads what they stored.
+  const spots = [];
+  body.messages.forEach((m, mi) => { if (Array.isArray(m.content)) m.content.forEach((b, bi) => { if (marked(b)) spots.push([mi, bi, b.cache_control.ttl === "1h"]); }); });
+  const lastHour = spots.findLastIndex(([, , hour]) => hour);
+  for (const [mi, bi, hour] of spots.slice(0, Math.max(0, lastHour))) {
+    if (hour) continue;
+    const { cache_control, ...plain } = body.messages[mi].content[bi];
+    body.messages[mi].content = body.messages[mi].content.map((b, i) => (i === bi ? plain : b));
+  }
   // Never more than four. A request carried on from the last reply keeps the
   // marks it was sent with, one more each time, and the fourth quick follow-up
   // in a row had five and was refused. The conversation's earliest marks go
