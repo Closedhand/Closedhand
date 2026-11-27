@@ -35,6 +35,7 @@
       '<button type="button" data-action="load" hidden>Retry loading models</button>' +
       '</div><div data-region="selection" class="model-fields" hidden>' +
       '<label>Model<select data-picker="model"></select></label><label data-manual="model" hidden>Model ID<input data-field="model" spellcheck="false" placeholder="Enter the provider\'s exact model ID"></label>' +
+      '<p class="model-pick-status" data-region="pick-status" role="status" aria-live="polite" hidden></p>' +
       '</div></section><details class="model-secondary" data-region="extras"><summary>Support, image and video models <span class="model-optional">(optional)</span></summary><div class="model-fields"><section class="model-role model-fields"><header><h3>Support model</h3><p class="model-hint">Does routine work, like naming conversations and writing summaries.</p></header>' +
       '<label>Model choice<select data-field="backgroundMode"><option value="same">Use the primary model (low effort)</option><option value="separate">Choose another support model</option></select></label>' +
       '<div data-region="background" class="model-fields" hidden><label>Provider<select data-field="backgroundProvider"><option value="">Use the same provider</option>' + options.replace('<option value="">Choose a provider</option>', '') + '</select></label>' +
@@ -56,6 +57,12 @@
       '<div class="model-result" role="status" aria-live="polite" tabindex="-1"></div><button type="button" data-action="reload" hidden>Retry loading settings</button>' +
       '</div></details>';
     var saved = null, ticket = null, models = [], imageModels = [], supportModels = [], busy = false;
+    // In Settings, changing models already in use takes effect as soon as the
+    // check passes: it once waited on a button at the foot of the form, out
+    // of sight, and the choice looked made when it wasn't. Setup keeps the
+    // button, as there it is the step itself. justSaved: said once, after a
+    // change saved here.
+    var autoSave = root.id !== "model-configuration", justSaved = false;
     var loads = { primary: 0, vision: 0, background: 0 }, runtime = "", initialized = false;
     var check = null, checkTimer = null, checks = 0;
     var loadTimers = { primary: null, vision: null, background: null }, connectionValues = { primary: null, vision: null, background: null };
@@ -385,6 +392,7 @@
         if (e.visionNeeded) region("extras").open = true;
       }
       renderCheck();
+      if (check.kind === "passed" && autoSave && saved) useModels();
     }
     function providerLabel(conn) {
       if (providers[conn.provider]) return providers[conn.provider];
@@ -461,7 +469,7 @@
       var save = root.querySelector('[data-action="save"]'), again = root.querySelector('[data-action="recheck"]');
       rows.replaceChildren(); save.hidden = true; again.hidden = true;
       imageChoice();
-      if (!check) { panel.hidden = true; return; }
+      if (!check) { panel.hidden = true; pickStatus(null, ""); return; }
       panel.hidden = false;
       var kind = check.kind, cfg = check.config || null;
       var chat = cfg ? cfg.roles.chat : null, support = cfg ? cfg.roles.background : null, vision = cfg ? cfg.roles.vision : null;
@@ -513,8 +521,22 @@
         sameSupport ? "" : settled ? "ok" : kind === "checking" ? "wait" : "");
       // Recall is a model too, the one Closedhand keeps on this computer.
       if (kind === "passed" && check.memory) row("Recall", check.memory.value || check.memory, "", check.memory.local);
-      save.hidden = kind !== "passed";
+      save.hidden = kind !== "passed" || (autoSave && !!saved);
       again.hidden = kind !== "failed";
+      pickStatus(kind, chatName);
+    }
+    // Under the Model picker, where the choice is made: what is happening to it.
+    function pickStatus(kind, chatName) {
+      var line = region("pick-status");
+      var inUse = saved && saved.roles && saved.roles.chat ? modelName({ id: saved.roles.chat.model }, saved.connections[saved.roles.chat.connection].provider) : "";
+      var text = "", tone = "";
+      if (kind === "checking") { text = "Checking " + chatName + "…"; tone = "wait"; }
+      else if (kind === "passed") { text = autoSave && saved ? "Works. Saving…" : "Checked and working. Use these models below to start using them."; tone = autoSave && saved ? "wait" : "ok"; }
+      else if (kind === "saved" && justSaved) { text = "In use. New messages use " + chatName + "."; tone = "ok"; }
+      else if (kind === "failed") { text = (check.visionNeeded ? "The image and video model didn't pass the check" : chatName + " didn't pass the check") + (inUse ? ", so " + inUse + " stays in use." : ".") + " The details are below."; tone = "fail"; }
+      line.textContent = text;
+      line.className = "model-pick-status" + (tone ? " is-" + tone : "");
+      line.hidden = !text;
     }
     function scheduleLoad(kind) {
       clearTimeout(loadTimers[kind]);
@@ -610,7 +632,8 @@
     root.querySelector('[data-action="load-vision"]').onclick = function () { loadModels("vision"); };
     root.querySelector('[data-action="load-background"]').onclick = function () { loadModels("background"); };
     root.querySelector('[data-action="recheck"]').onclick = function () { runCheck(); };
-    root.querySelector('[data-action="save"]').onclick = function () { if (!ticket) return; perform(async function () {
+    root.querySelector('[data-action="save"]').onclick = function () { useModels(); };
+    function useModels() { if (!ticket) return; perform(async function () {
       show("Saving models…");
       try { await call("/save", { ticket: ticket }); } catch (e) {
         // A check older than ten minutes, or from before Closedhand restarted,
@@ -630,10 +653,15 @@
       field("backgroundBaseUrl").value = saved.connections.background?.baseUrl || "";
       field("apiKey").placeholder = keyPlaceholder(saved.connections.primary);
       region("editor").querySelector("summary").hidden = false;
+      justSaved = true;
       check = { kind: "saved", config: saved }; renderCheck();
-      show("Models updated. New requests use these choices.", "done"); result.focus();
+      show("Models updated. New requests use these choices.", "done");
+      if (!autoSave) result.focus();
       if (onSaved) onSaved();
-    }); };
+    }).then(function () {
+      // A save that failed says so where the choice was made, too.
+      if (check && check.kind === "passed" && result.classList.contains("is-error")) { check = { kind: "failed", error: result.textContent }; renderCheck(); }
+    }); }
     async function initialize() {
       region("connection").hidden = true;
       root.querySelector('[data-action="reload"]').hidden = true;

@@ -6,7 +6,7 @@ const source = fs.readFileSync(require.resolve('../webapp/public/model-settings.
 const tick = () => new Promise(resolve => setImmediate(resolve));
 // Small DOM fixture for asynchronous state tests. Layout and native controls
 // are reviewed in the browser against the real setup page.
-async function mount(respond = () => ({ config: null, runtime: 'docker' })) {
+async function mount(respond = () => ({ config: null, runtime: 'docker' }), id = '') {
   const elements = new Map(), listeners = {}, timers = new Map(), calls = [];
   let timerId = 0;
   function element(selector = '') {
@@ -22,6 +22,7 @@ async function mount(respond = () => ({ config: null, runtime: 'docker' })) {
     elements.set(selector, node); return node;
   }
   const root = element('root');
+  root.id = id;
   root.querySelector = element;
   root.querySelectorAll = () => [...elements.values()];
   root.addEventListener = (event, fn) => { listeners[event] = fn; };
@@ -140,8 +141,31 @@ test('saved hosted connections can be changed without entering the key again', a
   ui.action('save').onclick(); await tick();
   assert.equal(ui.field('apiKey').value, '');
   ui.pick('backgroundModel', 'small'); await ui.timers();
-  assert.equal(ui.calls.at(-1).path, '/check'); assert.equal(ui.calls.at(-1).body.primary.useSavedKey, true);
+  const check = ui.calls.filter((c) => c.path === '/check').at(-1);
+  assert.equal(check.body.primary.useSavedKey, true);
+  // In Settings a change to models in use takes effect once the check
+  // passes, and says so under the Model picker: it once waited on a button
+  // at the foot of the form, out of sight.
+  assert.equal(ui.calls.at(-1).path === '/save' || ui.calls.at(-2).path === '/save', true, 'saved by itself');
+  assert.equal(ui.action('save').hidden, true);
+  assert.equal(ui.region('pick-status').textContent, 'In use. New messages use chat.');
+  assert.equal(ui.region('pick-status').hidden, false);
+});
+
+test('in setup the checked models wait for Use these models', async () => {
+  let config = null;
+  const verified = checked();
+  verified.config.connections.primary = { provider: 'openai', baseUrl: 'https://api.openai.com/v1', hasKey: true };
+  const ui = await mount(call => {
+    if (call.path === '/models') return catalog;
+    if (call.path === '/check') return verified;
+    if (call.path === '/save') { config = verified.config; return { success: true }; }
+    return { config };
+  }, 'model-configuration');
+  ui.choose('provider', 'openai'); ui.type('apiKey', 'fixture'); await ui.timers(); ui.choose('visionMode', 'off'); ui.pick('model', 'chat'); await ui.timers();
+  assert.ok(!ui.calls.some((c) => c.path === '/save'));
   assert.equal(ui.action('save').hidden, false);
+  assert.equal(ui.region('pick-status').textContent, 'Checked and working. Use these models below to start using them.');
 });
 
 test('typing is debounced and only the chosen provider receives the latest key', async () => {

@@ -35,6 +35,14 @@
 }
 .model-result.is-error { color: var(--danger); }
 .model-result.is-done { color: var(--ok); }
+/* Under the Model picker: what is happening to the choice just made. */
+.model-pick-status { margin: -0.25rem 0 0; font-size: 0.875rem; line-height: 1.5; color: var(--muted); display: flex; align-items: center; gap: 0.5rem; }
+.model-pick-status.is-wait::before { content: ""; flex: none; width: 0.75rem; height: 0.75rem; border-radius: 50%; border: 2px solid rgba(var(--fg-rgb),0.2); border-top-color: var(--fg); animation: modelPickTurn 0.9s linear infinite; }
+.model-pick-status.is-ok { color: var(--ok); }
+.model-pick-status.is-ok::before { content: "\2713"; }
+.model-pick-status.is-fail { color: var(--danger); }
+@keyframes modelPickTurn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .model-pick-status.is-wait::before { animation: none; } }
 .model-check { padding: 1.5rem; border: 1px solid rgba(var(--fg-rgb),0.4); border-radius: 0.75rem; display: grid; gap: 1.25rem; }
 .model-check h3 { margin: 0; font-family: inherit; font-weight: 600; font-size: 1.125rem; line-height: 1.4; }
 .model-check .model-role-list { margin: 0; }
