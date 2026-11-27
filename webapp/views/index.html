@@ -3811,10 +3811,13 @@
             return;
           }
           // A reply ends the wait; progress while this tab waits restarts the timer.
-          if (msg.type === 'message' || msg.type === 'stream_end' || msg.type === 'file') { _awaitingReply = false; disarmResponseWatchdog(); }
+          // A file that comes while a reply is awaited (documents made for it)
+          // is part of the reply, not its end: they sat alone looking
+          // finished, the words about them still to come.
+          if (msg.type === 'message' || msg.type === 'stream_end' || (msg.type === 'file' && !_awaitingReply)) { _awaitingReply = false; disarmResponseWatchdog(); }
           else if (_awaitingReply) armResponseWatchdog();
           if (msg.type === 'message') { hideTyping(); dropWriting(); addMessage(msg.content, 'bot'); }
-          else if (msg.type === 'file') { hideTyping(); addFileMessage(msg); }
+          else if (msg.type === 'file') { if (_awaitingReply) addFileMessage(msg); else { hideTyping(); addFileMessage(msg); } }
           else if (msg.type === 'typing') { showTyping(); }
           else if (msg.type === 'stream_start') { writingEl(); }
           else if (msg.type === 'stream_token') { var writing = writingEl(); writing._text = (writing._text || '') + msg.content; drawWriting(writing); }

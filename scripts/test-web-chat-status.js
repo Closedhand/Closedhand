@@ -208,6 +208,14 @@ test("a reply being written keeps its bubble round its words", () => {
   assert.match(page, /\.message\.bot\.writing::after \{ animation: none; background: none; \}/, "still for anyone who asks for less motion");
 });
 
+// Documents made for a reply arrive before its words; they once ended the
+// wait and hid the working line, and sat alone looking finished.
+test("a file that comes while a reply is awaited keeps the working line", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /\(msg\.type === 'file' && !_awaitingReply\)\) \{ _awaitingReply = false; disarmResponseWatchdog\(\); \}/);
+  assert.match(page, /else if \(msg\.type === 'file'\) \{ if \(_awaitingReply\) addFileMessage\(msg\); else \{ hideTyping\(\); addFileMessage\(msg\); \} \}/);
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.
