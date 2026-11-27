@@ -843,6 +843,7 @@
   }
   .tl-dot.done { background: rgba(var(--ok-rgb),0.8); box-shadow: none; }
   .tl-dot.error { background: var(--accent-strong); box-shadow: none; }
+  .tl-dot.missed { background: rgba(var(--fg-rgb),0.32); box-shadow: none; }
   .tl-dot.stalled { background: var(--accent-strong); box-shadow: 0 0 0.375rem rgba(var(--accent-rgb),0.3); animation: tlPulse 1s ease-in-out infinite; }
   @keyframes tlPulse {
     0%, 100% { transform: scale(1); opacity: 1; }
@@ -855,7 +856,7 @@
   /* A step done is its dot; one that went wrong says so, in red. The same
      steps one after another are one line with how many (×3). */
   .tl-count { color: rgba(var(--fg-rgb),0.45); font-variant-numeric: tabular-nums; }
-  .tl-fail { color: var(--danger); flex-shrink: 0; }
+  .tl-miss { color: rgba(var(--fg-rgb),0.5); flex-shrink: 0; }
   .tl-elapsed { color: var(--text-tertiary, rgba(var(--fg-rgb),0.5)); font-size: 0.6875rem; margin-left: auto; flex-shrink: 0; }
   .tl-collapse { font-size: 0.6875rem; color: var(--text-tertiary, rgba(var(--fg-rgb),0.5)); padding: 2px 0 2px 1.25rem; }
   .tl-thinking {
@@ -4603,7 +4604,9 @@
     var html = '<div class="timeline">';
 
     // The same step done again and again ("Searching data" four times) is
-    // one line with how many; a step that went wrong stands on its own.
+    // one line with how many; a step that went wrong stands on its own,
+    // quietly: a dead end while it works is normal (in red, every "not found"
+    // looked like something broken). Red is for the work failing.
     var steps = [];
     for (var c = 0; c < completed.length; c++) {
       var item = completed[c];
@@ -4611,7 +4614,7 @@
       var isFail = item.end.success === false;
       var last = steps[steps.length - 1];
       if (last && !isFail && !last.fail && last.desc === desc) { last.count++; last.elapsed += item.end.elapsed || 0; continue; }
-      steps.push({ desc: desc, fail: isFail, count: 1, elapsed: item.end.elapsed || 0 });
+      steps.push({ desc: desc, fail: isFail, missing: isFail && item.end.notFound === true, count: 1, elapsed: item.end.elapsed || 0 });
     }
 
     // Collapsed count
@@ -4624,10 +4627,10 @@
     for (var v = 0; v < visibleSteps.length; v++) {
       var step = visibleSteps[v];
       html += '<div class="tl-row">';
-      html += '<div class="tl-dot ' + (step.fail ? 'error' : 'done') + '"></div>';
+      html += '<div class="tl-dot ' + (step.fail ? 'missed' : 'done') + '"></div>';
       html += '<div class="tl-body">';
       html += '<span class="tl-desc muted">' + escapeHtml(step.desc) + (step.count > 1 ? ' <span class="tl-count">\u00d7' + step.count + '</span>' : '') + '</span>';
-      if (step.fail) html += '<span class="tl-fail">Didn\u2019t work</span>';
+      if (step.fail) html += '<span class="tl-miss">' + (step.missing ? 'Not found' : 'Didn\u2019t work') + '</span>';
       html += step.elapsed ? '<span class="tl-elapsed">' + formatElapsed(step.elapsed) + '</span>' : '';
       html += '</div></div>';
     }

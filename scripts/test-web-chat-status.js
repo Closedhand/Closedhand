@@ -28,7 +28,8 @@ test("the working star turns smoothly: no symbol a phone draws as an emoji, a ca
 
 // The steps' timeline: one thread through the middle of every dot and of the
 // spinner (it sat a few pixels right of them), the same step done again as
-// one line with how many, no small-capital DONE, a step gone wrong in red.
+// one line with how many, no small-capital DONE, a dead end said quietly
+// (in red, every "not found" looked like something broken).
 test("the timeline's line runs through every dot and the spinner, and repeated steps are one line", () => {
   const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
   const rem = (re) => Number(page.match(re)[1]);
@@ -45,11 +46,17 @@ test("the timeline's line runs through every dot and the spinner, and repeated s
   require("node:vm").runInNewContext(page.slice(start, page.indexOf("\n  }\n", page.indexOf("    area.innerHTML = html;", start)) + 4)
     + page.slice(page.indexOf("  function formatElapsed(ms) {"), page.indexOf("  function escapeHtml(str) {"))
     + page.slice(page.indexOf("  function escapeHtml(str) {"), page.indexOf("\n  }\n", page.indexOf("  function escapeHtml(str) {")) + 4) + "\nthis.render = renderActivityFeed;", box);
-  const step = (n, description, success = true) => [{ type: "tool_start", toolName: "t" + n, timestamp: n, description }, { type: "tool_end", toolName: "t" + n, timestamp: n + 1, description, success, elapsed: 1000 }];
-  box.render([...step(1, "Searching data"), ...step(2, "Searching data"), ...step(3, "Searching data"), ...step(4, "Reading web pages", false), { type: "thinking", timestamp: 9 }]);
-  assert.equal((area.innerHTML.match(/class="tl-row"/g) || []).length, 2, "three of the same step are one line");
+  const step = (n, description, success = true, notFound = false) => [{ type: "tool_start", toolName: "t" + n, timestamp: n, description }, { type: "tool_end", toolName: "t" + n, timestamp: n + 1, description, success, notFound, elapsed: 1000 }];
+  box.render([...step(1, "Searching data"), ...step(2, "Searching data"), ...step(3, "Searching data"), ...step(4, "Reading web pages", false), ...step(5, "Checking Google", false, true), { type: "thinking", timestamp: 9 }]);
+  assert.equal((area.innerHTML.match(/class="tl-row"/g) || []).length, 3, "three of the same step are one line");
   assert.match(area.innerHTML, /Searching data <span class="tl-count">×3<\/span>/);
-  assert.match(area.innerHTML, /<span class="tl-fail">Didn’t work<\/span>/);
+  assert.match(area.innerHTML, /<span class="tl-miss">Didn’t work<\/span>/);
+  assert.match(area.innerHTML, /<div class="tl-dot missed"><\/div><div class="tl-body"><span class="tl-desc muted">Checking Google<\/span><span class="tl-miss">Not found<\/span>/);
+  assert.doesNotMatch(page, /\.tl-miss \{[^}]*danger/, "a dead end is not red");
+  const engine = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "lib", "engine.js"), "utf8");
+  const NOT_FOUND = new RegExp(engine.match(/const NOT_FOUND = \/(.+)\/i;/)[1], "i");
+  for (const e of ["Google API 404: Requested entity was not found.", "No completed run with that ID.", "Drive send failed: Google API 404", "Could not find attachment(s): x"]) assert.ok(NOT_FOUND.test(e), e);
+  for (const e of ["Blocked: cannot make requests to private/internal addresses.", "Rate limit exceeded"]) assert.ok(!NOT_FOUND.test(e), e);
 });
 
 // Scrolled up to read, the conversation stays put; what arrives shows on the
