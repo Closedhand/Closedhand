@@ -99,3 +99,21 @@ test("a background job puts a step's connected-server actions on one card too, a
   assert.match(agents, /batch: together \? together\.map\(\(t\) => \(\{ toolName: t\.block\.name, toolInput: t\.block\.input, toolUseId: t\.block\.id, isInternal: isInternalTool\(t\.block\.name\) \}\)\) : null,/);
   assert.match(agents, /if \(Array\.isArray\(pending\.batch\) && pending\.batch\.length\) \{[\s\S]{0,1200}return approved \? "Doing those now\." : "OK, I won't do those\.";/);
 });
+
+// What asks first in the chat asks first in a background task: a task once
+// deleted a person's Gmail draft through the sandbox gateway without asking,
+// as tasks paused only for sends, payments and new sites.
+test("a task asks before a change the chat asks about", () => {
+  const { taskChangeCard, together } = require("../lib/confirm-card");
+  assert.equal(taskChangeCard("sandbox_gateway", { method: "DELETE", service: "google", url: "https://gmail.googleapis.com/gmail/v1/users/me/drafts/r-123" }),
+    'Just to confirm: this task wants to delete something in your Google account:\nDELETE gmail.googleapis.com/gmail/v1/users/me/drafts/r-123\n\nReply "yes" to let it, or "no" to stop it.');
+  assert.equal(taskChangeCard("sandbox_gateway", { method: "GET", url: "https://gmail.googleapis.com/x" }), null, "a read goes ahead");
+  assert.equal(taskChangeCard("api_request", { method: "POST", url: "https://shop.myshopify.com/admin/api/graphql.json", body: { query: "{ products { id } }" } }), null, "a GraphQL read goes ahead");
+  assert.match(taskChangeCard("api_request", { method: "POST", url: "https://shop.myshopify.com/admin/api/graphql.json", body: { query: "mutation { productDelete }" } }), /create or change something/);
+  assert.match(taskChangeCard("gcal_delete_event", { summary: "Dentist" }), /delete a calendar event, "Dentist"\./);
+  assert.match(taskChangeCard("disconnect_service", { service: "slack" }), /disconnect Slack\./);
+  assert.equal(taskChangeCard("gmail_draft_update", {}), null, "its own tools for drafts need no card");
+  assert.match(together([taskChangeCard("gcal_delete_event", { summary: "A" }), taskChangeCard("gcal_delete_event", { summary: "B" })]), /^Just to confirm, 2 things:/);
+  const agents = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "lib", "agents.js"), "utf8");
+  assert.match(agents, /const card = require\("\.\/confirm-card"\)\.taskChangeCard\(block\.name, block\.input\);\n\s*if \(card\) \{\n\s*if \(!pendingSend\) \{ pendingSend = block; pendingSend\._spendCard = card; pendingSend\._plain = true; continue; \}/);
+});
