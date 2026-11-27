@@ -12,6 +12,7 @@
 //   ... node scripts/prompt-probes.js --runs 5 --only has_an_opinion,no_emdash
 //   ... node scripts/prompt-probes.js --without      each probe again with its rule taken out: what the rule does
 //   ... node scripts/prompt-probes.js --show         also prints each answer
+//   ... node scripts/prompt-probes.js --platform whatsapp_linked     as if the messages came from WhatsApp (default web)
 //   ... node scripts/prompt-probes.js --candidate ./my-prompt.js      a whole other prompt:
 //         module.exports = (prompt, { dropSection, dropLine, dropText }) => newPrompt
 //
@@ -34,12 +35,13 @@ const WITHOUT = !!arg("without");
 const CANDIDATE = typeof arg("candidate") === "string" ? path.resolve(arg("candidate")) : null;
 const MAX_TOKENS = Number(arg("max-tokens") || 8192);
 const SHOW = !!arg("show");
+const PLATFORM = typeof arg("platform") === "string" ? arg("platform") : "web";
 const say = (line) => process.stdout.write(line + "\n");
 
 // Where each part of the prompt starts, in order, so one can be taken out whole.
 const MARKERS = ["HOW YOU ARE WITH THEM:", "HOW YOU ARE BUILT", "DATA ACCESS:", "SEARCHING:", "TIME & LOCATION:", "FLIGHT TRACKING:", "TOOLS REFERENCE:", "MEMORY & KNOWLEDGE:", "RECALLED ITEMS:",
   "The user reports anything broken", "EMAIL SAFETY RULES:", "WRITING IN THEIR NAME", "SANDBOX COMPUTER (YOUR SUPERPOWER):", "FILE AWARENESS:", "MISSING SERVICE:",
-  "BACKGROUND AGENTS (agent_start):", "RESPONSE WEIGHT MATCHES THE GAP", "NEVER delegate when:", "BACKGROUND TASKS:", "SERVICE NUDGES:", "THE DASHBOARD (web chat only):", "SECURITY:",
+  "BACKGROUND AGENTS (agent_start):", "RESPONSE WEIGHT MATCHES THE GAP", "NEVER delegate when:", "BACKGROUND TASKS:", "SERVICE NUDGES:", "SECURITY:",
   "HOW TO ACT:", "RESPONSE PRESENTATION:", "DASHBOARD SETTINGS:", "SETTING A GOAL:", "PROJECTS:", "DASHBOARD LINKS AND OVERVIEWS:", "ADDITIONAL TOOLS"];
 
 function dropSection(prompt, marker) {
@@ -306,7 +308,7 @@ const main = async () => {
   const robin = "00000000-0000-4000-8000-000000000001";
   const settings = { model_config: s.model_config, included_ai: s.included_ai ? { name: s.included_ai.name, plan: { name: "plus" }, prices: s.included_ai.prices } : undefined, preferred_name: "Robin", bot_name: "Closedhand", location: london, pulse_settings: { proactiveLevel: "off" } };
   ctx.activeUserStore = { profile: { id: robin, display_name: "Robin", settings }, connections: { google: {} }, userRules: [], goals: [], workspaceFiles: null, location: london, userId: robin };
-  ctx.activeUserId = robin; ctx.activePlatform = "web"; ctx.bridgeConnected = false;
+  ctx.activeUserId = robin; ctx.activePlatform = PLATFORM; ctx.bridgeConnected = false;
   ctx.store = { facts: { "family-partner": { value: "Robin's partner is Ana Fixture.", category: "person", subject: "Ana Fixture", source: "chat" }, "profile-work": { value: "Robin runs a small bakery, Sample Loaf, in Hackney.", category: "profile", subject: "Robin", source: "chat" } }, location: london, userRules: [], goals: [] };
   const e = require("../lib/engine");
   const { INTERNAL_TOOLS } = require("../lib/tools/definitions");
@@ -315,7 +317,7 @@ const main = async () => {
   const core = e.getAllTools();
   const def = (t) => ({ name: t.name, description: t.description, input_schema: t.input_schema });
   const onDemand = INTERNAL_TOOLS.filter((t) => !core.find((c) => c.name === t.name) && !t.agentOnly && !/^(bridge_|outlook|onedrive|caldav_|send_mail|reply_to_mail|create_mail_draft|bank_|whatsapp_)/.test(t.name));
-  say(`The prompt is ${NOW.split(/\s+/).length} words${tried ? ", the candidate " + tried.split(/\s+/).length : ""}; ${core.length} core tools; LLM ${model}; ${RUNS} run${RUNS === 1 ? "" : "s"} each.`);
+  say(`The prompt is ${NOW.split(/\s+/).length} words${tried ? ", the candidate " + tried.split(/\s+/).length : ""}; ${core.length} core tools; LLM ${model}; ${PLATFORM}; ${RUNS} run${RUNS === 1 ? "" : "s"} each.`);
 
   const request = (probe, prompt, messages) => {
     const last = [...probe.messages].reverse().find((m) => m.role === "user" && typeof m.content === "string");

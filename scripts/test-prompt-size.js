@@ -185,3 +185,24 @@ test("every part and rule the prompt probes take out is still in the prompt", ()
     assert.ok(full.length - cut.length < 6000, `${probe.name} takes out ${full.length - cut.length} characters`);
   }
 });
+
+// Each app had its own system prompt (its name in the first line, its way of
+// setting out a reply, the web chat's dashboard), so a message from WhatsApp
+// after the web chat made the provider store the whole conversation again.
+test("the system prompt is the same in every app; each message says which app it came from and how a reply is set out there", () => {
+  const prompts = ["web", "whatsapp_linked", "telegram"].map((platform) => { asSam({ platform }); return engine.buildSystemPrompt(); });
+  assert.equal(prompts[1], prompts[0]);
+  assert.equal(prompts[2], prompts[0]);
+  assert.doesNotMatch(prompts[0], /THE DASHBOARD \(web chat only\)|personal AI on |- WhatsApp: \*single-asterisk bold\*/);
+  assert.match(prompts[0], /You are Closedhand, Sam's personal AI\.\n/);
+  assert.match(prompts[0], /\[Closedhand context for this message\]: the app it came from and how a reply is set out there, the current time/);
+  asSam({ platform: "whatsapp_linked" });
+  const wa = engine.buildVolatileSystemTail("hi");
+  assert.match(wa, /^\n\nThis message came from WhatsApp\.\n- WhatsApp: \*single-asterisk bold\* for short labels/);
+  assert.doesNotMatch(wa, /THE DASHBOARD/);
+  assert.match(engine.buildQuickTail("thanks"), /This message came from WhatsApp\./);
+  asSam({ platform: "web" });
+  const web = engine.buildVolatileSystemTail("hi");
+  assert.match(web, /This message came from the web chat\.\n- Web chat: concise Markdown[\s\S]*\n\nTHE DASHBOARD \(web chat only\):\nThe dashboard is where the person manages Closedhand/);
+  assert.match(web, /No dashboard link: the answer comes to this chat\./);
+});

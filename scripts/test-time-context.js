@@ -38,7 +38,7 @@ test('the actual chat prompt tail includes the current airport date evidence', (
       if (name === './routine-offers') return { offerFor: () => '' };
       throw Error(name);
     }, getSkillsForPrompt: () => '', getUserSkillsBlock: () => '', buildTravelTimezoneBlock: () => '',
-    projects: { getProjectsBlock: () => '' },
+    projects: { getProjectsBlock: () => '' }, whereLines: () => 'This message came from the web chat.',
   });
   const text = fn();
   assert.match(text, /location is unknown/);
