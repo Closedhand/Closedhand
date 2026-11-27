@@ -202,7 +202,7 @@ test("a running live line stays at the bottom of the conversation", () => {
 // item's own, so every message keeps its height.
 test("a reply being written keeps its bubble round its words", () => {
   const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
-  assert.match(page, /  \.message \{\n    flex-shrink: 0;/);
+  assert.match(page, /  \.message \{\n    max-width: 85%;[^}]*margin-bottom: 0\.5rem;\n    flex-shrink: 0;\n  \}/);
   assert.match(page, /\.message\.bot\.writing \{ min-height: 1\.5rem; overflow: hidden; border-color: rgba\(var\(--accent-rgb\),0\.3\);/);
   assert.match(page, /\.message\.bot\.writing::after \{[^}]*animation: writingSweep/);
   assert.match(page, /\.message\.bot\.writing::after \{ animation: none; background: none; \}/, "still for anyone who asks for less motion");

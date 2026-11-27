@@ -719,7 +719,6 @@
   @keyframes latestTurn { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .scroll-latest, .scroll-latest-text { transition: none; } .scroll-latest.fresh { animation: none; } .scroll-latest.working:not(.fresh)::before { animation: none; border-color: rgba(var(--accent-rgb),0.5); } }
   .message {
-    flex-shrink: 0;
     max-width: 85%;
     padding: var(--chat-pad);
     border-radius: 1.125rem;
@@ -729,6 +728,7 @@
     word-wrap: break-word;
     white-space: pre-wrap;
     margin-bottom: 0.5rem;
+    flex-shrink: 0;
   }
   /* Each message reads as its own clear shape: theirs in the accent's tint
      with a border that holds it, Closedhand's on a raised card with a border
