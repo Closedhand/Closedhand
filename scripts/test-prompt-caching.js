@@ -159,3 +159,26 @@ test('Closedhand\'s own notes on a block never go to Anthropic', async () => {
   assert.deepEqual(Object.keys(block).sort(), ['id', 'input', 'name', 'type']);
   assert.equal(messages[1].content[0]._spendCard, 'Run this?', 'the caller keeps its notes');
 });
+
+// Claude Opus 5.5, Sonnet 5.5, Fable and Mythos 5.1/5.2 refuse a forced tool
+// choice: asked forced, every judgment with a report tool failed on Opus 5.5.
+// They are asked with the choice left to them; one that refuses is learnt.
+test('a forced tool choice goes unforced to a model that refuses one', async () => {
+  const tool = { name: 'report', description: 'Report', input_schema: { type: 'object', properties: {} } };
+  let sent = capture({ content: [{ type: 'tool_use', id: 't', name: 'report', input: {} }], stop_reason: 'tool_use', usage: {} });
+  await wire.request({ ...anthropic, model: 'claude-opus-5-5' }, { messages: [{ role: 'user', content: 'x' }], tools: [tool], tool_choice: { type: 'tool', name: 'report' } });
+  assert.deepEqual(sent[0].body.tool_choice, { type: 'auto' });
+  sent = capture({ content: [], stop_reason: 'end_turn', usage: {} });
+  await wire.request({ ...anthropic, model: 'claude-haiku-5-5' }, { messages: [{ role: 'user', content: 'x' }], tools: [tool], tool_choice: { type: 'tool', name: 'report' } });
+  assert.deepEqual(sent[0].body.tool_choice, { type: 'tool', name: 'report' }, 'others are still forced');
+  // A model not known yet that refuses: asked again unforced, and from then on.
+  const bodies = [];
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body); bodies.push(body);
+    if (body.tool_choice.type === 'tool') return { ok: false, status: 400, headers: new Map(), json: async () => ({ error: { message: 'tool_choice: type "tool" and "any" are not supported for this model.' } }) };
+    return { ok: true, json: async () => ({ content: [], stop_reason: 'end_turn', usage: {} }) };
+  };
+  await wire.request({ ...anthropic, model: 'claude-new-9' }, { messages: [{ role: 'user', content: 'x' }], tools: [tool], tool_choice: { type: 'tool', name: 'report' } });
+  await wire.request({ ...anthropic, model: 'claude-new-9' }, { messages: [{ role: 'user', content: 'x' }], tools: [tool], tool_choice: { type: 'tool', name: 'report' } });
+  assert.deepEqual(bodies.map((b) => b.tool_choice.type), ['tool', 'auto', 'auto']);
+});
