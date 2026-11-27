@@ -5130,13 +5130,23 @@
   setInterval(pollAgentStatus, 10000);
   setTimeout(pollAgentStatus, 2000);
 
-  // Forward scroll from anywhere on page to chat messages
-  document.addEventListener('wheel', function(e) {
-    if (document.body.classList.contains('chat-active') && messagesEl) {
-      // deltaMode 0 = pixels, 1 = lines (multiply for smoother feel)
-      var delta = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
-      messagesEl.scrollTop += delta;
+  // Only what is under the cursor scrolls. The empty page either side of the
+  // conversation scrolls the conversation; anything that scrolls by itself
+  // (the conversation, the chat box, the sidebar, a panel) is left to do so
+  // alone, as forwarding there too moved two things at once.
+  function scrollsByItself(el) {
+    for (; el && el !== document.body; el = el.parentElement) {
+      if (el === messagesEl || el === dockedInput || el.tagName === 'TEXTAREA') return true;
+      var oy = getComputedStyle(el).overflowY;
+      if (oy === 'auto' || oy === 'scroll') return true;
     }
+    return false;
+  }
+  document.addEventListener('wheel', function(e) {
+    if (e.defaultPrevented || e.ctrlKey || !messagesEl || !document.body.classList.contains('chat-active')) return;
+    if (scrollsByItself(e.target)) return;
+    // deltaMode 0 = pixels, 1 = lines
+    messagesEl.scrollTop += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
   }, { passive: true });
 
   // Reconnect WebSocket when tab becomes visible

@@ -69,6 +69,32 @@ test("reading above the end is never jolted down; the arrow says what is new bel
   assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{ \.scroll-latest, \.scroll-latest-text \{ transition: none; \}/);
 });
 
+// Only what is under the cursor scrolls: the empty page beside the conversation
+// scrolls the conversation, while the chat box, the conversation and any other
+// scroll area scroll alone (forwarding from them moved two things at once).
+test("only what is under the cursor scrolls", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  const start = page.indexOf("function scrollsByItself(el)");
+  assert.ok(start > 0);
+  const end = page.indexOf("}, { passive: true });", start);
+  const code = page.slice(start, end);
+  assert.match(code, /if \(scrollsByItself\(e\.target\)\) return;\n\s*\/\/[^\n]*\n\s*messagesEl\.scrollTop \+=/);
+  // Run the check on stand-ins for the page's pieces.
+  const body = { tagName: "BODY" };
+  const messagesEl = { tagName: "DIV", parentElement: body, oy: "auto" };
+  const dockedInput = { tagName: "DIV", parentElement: body, oy: "visible" };
+  const textarea = { tagName: "TEXTAREA", parentElement: { tagName: "DIV", parentElement: dockedInput, oy: "visible" }, oy: "auto" };
+  const sendButton = { tagName: "BUTTON", parentElement: dockedInput, oy: "visible" };
+  const bubble = { tagName: "DIV", parentElement: messagesEl, oy: "visible" };
+  const sidebarRow = { tagName: "A", parentElement: { tagName: "NAV", parentElement: body, oy: "auto" }, oy: "visible" };
+  const margin = { tagName: "MAIN", parentElement: body, oy: "visible" };
+  const document = { body };
+  const getComputedStyle = (el) => ({ overflowY: el.oy });
+  const scrollsByItself = new Function("messagesEl", "dockedInput", "document", "getComputedStyle", code.slice(0, code.indexOf("\n  document.addEventListener")) + "\nreturn scrollsByItself;")(messagesEl, dockedInput, document, getComputedStyle);
+  for (const [name, el] of Object.entries({ textarea, sendButton, bubble, sidebarRow })) assert.equal(scrollsByItself(el), true, name + " scrolls alone");
+  assert.equal(scrollsByItself(margin), false, "the empty page scrolls the conversation");
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.
