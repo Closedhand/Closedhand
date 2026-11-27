@@ -4929,6 +4929,9 @@
       document.querySelectorAll('.tab-content').forEach(tc => {
         tc.classList.toggle('active', tc.id === `tab-${tabName}`);
       });
+      // The web chat keeps the open tab in its address, so a refresh opens
+      // the dashboard on it again.
+      try { if (window.parent !== window) window.parent.postMessage({ type: 'dash-place', tab: tabName }, location.origin); } catch (e) {}
       if (tabName === 'agents') {
         loadAgents();
         drawAgentTemplates();

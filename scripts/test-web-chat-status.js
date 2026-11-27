@@ -111,6 +111,23 @@ test("the chat box opens for something long and sizes by hand", () => {
   assert.match(page, /new ResizeObserver\(function \(\) \{ if \(_atEnd\) messagesEl\.scrollTop = messagesEl\.scrollHeight; update\(\); \}\)\.observe\(messagesEl\);/);
 });
 
+// A refresh comes back to where you were: the address keeps Chat, a project's
+// conversation, Computers or File Search, and the dashboard at its tab, and
+// the page opens it again on load before it starts writing the address.
+test("a refresh comes back to the same conversation, tab and dashboard", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const page = fs.readFileSync(path.join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  const dash = fs.readFileSync(path.join(__dirname, "..", "webapp", "views", "dashboard.html"), "utf8");
+  assert.match(page, /: b\.contains\('chat-active'\) \? \(_placeProject \? '#project\/' \+ _placeProject : '#chat'\) : '';/);
+  assert.match(page, /_placeProject = projectId \|\| null;\n\s*rememberPlace\(\);/, "opening a conversation keeps it");
+  assert.match(page, /function rememberPlace\(\) \{\n\s*if \(!_placeReady\) return;/, "nothing is written before the page has come back");
+  assert.match(page, /var go = _cameFor === '#chat' \? function \(\) \{ window\.openConversation\(null\); \} : m \? function \(\) \{ window\.openConversation\(m\[1\]\); \} : null;/);
+  assert.match(page, /dash = '\?dash=' \+ encodeURIComponent\(overlay\.classList\.contains\('account'\) \? '#account' : _dashTab \? '#' \+ _dashTab : '1'\);/);
+  assert.match(dash, /window\.parent\.postMessage\(\{ type: 'dash-place', tab: tabName \}, location\.origin\)/, "the dashboard tells its tab");
+  // The dashboard reopens from ?dash= as it does after a redirect.
+  assert.match(page, /var m = window\.location\.search\.match\(\/\[\?&\]dash=\(\[\^&\]\*\)\/\);/);
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.
