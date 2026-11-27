@@ -109,7 +109,7 @@ test("every chat that shows a reply as it is written marks it as unfinished and 
   assert.match(page, /\.writing-mark \{[^}]*mask: url\(\/brush-underline\.svg\)[^}]*animation: writingBreathe/);
   assert.match(page, /prefers-reduced-motion: reduce\) \{ \.writing-mark \{ animation: none;/);
   assert.match(page, /msg\.type === 'stream_reset'\) \{ if \(dropWriting\(\) && _awaitingReply\) showTyping\(\); \}/);
-  assert.match(read("lib/web-chat-ws.js"), /onStreamReset\(\) \{\n\s+if \(streamStarted\) \{ streamStarted = false; sendToUser\(userId, \{ type: "stream_reset" \}\); \}/);
+  assert.match(read("lib/web-chat-ws.js"), /onStreamReset\(\) \{\n\s+if \(streamStarted\) \{ streamStarted = false; toTurn\(userId, \{ type: "stream_reset" \}\); \}/);
   // Telegram and linked WhatsApp: one message that changes, ending in an ellipsis until it is the reply.
   assert.match(read("lib/platforms/telegram.js"), /shownSoFar\(streamBuffer\)\.slice\(0, 4000\) \+ " …"/);
   assert.match(read("lib/platforms/telegram.js"), /onStreamReset\(\) \{/);

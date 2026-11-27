@@ -941,7 +941,7 @@ test("a message that went into a project it was not sent to opens that project's
   const engine = read("lib/engine.js");
   assert.match(engine, /if \(project && project\.project && project\.project\.id !== \(opts\.project \|\| null\) && typeof opts\.onProject === "function"\) \{\n\s*try \{ opts\.onProject\(project\.project\); \}/);
   assert.ok(engine.indexOf("opts.onProject(project.project)") > engine.indexOf("projects.openTurn(userId, userMessage"), "once the turn knows its project");
-  assert.match(read("lib/web-chat-ws.js"), /onProject\(p\) \{\n\s*sendToUser\(userId, \{ type: "in_project", project: \{ id: p\.id, emoji: p\.emoji \|\| null, name: p\.name \|\| "" \} \}\);/);
+  assert.match(read("lib/web-chat-ws.js"), /onProject\(p\) \{\n\s*where = p\.id \|\| where;\n\s*sendToUser\(userId, \{ type: "in_project", project: \{ id: p\.id, emoji: p\.emoji \|\| null, name: p\.name \|\| "" \} \}\);/);
   const page = read("webapp/views/index.html");
   assert.match(page, /if \(msg\.type === 'in_project'\) \{ movedTo\(msg\.project\); return; \}/);
   assert.match(page, /function movedTo\(p\) \{\n\s*if \(!p \|\| !p\.id \|\| \(_openProject && _openProject\.id === p\.id\)\) return;\n\s*var mine = \[\]\.slice\.call\(messagesEl\.querySelectorAll\('\.message\.user'\)\)\.pop\(\) \|\| null;\n\s*window\.openConversation\(p\.id, mine\);/);
