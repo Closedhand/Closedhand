@@ -570,7 +570,8 @@ test("a picture is changed on this computer or by an allowed provider, never in 
   assert.match(src, /\.\.\.refs\.flatMap\(\(file\) => \["-r", file\]\),/, "on this computer, each picture is one of FLUX.2 Klein's references");
   const handlers = fs.readFileSync(path.join(__dirname, '..', 'lib/tools/handlers.js'), 'utf8');
   assert.match(handlers, /const file = await loadAttachmentRaw\(String\(id\)\)\.catch\(\(\) => null\);/);
-  assert.match(handlers, /return \{ \.\.\.await im\.madeResult\(pic, \{ settings, userId, seen: made\.seen, tries: made\.tries, misses: made\.misses \}\), picture_id: pictureId \};/, 'a picture made is kept, to be changed next');
+  assert.match(handlers, /return \{ \.\.\.await im\.madeResult\(pic, \{ settings, userId, seen: made\.seen, tries: made\.tries, misses: made\.misses, broken: made\.broken \}\), picture_id: pictureId \};/, 'a picture made is kept, to be changed next');
+  assert.match(handlers, /if \(!made\.broken\) await sendDocument\(chatId, pic\.bytes/, 'a malformed picture is kept, not sent');
 });
 
 // Before a move to Railway, where its own image model can't run, a computer
@@ -640,6 +641,24 @@ test("a picture is checked before it is sent and made again when it misses what 
   n = 0;
   const failing = await im.madeChecked(async () => { if (++n > 1) throw new Error('busy'); return { bytes: Buffer.from('p1'), mime: 'image/png' }; }, 'x', { look: async () => 'a cat', judge: async () => ({ matches: false, better: 'a dog' }) });
   assert.deepEqual([failing.pic.bytes.toString(), failing.misses], ['p1', true]);
+  // A broken picture (people merged, extra limbs) is never sent: the last
+  // that came out whole goes instead, and with none, nothing goes.
+  n = 0;
+  const v2 = [{ matches: false, better: 'b' }, { matches: false, broken: true, better: 'c' }, { matches: false, broken: true, better: 'd' }];
+  const kept = await im.madeChecked(async () => ({ bytes: Buffer.from('p' + ++n), mime: 'image/png' }), 'x', { look: async (b) => 'seen ' + b.toString(), judge: async () => v2.shift() });
+  assert.deepEqual([n, kept.pic.bytes.toString(), kept.seen, kept.tries, kept.broken], [3, 'p1', 'seen p1', 3, undefined], 'the whole one goes');
+  n = 0;
+  const none = await im.madeChecked(async () => ({ bytes: Buffer.from('p' + ++n), mime: 'image/png' }), 'x', { look: async () => 'two women merged into one', judge: async () => ({ matches: false, broken: true, better: 'one woman' }) });
+  assert.deepEqual([n, none.broken, none.tries], [3, true, 3]);
+  const held = await im.madeResult(none.pic, { seen: none.seen, tries: none.tries, misses: none.misses, broken: none.broken });
+  assert.match(held.not_sent, /It was made 3 times and came out malformed each time, so it was not sent\. Looked at, the last one shows: two women merged into one/);
+  assert.match(held.say, /offer another go, or to show it anyway \(send_file with picture_id\)/);
+  assert.equal(held.sent, undefined);
+  let sys2 = '', tool2 = null;
+  const j = await im.judged({ asked: '', description: 'd', seen: 's', userId: 'u1' }, { internal: () => ({ model: 'm', client: { messages: { create: async (r) => { sys2 = r.system; tool2 = r.tools[0]; return { content: [{ type: 'tool_use', name: 'report_picture', input: { matches: true, broken: true } }] }; } } } }) });
+  assert.deepEqual(j, { matches: false, broken: true, better: null }, 'a broken picture never matches');
+  assert.match(sys2, /Say also whether it is broken, malformed whatever was asked: people merged or doubled/);
+  assert.ok(tool2.input_schema.properties.broken);
   // What they said lately, latest last, for reading what they meant.
   assert.equal(im.askedFrom([{ role: 'user', content: 'I like a fuller figure' }, { role: 'assistant', content: 'Noted.' }, { role: 'user', content: [{ type: 'image' }] }], 'a woman at the beach'), 'They said: I like a fuller figure\nClosedhand said: Noted.\nThey said: a woman at the beach');
 });
