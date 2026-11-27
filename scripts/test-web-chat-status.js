@@ -128,6 +128,31 @@ test("a refresh comes back to the same conversation, tab and dashboard", () => {
   assert.match(page, /var m = window\.location\.search\.match\(\/\[\?&\]dash=\(\[\^&\]\*\)\/\);/);
 });
 
+// One connection at a time: two calls close together each made one, both
+// stayed open, and every reply showed twice.
+test("the web chat keeps one connection, so nothing shows twice", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  assert.match(page, /if \(_connectingSince && Date\.now\(\) - _connectingSince < 10000\) return;\n\s*_connectingSince = Date\.now\(\);/);
+  assert.match(page, /var ws = chatWs = new WebSocket\(chatUrl\.href\);/);
+  assert.match(page, /ws\.onmessage = function\(event\) \{\n\s*if \(ws !== chatWs\) \{ try \{ ws\.close\(\); \} catch \(e\) \{\} return; \}/);
+  assert.match(page, /ws\.onclose = function\(\) \{\n\s*if \(ws !== chatWs\) return;/);
+  assert.doesNotMatch(page, /chatWs\.on(message|open|close) = function/);
+});
+
+// A turn's messages carry the conversation they belong to; a tab showing
+// another conversation leaves them be (they showed in the open conversation,
+// whichever it was).
+test("a turn shows only in the conversation it belongs to", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const ws = fs.readFileSync(path.join(__dirname, "..", "lib", "web-chat-ws.js"), "utf8");
+  const page = fs.readFileSync(path.join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  const turn = ws.slice(ws.indexOf("async function handleChatMessage("), ws.indexOf("// Send a message to all connected tabs"));
+  assert.match(turn, /const toTurn = \(uid, data\) => sendToUser\(uid, \{ \.\.\.data, project: where \}\);/);
+  assert.match(turn, /where = p\.id \|\| where;\n\s*sendToUser\(userId, \{ type: "in_project"/, "moving into a project moves the turn");
+  assert.doesNotMatch(turn, /sendToUser\(userId, \{ type: "(typing|status|stream_start|stream_token|stream_reset|stream_end|message)"/, "every part of the turn is tagged");
+  assert.match(page, /if \('project' in msg && \/\^\(typing\|status\|activity\|stream_start\|stream_token\|stream_reset\|stream_end\|message\)\$\/\.test\(msg\.type\) && \(msg\.project \|\| null\) !== \(_placeProject \|\| null\)\) \{/);
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.

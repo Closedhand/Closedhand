@@ -3740,15 +3740,25 @@
   // A connection that comes back after a drop missed what was sent meanwhile.
   var _chatWasOpen = false;
 
+  // One connection at a time. Two calls close together (the page loading and
+  // the tab coming into view) each made one while the first was still being
+  // set up, both stayed open, and every reply showed twice. A connection that
+  // is no longer the page's own is closed, and what it says is ignored.
+  var _connectingSince = 0;
   function connectChat() {
     if (chatWs && chatWs.readyState <= 1) return;
+    if (_connectingSince && Date.now() - _connectingSince < 10000) return;
+    _connectingSince = Date.now();
     fetch('/api/chat/ws-token').then(function(r) { return r.json(); }).then(function(data) {
+      _connectingSince = 0;
       if (!data.token || !data.wsUrl) return;
+      if (chatWs && chatWs.readyState <= 1) return;
       var chatUrl = new URL('/chat', window.location.href);
       chatUrl.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       chatUrl.searchParams.set('token', data.token);
-      chatWs = new WebSocket(chatUrl.href);
-      chatWs.onopen = function() {
+      var ws = chatWs = new WebSocket(chatUrl.href);
+      ws.onopen = function() {
+        if (ws !== chatWs) { ws.close(); return; }
         while (pendingMessages.length > 0) {
           var pm = pendingMessages.shift();
           if (pm && pm.type === 'chat' && pm.cid) sendChat(pm);
@@ -3757,7 +3767,8 @@
         if (_chatWasOpen) catchUp();
         _chatWasOpen = true;
       };
-      chatWs.onmessage = function(event) {
+      ws.onmessage = function(event) {
+        if (ws !== chatWs) { try { ws.close(); } catch (e) {} return; }
         try {
           var msg = JSON.parse(event.data);
           if (window.ClosedHandSpeech && window.ClosedHandSpeech.receive(msg)) return;
@@ -3776,6 +3787,12 @@
           if (msg.type === 'project_gone') { if (window.projectGone) window.projectGone(msg.id); return; }
           // A turn or a message in another app: shown here too, live.
           if (msg.type === 'elsewhere') { showElsewhere(msg); return; }
+          // A turn in a conversation other than the one open here (another tab
+          // or device has it open): it shows there, and here only in the list.
+          if ('project' in msg && /^(typing|status|activity|stream_start|stream_token|stream_reset|stream_end|message)$/.test(msg.type) && (msg.project || null) !== (_placeProject || null)) {
+            if (msg.type === 'message' || msg.type === 'stream_end') loadActivityFeed();
+            return;
+          }
           // A reply ends the wait; progress while this tab waits restarts the timer.
           if (msg.type === 'message' || msg.type === 'stream_end' || msg.type === 'file') { _awaitingReply = false; disarmResponseWatchdog(); }
           else if (_awaitingReply) armResponseWatchdog();
@@ -3812,13 +3829,14 @@
           }
         } catch (e) {}
       };
-      chatWs.onclose = function() {
+      ws.onclose = function() {
+        if (ws !== chatWs) return;
         if (window.ClosedHandSpeech) window.ClosedHandSpeech.stop('Connection lost. Tap to try again.');
         chatWs = null;
         setTimeout(connectChat, 2000);
       };
-      chatWs.onerror = function() { if (chatWs) chatWs.close(); };
-    }).catch(function() {});
+      ws.onerror = function() { try { ws.close(); } catch (e) {} };
+    }).catch(function() { _connectingSince = 0; });
   }
 
   // Stall watchdog: if the server goes silent mid-response (e.g. a redeploy killed the
