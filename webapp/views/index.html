@@ -4796,7 +4796,11 @@
     window.openConversation(p.id, mine);
   }
 
+  var _opening = 0;
   window.openConversation = function(projectId, keep) {
+    // Only the latest opened shows: one opened just before could answer
+    // later and put its messages and name over this one.
+    var mine = ++_opening;
     // A project not in the list yet (one just made on the dashboard) is
     // still opened: the conversation itself says which project it is.
     var found = projectId && _conversations ? (_conversations.projects || []).find(function(p) { return p.id === projectId; }) : null;
@@ -4812,6 +4816,7 @@
     fetch('/api/conversation' + (projectId ? '?project=' + encodeURIComponent(projectId) : ''))
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(conv) {
+        if (mine !== _opening) return;
         if (conv && conv.project) { _openProject = conv.project; input.setAttribute('placeholder', composerPlaceholder()); projectHead(); if (!found) loadActivityFeed(); }
         if (conv && conv.messages) shownInThread(conv.messages).forEach(showStored);
         // The message that moved it here, unless the conversation has it already.
@@ -5314,9 +5319,19 @@
     if (e.origin !== location.origin || !e.data || e.data.type !== 'dash-place') return;
     if (/^[a-z]+$/.test(String(e.data.tab || ''))) { _dashTab = e.data.tab; rememberPlace(); }
   });
+  // The place an address names: a conversation to open, or null.
+  function placeIn(hash) {
+    var m = /^#project\/([0-9a-f-]{36})$/i.exec(hash);
+    return hash === '#chat' ? function () { window.openConversation(null); } : m ? function () { window.openConversation(m[1]); } : null;
+  }
+  // The address changed by hand (typed, or a link to #chat): that place opens.
+  window.addEventListener('hashchange', function () {
+    if (!_placeReady || !isAuthenticated) return;
+    var go = placeIn(location.hash);
+    if (go) go();
+  });
   (function comeBack() {
-    var m = /^#project\/([0-9a-f-]{36})$/i.exec(_cameFor);
-    var go = _cameFor === '#chat' ? function () { window.openConversation(null); } : m ? function () { window.openConversation(m[1]); } : null;
+    var go = placeIn(_cameFor);
     var start = function () { _placeReady = true; rememberPlace(); };
     var watch = function () {
       var o = new MutationObserver(rememberPlace);

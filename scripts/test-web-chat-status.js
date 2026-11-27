@@ -121,7 +121,9 @@ test("a refresh comes back to the same conversation, tab and dashboard", () => {
   assert.match(page, /: b\.contains\('chat-active'\) \? \(_placeProject \? '#project\/' \+ _placeProject : '#chat'\) : '';/);
   assert.match(page, /_placeProject = projectId \|\| null;\n\s*rememberPlace\(\);/, "opening a conversation keeps it");
   assert.match(page, /function rememberPlace\(\) \{\n\s*if \(!_placeReady\) return;/, "nothing is written before the page has come back");
-  assert.match(page, /var go = _cameFor === '#chat' \? function \(\) \{ window\.openConversation\(null\); \} : m \? function \(\) \{ window\.openConversation\(m\[1\]\); \} : null;/);
+  assert.match(page, /return hash === '#chat' \? function \(\) \{ window\.openConversation\(null\); \} : m \? function \(\) \{ window\.openConversation\(m\[1\]\); \} : null;/);
+  assert.match(page, /window\.addEventListener\('hashchange', function \(\) \{\n\s*if \(!_placeReady \|\| !isAuthenticated\) return;/, "the address changed by hand opens that place");
+  assert.match(page, /\.then\(function\(conv\) \{\n\s*if \(mine !== _opening\) return;/, "only the latest conversation opened shows");
   assert.match(page, /dash = '\?dash=' \+ encodeURIComponent\(overlay\.classList\.contains\('account'\) \? '#account' : _dashTab \? '#' \+ _dashTab : '1'\);/);
   assert.match(dash, /window\.parent\.postMessage\(\{ type: 'dash-place', tab: tabName \}, location\.origin\)/, "the dashboard tells its tab");
   // The dashboard reopens from ?dash= as it does after a redirect, keeping the conversation after "#".
