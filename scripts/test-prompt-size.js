@@ -77,7 +77,11 @@ const toolChars = (tools) => tools.reduce((n, t) => n + JSON.stringify({ name: t
 // half of how Closedhand is with the person (accuracy and honesty first, its
 // own view first), 4,144 characters in all; the full prompt fell to 43,700
 // as eight parts became that one.
-const BUDGET = { system: 45000, tools: 17600, quick: 4300 };
+// Quick 4,300 -> 4,600 on 27 November 2026: the accuracy principle both
+// prompts share says a warning, balance or deadline in an email is how things
+// stood when it was sent (it was told as live, about storage already cleared);
+// measured 0/6 -> 6/6 on the probe, nothing else moved.
+const BUDGET = { system: 45000, tools: 17600, quick: 4600 };
 
 test("a typical message's system prompt and tool definitions stay within budget", () => {
   asSam();
