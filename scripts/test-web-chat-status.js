@@ -153,6 +153,29 @@ test("a turn shows only in the conversation it belongs to", () => {
   assert.match(page, /if \('project' in msg && \/\^\(typing\|status\|activity\|stream_start\|stream_token\|stream_reset\|stream_end\|message\)\$\/\.test\(msg\.type\) && \(msg\.project \|\| null\) !== \(_placeProject \|\| null\)\) \{/);
 });
 
+// The line saying the newer message comes first is saved before that message
+// is, and after a reload it stood above it: it shows after the message.
+test("'I'll answer your latest message first' shows after the message it answers", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const page = fs.readFileSync(path.join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  const engine = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
+  assert.match(engine, /conversation\.push\(\{ role: "assistant", content: busyLine, busy: true \}\);/);
+  const start = page.indexOf("function shownInThread(messages)");
+  const end = page.indexOf("\n  }\n", start) + 4;
+  const shownInThread = new Function(page.slice(start, end) + "\nreturn shownInThread;")();
+  const line = "I'll answer your latest message first, then come back to the one before it.";
+  const got = shownInThread([
+    { role: "user", content: "first" },
+    { role: "assistant", content: line, busy: true },
+    { role: "user", content: "second" },
+    { role: "assistant", content: "answer to second" },
+    { role: "user", content: "third" },
+    { role: "assistant", content: line },
+    { role: "user", content: "fourth" },
+  ]).map((m) => m.content);
+  assert.deepEqual(got, ["first", "second", line, "answer to second", "third", "fourth", line]);
+});
+
 // An inline handler runs in the page's global scope, so a function kept inside
 // one of the page's closures is out of its reach: the arrow's click called one
 // and did nothing. Every inline handler calls a function the page can reach.

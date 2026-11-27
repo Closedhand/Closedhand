@@ -4869,6 +4869,13 @@
       }
       out.push(m);
     }
+    // "I'll answer your latest message first" is saved as the newer message
+    // arrives, before that message itself is saved (lib/engine.js busy), and
+    // after a reload it stood above the message it answered: it goes after it.
+    var busy = function (m) { return m.role === 'assistant' && (m.busy === true || String(m.content).trim() === "I'll answer your latest message first, then come back to the one before it."); };
+    for (var j = 0; j < out.length - 1; j++) {
+      if (busy(out[j]) && out[j + 1].role === 'user') { var note = out[j]; out[j] = out[j + 1]; out[j + 1] = note; j++; }
+    }
     return out;
   }
 

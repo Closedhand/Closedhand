@@ -229,7 +229,7 @@ test("requests set aside one after another are answered together, and kept", asy
   const engine = fs.readFileSync(path.join(__dirname, "..", "lib", "engine.js"), "utf8");
   const yieldAt = engine.indexOf("[Engine] Yielding to newer message");
   const setAside = engine.slice(yieldAt, engine.indexOf("return null;", yieldAt));
-  assert.match(setAside, /conversation\.push\(\{ role: "assistant", content: busyLine \}\);\n\s*if \(ctx\.activeUserStore\) \{\n\s*require\("\.\/storage"\)\.syncAdapterBack\(\);\n\s*await ctx\.activeUserStore\.save\(\)/, "saved, and waited for, before the newer message loads it");
+  assert.match(setAside, /conversation\.push\(\{ role: "assistant", content: busyLine, busy: true \}\);\n\s*if \(ctx\.activeUserStore\) \{\n\s*require\("\.\/storage"\)\.syncAdapterBack\(\);\n\s*await ctx\.activeUserStore\.save\(\)/, "saved, and waited for, before the newer message loads it");
 });
 
 test("the line for work moving to the background names nothing the request does not", async () => {
