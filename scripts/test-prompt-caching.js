@@ -307,3 +307,50 @@ test('a turn far back behind many announced tools is marked too, so what was sto
   const few = box.place([{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'user', content: 'c' }, announced.announcement([forecast]), { role: 'assistant', content: 'd' }, { role: 'user', content: 'e' }], 'x');
   assert.equal(few.filter((m) => Array.isArray(m.content) && m.content.some((b) => b.cache_control)).length, 1, 'near enough: one mark');
 });
+
+// The main chat on Claude is kept in the cache through the day
+// (lib/keep-ready.js): a message after a break of over an hour read nothing
+// and stored the whole conversation again, about 80 cents on Opus.
+const keep = require('../lib/keep-ready');
+const { mock } = require('node:test');
+test('the main chat is kept ready every 55 minutes until midnight, and stops once a ping had to store much', async () => {
+  mock.timers.enable({ apis: ['setTimeout'], now: Date.parse('2026-11-27T12:00:00Z') });
+  try {
+    const asked = [];
+    let usage = { cache_read_input_tokens: 100000, cache_creation_input_tokens: 300 };
+    const client = { messages: { create: async (request) => { asked.push(request); return { content: [{ type: 'text', text: 'OK' }], usage }; } } };
+    const request = { model: 'claude-opus-5-5', system: [{ type: 'text', text: 'You are Closedhand.' }], tools, messages: [{ role: 'user', content: keep.ASK }] };
+    assert.equal(keep.note('u-keep', { client, backend: 'anthropic', request, zone: 'Europe/London', now: Date.now() }), true);
+    mock.timers.tick(keep.EVERY_MS - 1000); await new Promise(setImmediate);
+    assert.equal(asked.length, 0, 'nothing before 55 minutes');
+    mock.timers.tick(1000); await new Promise(setImmediate); await new Promise(setImmediate);
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0], request, 'the request the next message would send');
+    mock.timers.tick(keep.EVERY_MS); await new Promise(setImmediate); await new Promise(setImmediate);
+    assert.equal(asked.length, 2, 'and again 55 minutes later');
+    usage = { cache_read_input_tokens: 30000, cache_creation_input_tokens: 70000 };
+    mock.timers.tick(keep.EVERY_MS); await new Promise(setImmediate); await new Promise(setImmediate);
+    assert.equal(asked.length, 3);
+    assert.equal(keep._has('u-keep'), false, 'it changed since: no more pings');
+    // Not past midnight in their time, and only on Claude.
+    assert.equal(keep.note('u-keep', { client, backend: 'anthropic', request, zone: 'Europe/London', now: Date.parse('2026-11-27T23:30:00Z') }), false);
+    assert.equal(keep.note('u-keep', { client, backend: 'custom', request: { ...request, model: 'deepseek-v4' }, zone: 'Europe/London' }), false);
+    // A reply starts the count again.
+    keep.note('u-keep', { client, backend: 'anthropic', request, zone: 'Europe/London', now: Date.now() });
+    mock.timers.tick(keep.EVERY_MS - 60000);
+    keep.note('u-keep', { client, backend: 'anthropic', request, zone: 'Europe/London', now: Date.now() });
+    mock.timers.tick(60000); await new Promise(setImmediate);
+    assert.equal(asked.length, 3, 'the earlier timer was dropped');
+    keep.stop('u-keep');
+  } finally { mock.timers.reset(); }
+});
+test('the ping is the next message\'s request: the same system prompt, tools and marked conversation, the ask after the mark', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'lib', 'engine.js'), 'utf8');
+  assert.match(src, /require\("\.\/kept-tools"\)\.save\(userId, ctx\.activeThreadId\)[\s\S]{0,400}=== "offer"\) \{[\s\S]{0,300}keep\.note\(userId/, 'after each full reply in the main chat');
+  assert.match(src, /system: \[\{ type: "text", text: buildSystemPrompt\(\), cache_control: \{ type: "ephemeral" \} \}\], tools: getAllTools\(\),\n\s+messages: withTurnContext\(withFiles\(\[\.\.\.announced\.withAnnouncements\(\[\.\.\.conversation\], defOf\), \{ role: "user", content: keep\.ASK \}\]\), ""\)/);
+  assert.match(src, /const systemPrompt = \[\{ type: "text", text: systemText, cache_control: \{ type: "ephemeral" \} \}\];/, 'set out as a reply sets out its own');
+  assert.match(src, /let maxTokens = deepThink \? 16000 : \(isLight \? 256 : \(isQuick \? 2048 : 8192\)\);/, 'the same length a reply asks for');
+  // The conversation's mark falls on the last reply, before the ask.
+  const placed = box.place([{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'user', content: keep.ASK }], '');
+  assert.equal(JSON.stringify(placed[1].content.at(-1).cache_control), JSON.stringify({ type: 'ephemeral', ttl: '1h' }));
+});
