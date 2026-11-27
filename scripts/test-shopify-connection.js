@@ -125,3 +125,19 @@ test('Shopify connection endpoint sits behind the login, persists encrypted data
   // Who may ask is the login gate's to decide, for every route registered after it.
   assert.ok(start>src.indexOf('const SIGNED_BY_BRIDGE'),'registered after the login gate');
 });
+
+// Only the path of a Shopify address was kept, so a search went with no
+// filter: order #1309, looked up by number, came back as the newest orders.
+test("a Shopify request keeps its query, a bare # in a value included", () => {
+  const { shopifyEndpoint } = require("../lib/services/shopify");
+  const base = "https://sample-store.myshopify.com/admin/api/2024-10/orders.json";
+  assert.equal(shopifyEndpoint(base + "?name=%231309&status=any"), "/orders.json?name=%231309&status=any");
+  assert.equal(shopifyEndpoint(base + "?name=#1309&status=any"), "/orders.json?name=%231309&status=any");
+  assert.equal(shopifyEndpoint(base), "/orders.json");
+  const fs = require("node:fs"), path = require("node:path");
+  for (const file of ["lib/tools/handlers.js", "lib/gateway.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+    assert.match(src, /services\/shopify"\)\.shopifyEndpoint\(url\)/, file);
+    assert.doesNotMatch(src, /new URL\(url\)\.pathname\.replace\(\/\^\\\/admin\\\/api/, file + " never keeps the path alone");
+  }
+});
