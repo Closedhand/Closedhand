@@ -2233,7 +2233,7 @@
   <div class="activity-scrim" id="activityScrim" onclick="toggleMobileActivity()"></div>
 
   <!-- CHAT STATE: messages + docked input at bottom -->
-  <button class="scroll-latest" id="scrollLatest" type="button" aria-label="Go to the latest message" onclick="scrollToBottom(true, true)"><span class="scroll-latest-text">New message</span><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
+  <button class="scroll-latest" id="scrollLatest" type="button" aria-label="Go to the latest message"><span class="scroll-latest-text">New message</span><svg width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></button>
   <div class="chat-messages" id="chatMessages">
     <div class="typing-indicator" id="typingIndicator">
       <div id="statusArea" style="display:flex;flex-direction:column;gap:2px;width:100%;"></div>
@@ -4819,6 +4819,7 @@
   (function latestArrow() {
     var btn = document.getElementById('scrollLatest');
     if (!btn || !messagesEl) return;
+    btn.addEventListener('click', function () { scrollToBottom(true, true); });
     var place = function() {
       var dock = document.querySelector('.docked-input');
       var top = dock ? dock.getBoundingClientRect().top : window.innerHeight;

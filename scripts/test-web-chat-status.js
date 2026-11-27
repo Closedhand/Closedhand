@@ -61,11 +61,26 @@ test("reading above the end is never jolted down; the arrow says what is new bel
   assert.match(page, /_atEnd = messagesEl\.scrollHeight - messagesEl\.scrollTop - messagesEl\.clientHeight < 64;/);
   assert.match(page, /scrollToBottom\(role === 'user' && ts === undefined\);/, "their own message, just sent");
   assert.match(page, /setTimeout\(function \(\) \{ scrollToBottom\(true\); \}, ms\);/, "opening a conversation");
-  assert.match(page, /onclick="scrollToBottom\(true, true\)"><span class="scroll-latest-text">New message<\/span>/);
+  assert.match(page, /id="scrollLatest" type="button" aria-label="Go to the latest message"><span class="scroll-latest-text">New message<\/span>/);
+  assert.match(page, /btn\.addEventListener\('click', function \(\) \{ scrollToBottom\(true, true\); \}\);/, "the arrow goes to the end");
   assert.match(page, /n\.classList\.contains\('message'\) && n\.classList\.contains\('bot'\) && !n\.classList\.contains\('writing'\)[^\n]*btn\.classList\.add\('fresh'\)/, "a reply landing while away");
   assert.match(page, /btn\.classList\.toggle\('working', away && !!messagesEl\.querySelector\('#typingIndicator\.visible, \.message\.bot\.writing, \.agent-live:not\(\.done\), #statusArea \.timeline'\)\);/);
   assert.match(page, /\.scroll-latest\.working:not\(\.fresh\)::before \{[^}]*animation: latestTurn/);
   assert.match(page, /@media \(prefers-reduced-motion: reduce\) \{ \.scroll-latest, \.scroll-latest-text \{ transition: none; \}/);
+});
+
+// An inline handler runs in the page's global scope, so a function kept inside
+// one of the page's closures is out of its reach: the arrow's click called one
+// and did nothing. Every inline handler calls a function the page can reach.
+test("every inline handler calls a function the page can reach", () => {
+  const page = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "webapp", "views", "index.html"), "utf8");
+  const scripts = [...page.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  const called = new Set([...page.matchAll(/\son[a-z]+="([A-Za-z_$][\w$]*)\(/g)].map((m) => m[1]));
+  for (const name of called) {
+    if (name === "if" || name === "open" || name === "event") continue;
+    const reachable = new RegExp(`window\\.${name}\\s*=|^(async )?function ${name}\\b|^(var|let|const) ${name}\\b`, "m");
+    assert.ok(scripts.some((s) => reachable.test(s)), `${name} is called from an inline handler but only defined inside a closure`);
+  }
 });
 
 // A connection that looked open but had quietly died took the message and
