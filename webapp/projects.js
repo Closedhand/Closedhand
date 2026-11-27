@@ -114,6 +114,44 @@ function register(app, { db, userId: who, withAppearance }) {
     } catch (e) { fail(res, e); }
   });
 
+  // Single messages deleted from the web chat (its bin, after it asks): gone
+  // from the conversation Closedhand reads at its next turn, with any file
+  // sent in them. What was already summarised into a Context Note or saved as
+  // a Pinned Fact stays, as the question before it says, and a message that
+  // came from a chat app stays in that app.
+  app.post("/api/conversation/forget", async (req, res) => {
+    const userId = owner(req, res); if (!userId) return;
+    try {
+      const projectId = String(req.query.project || "");
+      const wanted = Array.isArray(req.body && req.body.messages) ? req.body.messages.slice(0, 60) : [];
+      if (!wanted.length) return fail(res, new Error("Nothing to delete."), 400);
+      let thread = null;
+      if (!projectId) thread = await generalThread(userId);
+      else {
+        const p = (await mine(userId)).find((x) => x.id === projectId);
+        if (!p) return fail(res, new Error("That project is not here any more."), 404);
+        const { data } = await db.from("conversation_threads").select("id, messages").eq("user_id", userId).eq("project_id", p.id).limit(1);
+        thread = (data && data[0]) || null;
+      }
+      if (!thread) return fail(res, new Error("That conversation is not here any more."), 404);
+      const { kept, gone } = withoutMessages(thread.messages, wanted);
+      if (!gone.length) return fail(res, new Error("Those messages are not here any more."), 404);
+      const { error } = await db.from("conversation_threads").update({ messages: kept }).eq("id", thread.id).eq("user_id", userId);
+      if (error) throw new Error("Could not delete the messages.");
+      const files = gone.flatMap((m) => (Array.isArray(m.files) ? m.files : []).map((f) => f && f.id)).filter((id) => typeof id === "string" && id);
+      if (files.length) {
+        try {
+          const { data: rows } = await db.from("attachments").select("storage_path").eq("user_id", userId).in("attachment_id", files);
+          const paths = (rows || []).map((r) => r.storage_path).filter(Boolean);
+          if (paths.length && db.storage) await db.storage.from("attachments").remove(paths);
+          const { error: fileErr } = await db.from("attachments").delete().eq("user_id", userId).in("attachment_id", files);
+          if (fileErr) console.error("[conversation] files of deleted messages not removed:", fileErr.message);
+        } catch (e) { console.error("[conversation] files of deleted messages not removed:", e.message); }
+      }
+      res.json({ success: true, deleted: gone.length });
+    } catch (e) { fail(res, e); }
+  });
+
   // Search Chat: its messages by their words, newest first, from the
   // conversation now and from the archive every condensed turn is kept in
   // word for word (lib/conversation.js), so an old one can be found and
@@ -660,4 +698,32 @@ function missingHtml() {
 <p><a href="/dashboard#projects">Your projects</a> &middot; <a href="/">Back to Closedhand</a></p>`);
 }
 
-module.exports = { register, projectHtml };
+// The messages asked to be deleted, out of a conversation: each found by who
+// said it and its words as the web chat shows them, at its time when that is
+// known (from history), else the latest with those words (one sent or
+// received since the page opened, whose time the page made itself).
+const UPLOAD_LABEL = /^\s*\[User uploaded (?:file: [^\s.]+|\d+ images|a file)\.[\s\S]*\]\s*/;
+const shownWords = (m) => {
+  const text = m.role === "user" && typeof m.said === "string" ? m.said : typeof m.content === "string" ? m.content : "";
+  return sameWords(m.role === "user" ? text.replace(UPLOAD_LABEL, "") : text);
+};
+function sameWords(t) {
+  return String(t || "").replace(/^\s*\[replying to[^"\]]*"[\s\S]*?"\]\s*/i, "").replace(/\[Attached:.*?\]\s*/g, "").replace(/\s+/g, " ").trim();
+}
+function withoutMessages(messages, wanted) {
+  const list = Array.isArray(messages) ? messages : [];
+  const drop = new Set();
+  for (const w of wanted) {
+    const role = w && w.role === "user" ? "user" : w && w.role === "assistant" ? "assistant" : null;
+    const words = sameWords(w && w.text);
+    if (!role || !words) continue;
+    const same = [];
+    list.forEach((m, i) => { if (m && m.role === role && !drop.has(i) && shownWords(m) === words) same.push(i); });
+    if (!same.length) continue;
+    const at = w.ts ? same.filter((i) => list[i].ts === w.ts) : [];
+    (at.length ? at : [same[same.length - 1]]).forEach((i) => drop.add(i));
+  }
+  return { kept: list.filter((_, i) => !drop.has(i)), gone: list.filter((_, i) => drop.has(i)) };
+}
+
+module.exports = { register, projectHtml, withoutMessages };

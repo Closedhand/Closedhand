@@ -947,3 +947,64 @@ test("a message that went into a project it was not sent to opens that project's
   assert.match(page, /function movedTo\(p\) \{\n\s*if \(!p \|\| !p\.id \|\| \(_openProject && _openProject\.id === p\.id\)\) return;\n\s*var mine = \[\]\.slice\.call\(messagesEl\.querySelectorAll\('\.message\.user'\)\)\.pop\(\) \|\| null;\n\s*window\.openConversation\(p\.id, mine\);/);
   assert.match(page, /if \(keep && !shownJustNow\(keep\._raw, 'user'\)\) messagesEl\.insertBefore\(keep, typingEl\);/, "the message stays in view, once");
 });
+
+// Single messages deleted from the web chat: one of yours goes with the
+// answer to it, the bin lights what would go and asks first, and what is
+// deleted is gone from the conversation Closedhand reads, with its files.
+test("deleting single messages takes them, and their files, out of the conversation", async () => {
+  const tables = {
+    projects: [move()],
+    conversation_threads: [
+      { id: "t-chat", project_id: null, is_active: true, updated_at: "2026-11-23T11:00:00Z", messages: [
+        { role: "user", content: "Make me a picture of a lighthouse", ts: "2026-11-23T10:00:00Z" },
+        { role: "assistant", content: "Here it is.", ts: "2026-11-23T10:00:09Z", files: [{ id: "att_9", name: "image.jpg" }] },
+        { role: "user", content: "[replying to Closedhand's message: \"Here it is.\"]\nnicer sky?", ts: "2026-11-23T10:01:00Z" },
+        { role: "assistant", content: "Done.", ts: "2026-11-23T10:01:30Z" },
+      ] },
+      { id: "t-move", project_id: "aaaa1111-move", updated_at: "2026-11-23T10:00:00Z", messages: [{ role: "user", content: "📦 van?", ts: "2026-11-23T09:00:00Z" }, { role: "assistant", content: "📦 Saturday.", ts: "2026-11-23T09:00:04Z" }] },
+    ],
+    attachments: [{ id: "a9", attachment_id: "att_9", storage_path: "u1/att_9.jpg" }, { id: "a8", attachment_id: "att_8", storage_path: "u1/att_8.jpg" }],
+  };
+  const { db } = fakeDb(tables);
+  const routes = {};
+  const app = new Proxy({}, { get: (_, verb) => (route, ...handlers) => { routes[`${String(verb).toUpperCase()} ${route}`] = handlers.at(-1); } });
+  const load = Module._load;
+  Module._load = function (request) {
+    if (request === "multer") return Object.assign(() => ({ array: () => (q, r, next) => next(), single: () => (q, r, next) => next() }), { memoryStorage: () => ({}) });
+    return load.apply(this, arguments);
+  };
+  try { require("../webapp/projects").register(app, { db, userId: () => "u1", withAppearance: (x) => x }); }
+  finally { Module._load = load; }
+  const forget = (query, messages) => new Promise((resolve) => {
+    let code = 200;
+    const res = { status(c) { code = c; return res; }, set() { return res; }, json: (body) => resolve({ code, body }) };
+    routes["POST /api/conversation/forget"]({ query, params: {}, body: { messages } }, res);
+  });
+  // Your first message and the answer with its picture, as history shows them.
+  const first = await forget({}, [{ role: "user", text: "Make me a picture of a lighthouse", ts: "2026-11-23T10:00:00Z" }, { role: "assistant", text: "Here it is.", ts: "2026-11-23T10:00:09Z" }]);
+  assert.deepEqual(first, { code: 200, body: { success: true, deleted: 2 } });
+  const chat = tables.conversation_threads.find((t) => t.id === "t-chat");
+  assert.deepEqual(chat.messages.map((m) => m.content.slice(-10)), ["nicer sky?", "Done."]);
+  assert.equal(chat.updated_at, "2026-11-23T11:00:00Z", "deleting is not activity");
+  assert.deepEqual(tables.attachments.map((a) => a.attachment_id), ["att_8"], "the picture in it goes too");
+  // One sent since the page opened: its time is the page's own, its words as shown.
+  const live = await forget({}, [{ role: "user", text: "[replying to Closedhand's message: \"Here it is.\"]\nnicer sky?", ts: null }]);
+  assert.equal(live.body.deleted, 1);
+  assert.deepEqual(chat.messages.map((m) => m.content), ["Done."]);
+  // A project's conversation, and what is no longer there.
+  assert.equal((await forget({ project: "aaaa1111-move" }, [{ role: "assistant", text: "📦 Saturday.", ts: "2026-11-23T09:00:04Z" }])).body.deleted, 1);
+  assert.equal((await forget({}, [{ role: "user", text: "never said", ts: null }])).code, 404);
+  assert.equal((await forget({ project: "nope" }, [{ role: "user", text: "x" }])).code, 404);
+  assert.equal((await forget({}, [])).code, 400);
+
+  // The page: the bin on each message, lighting what would go, asking first
+  // in the shared confirm with what stays, and waiting while a reply is due.
+  const page = read("webapp/views/index.html");
+  assert.match(page, /bin\.type = 'button'; bin\.className = 'msg-tool msg-delete'; bin\.title = 'Delete';/);
+  assert.match(page, /bin\.addEventListener\('mouseenter', light\); bin\.addEventListener\('focus', light\);/);
+  assert.match(page, /if \(div\.classList\.contains\('user'\)\) \{\n\s*for \(j = i \+ 1; j < all\.length && !all\[j\]\.classList\.contains\('user'\); j\+\+\) out\.push\(all\[j\]\);/, "yours goes with the answer to it");
+  assert.match(page, /box\.className = 'project-confirm msg-confirm';/);
+  assert.match(page, /'\? Closedhand forgets ' \+ them \+ ' here\. Anything already in a Context Note or a Pinned Fact stays until you remove it in '\);/);
+  assert.match(page, /if \(_awaitingReply \|\| document\.getElementById\('streamingMsg'\)\) \{\n\s*said\.textContent = 'Closedhand is replying in this conversation\. Delete once it has finished\.';/);
+  assert.match(page, /\.message\.doomed \{ border-color: rgba\(var\(--danger-rgb\),0\.6\) !important;/);
+});

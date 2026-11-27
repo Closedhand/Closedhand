@@ -227,7 +227,7 @@ test("the files a turn sent are named on its answer, so looking back shows them"
   assert.match(read("lib/engine.js"), /if \(oneChat\.keepFiles\(userId, userMessage, require\("\.\/conversation"\)\.getConversation\(userId\), before\)\) ctx\.activeUserStore\?\.markDirty\?\.\("conversations"\);/);
   const page = read("webapp/views/index.html");
   assert.match(page, /var url = function \(f\) \{ return '\/api\/files\/' \+ encodeURIComponent\(f\.id\) \+ '\/download'; \};/);
-  assert.match(page, /files\.forEach\(function \(f\) \{ addFileMessage\(\{ filename: f\.name, mediaType: f\.mime, size: f\.size, url: url\(f\) \}\); \}\);/);
+  assert.match(page, /files\.forEach\(function \(f\) \{ var el = addFileMessage\(\{ filename: f\.name, mediaType: f\.mime, size: f\.size, url: url\(f\) \}\); if \(el\) \{ el\._raw = m\.content; el\._ts = m\.ts \|\| null; \} \}\);/);
   assert.match(page, /if \(conv && conv\.messages\) shownInThread\(conv\.messages\)\.forEach\(showStored\);/);
   assert.match(page, /earlier\.forEach\(showStored\);/);
 });
