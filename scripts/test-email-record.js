@@ -57,3 +57,19 @@ test('older cached records are brought to the shape, Outlook from its next list'
   // Drafts are rewritten every sync too: they change, the rest of the mail does not.
   assert.match(sync, /const newItems = items\.filter\(i => !cachedIds\.has\(i\.external_id\) \|\| stale\.has\(i\.external_id\) \|\| draftIds\.has\(i\.external_id\)\);/);
 });
+
+// Who was copied in is kept, from every mailbox: asked whether a sent mail
+// copied two people in, the copy had no Cc line and Closedhand could only say
+// to check Sent. Mail cached before it was kept says unknown (null), never
+// nobody ("").
+test('every mailbox keeps who was copied in, and older mail says unknown', () => {
+  assert.equal(emailRecord({ id: 'g1', cc: 'Vera <vera@example.com>, Sam <sam@example.com>' }).cc, 'Vera <vera@example.com>, Sam <sam@example.com>');
+  assert.equal(emailRecord({ id: 'g2', cc: '' }).cc, '', 'nobody copied in');
+  assert.equal(emailRecord({ id: 'g3' }).cc, null, 'cached before it was kept: unknown');
+  const sync = read('lib/services/data-sync.js');
+  assert.match(sync, /cc: getGmailHeader\(headers, "Cc"\) \|\| "",/);
+  assert.match(sync, /\$select=id,subject,from,toRecipients,ccRecipients,/);
+  assert.match(sync, /cc: msg\.ccRecipients \? msg\.ccRecipients\.map\(r => r\.emailAddress\?\.address \|\| ""\)\.join\(", "\) : null,/);
+  assert.match(read('lib/services/imap-mail.js'), /cc: parsed\.cc\?\.text \|\| "",/);
+  assert.match(read('lib/services/data-access.js'), /cc: getGmailHeader\(headers, "Cc"\) \|\| "",/);
+});
