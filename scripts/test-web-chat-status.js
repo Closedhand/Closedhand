@@ -124,7 +124,8 @@ test("a refresh comes back to the same conversation, tab and dashboard", () => {
   assert.match(page, /var go = _cameFor === '#chat' \? function \(\) \{ window\.openConversation\(null\); \} : m \? function \(\) \{ window\.openConversation\(m\[1\]\); \} : null;/);
   assert.match(page, /dash = '\?dash=' \+ encodeURIComponent\(overlay\.classList\.contains\('account'\) \? '#account' : _dashTab \? '#' \+ _dashTab : '1'\);/);
   assert.match(dash, /window\.parent\.postMessage\(\{ type: 'dash-place', tab: tabName \}, location\.origin\)/, "the dashboard tells its tab");
-  // The dashboard reopens from ?dash= as it does after a redirect.
+  // The dashboard reopens from ?dash= as it does after a redirect, keeping the conversation after "#".
+  assert.match(page, /\.replace\(\/\[\?&\]\$\/, ""\) \+ window\.location\.hash;/);
   assert.match(page, /var m = window\.location\.search\.match\(\/\[\?&\]dash=\(\[\^&\]\*\)\/\);/);
 });
 

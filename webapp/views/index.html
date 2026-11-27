@@ -4071,7 +4071,9 @@
       bin.innerHTML = '<svg width="0.8125rem" height="0.8125rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>';
       var light = function () { if (!messagesEl.querySelector('.msg-confirm')) doomedBy(div).forEach(function (el) { el.classList.add('doomed'); }); };
       var unlight = function () { if (!messagesEl.querySelector('.msg-confirm')) clearDoomed(); };
-      bin.addEventListener('mouseenter', light); bin.addEventListener('focus', light);
+      // Focus lights them only from the keyboard: focus given back after
+      // Keep them lit them again, as if the question were still open.
+      bin.addEventListener('mouseenter', light); bin.addEventListener('focus', function () { if (bin.matches(':focus-visible')) light(); });
       bin.addEventListener('mouseleave', unlight); bin.addEventListener('blur', unlight);
       bin.addEventListener('click', function (e) { e.stopPropagation(); askDeleteMessages(div, bin); });
       tools.appendChild(bin);
@@ -4100,9 +4102,11 @@
     });
   }, 60000);
 
-  // Deleting messages. One of yours goes with Closedhand's answer to it,
-  // everything up to your next message; one of Closedhand's goes alone, with
-  // its other parts (follow-ons, its files). Pointing at the bin lights what
+  // Deleting messages. One of yours goes with Closedhand's reply straight
+  // after it, all its parts; anything later (a note from another app, a
+  // follow-up) stays, to be deleted on its own: taking everything up to your
+  // next message took an unrelated note with it. One of Closedhand's goes
+  // alone, with its other parts (follow-ons, its files). Pointing at the bin lights what
   // would go, and it asks first, beneath them, saying what stays. Closedhand
   // reads the conversation afresh at each turn, so they are gone from then
   // on; while it is replying here it waits, as that turn would write them
@@ -4113,7 +4117,11 @@
     if (i < 0) return [div];
     var out = [div], j;
     if (div.classList.contains('user')) {
-      for (j = i + 1; j < all.length && !all[j].classList.contains('user'); j++) out.push(all[j]);
+      var next = all[i + 1];
+      if (next && next.classList.contains('bot')) {
+        out.push(next);
+        if (next._raw != null) for (j = i + 2; j < all.length && all[j].classList.contains('bot') && all[j]._raw === next._raw; j++) out.push(all[j]);
+      }
       return out;
     }
     if (div._raw == null) return out;
@@ -5272,7 +5280,9 @@
     var inner = decodeURIComponent(m[1] || "");
     if (inner === "1") inner = "";
     // Take dash= back out of the address bar so a refresh does not reopen it.
-    var cleaned = window.location.pathname + window.location.search.replace(/([?&])dash=[^&]*&?/, "$1").replace(/[?&]$/, "");
+    // The conversation after "#" stays: a refresh with the dashboard open
+    // comes back to both (rememberPlace).
+    var cleaned = window.location.pathname + window.location.search.replace(/([?&])dash=[^&]*&?/, "$1").replace(/[?&]$/, "") + window.location.hash;
     window.history.replaceState({}, "", cleaned);
     window.openDashSlide(inner);
   })();

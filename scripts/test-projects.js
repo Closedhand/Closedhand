@@ -1001,8 +1001,17 @@ test("deleting single messages takes them, and their files, out of the conversat
   // in the shared confirm with what stays, and waiting while a reply is due.
   const page = read("webapp/views/index.html");
   assert.match(page, /bin\.type = 'button'; bin\.className = 'msg-tool msg-delete'; bin\.title = 'Delete';/);
-  assert.match(page, /bin\.addEventListener\('mouseenter', light\); bin\.addEventListener\('focus', light\);/);
-  assert.match(page, /if \(div\.classList\.contains\('user'\)\) \{\n\s*for \(j = i \+ 1; j < all\.length && !all\[j\]\.classList\.contains\('user'\); j\+\+\) out\.push\(all\[j\]\);/, "yours goes with the answer to it");
+  // Run the rule on stand-ins: yours takes the reply straight after it, all
+  // its parts, and nothing later; Closedhand's takes its own parts.
+  const start = page.indexOf("function doomedBy(div) {");
+  const body = page.slice(start, page.indexOf("\n  }\n", start) + 4);
+  const el = (role, raw) => ({ _raw: raw, classList: { contains: (c) => c === role } });
+  const msgs = [el("user", "a"), el("bot", "r1"), el("bot", "r1"), el("bot", "note"), el("user", "b"), el("bot", "r2")];
+  const doomedBy = new Function("messagesEl", body + "\nreturn doomedBy;")({ querySelectorAll: () => msgs });
+  assert.deepEqual(doomedBy(msgs[0]).map((m) => msgs.indexOf(m)), [0, 1, 2], "yours goes with the reply to it, not the note after");
+  assert.deepEqual(doomedBy(msgs[2]).map((m) => msgs.indexOf(m)), [1, 2], "a reply goes with its parts");
+  assert.deepEqual(doomedBy(msgs[3]).map((m) => msgs.indexOf(m)), [3]);
+  assert.match(page, /bin\.addEventListener\('focus', function \(\) \{ if \(bin\.matches\(':focus-visible'\)\) light\(\); \}\);/, "focus given back after Keep them does not light them again");
   assert.match(page, /box\.className = 'project-confirm msg-confirm';/);
   assert.match(page, /'\? Closedhand forgets ' \+ them \+ ' here\. Anything already in a Context Note or a Pinned Fact stays until you remove it in '\);/);
   assert.match(page, /if \(_awaitingReply \|\| document\.getElementById\('streamingMsg'\)\) \{\n\s*said\.textContent = 'Closedhand is replying in this conversation\. Delete once it has finished\.';/);
