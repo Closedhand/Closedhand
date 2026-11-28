@@ -134,3 +134,30 @@ test('an edit sealed with its message\'s secret is opened and the stored copy fo
   assert.match(src, /keepSecret\(msg\.key\.id, [^\n]*messageSecret/, 'every message\'s secret is kept as it arrives');
   assert.match(src, /if \(m\.secretEncryptedMessage\) \{ await followSecretEdit\(msg, m\.secretEncryptedMessage\); continue; \}/);
 });
+
+// A message sent from the person's phone comes wrapped for their other devices
+// with its secret on the wrapper, which the library drops, so no edit to it
+// could be opened. The secret is copied inside as the message is opened.
+test('a message sent from the phone keeps its secret once unwrapped', async () => {
+  const proto = { Message: { encode: (m) => ({ finish: () => Buffer.from(JSON.stringify(m)) }), decode: (b) => JSON.parse(Buffer.from(b).toString()) } };
+  const unpadRandomMax16 = (b) => { const t = new Uint8Array(b); if (!t.length || t[t.length - 1] > t.length) throw new Error('bad pad'); return t.subarray(0, t.length - t[t.length - 1]); };
+  const src = fs.readFileSync(path.join(__dirname, '../lib/platforms/whatsapp-linked.js'), 'utf8');
+  const take = (start) => { const at = src.indexOf(start); return src.slice(at, src.indexOf('\n}\n', at) + 3); };
+  const box = { require: (name) => { if (name === '@whiskeysockets/baileys') return { proto, unpadRandomMax16 }; throw new Error(name); }, Buffer };
+  vm.runInNewContext(take('function secretInside(') + '\nthis.secretInside = secretInside;', box);
+  const padded = (m) => Buffer.concat([Buffer.from(JSON.stringify(m)), Buffer.from([3, 3, 3])]);
+  const open = (m) => box.secretInside(async (args) => { assert.equal(args.jid, 'friend@lid', 'the library\'s own call is passed through'); return padded(m); })({ jid: 'friend@lid' });
+  const wrapped = { deviceSentMessage: { destinationJid: 'friend@lid', message: { conversation: 'pick up at six' } }, messageContextInfo: { messageSecret: 'S1' } };
+  const out = await open(wrapped);
+  const seen = proto.Message.decode(unpadRandomMax16(out));
+  assert.equal(seen.deviceSentMessage.message.messageContextInfo.messageSecret, 'S1', 'the secret is inside, where the library looks');
+  assert.equal(seen.deviceSentMessage.message.conversation, 'pick up at six');
+  // Anything else passes through as it came.
+  for (const m of [{ conversation: 'from someone else', messageContextInfo: { messageSecret: 'S2' } },
+    { ...wrapped, deviceSentMessage: { message: { conversation: 'x', messageContextInfo: { messageSecret: 'S3' } } } },
+    { deviceSentMessage: { message: { conversation: 'no secret' } } }]) {
+    assert.deepEqual(await open(m), padded(m));
+  }
+  assert.deepEqual(await box.secretInside(async () => Buffer.from([9]))(), Buffer.from([9]), 'what cannot be read is left alone');
+  assert.match(src, /repo\.decryptMessage = secretInside\(repo\.decryptMessage\.bind\(repo\)\)/, 'every message opened goes through it');
+});
