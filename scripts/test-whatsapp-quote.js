@@ -88,7 +88,9 @@ test('a WhatsApp message edited or deleted for everyone after it was stored chan
 // under whichever name WhatsApp gave the sender and the stored copy follows.
 test('an edit sealed with its message\'s secret is opened and the stored copy follows it', async () => {
   const crypto = require('node:crypto');
-  const { proto } = require('@whiskeysockets/baileys');
+  // The library is not installed for checks; its protobuf is stood in for by JSON.
+  const proto = { Message: { encode: (m) => ({ finish: () => Buffer.from(JSON.stringify(m)) }), decode: (b) => JSON.parse(Buffer.from(b).toString()),
+    SecretEncryptedMessage: { SecretEncType: { UNKNOWN: 0, EVENT_EDIT: 1, MESSAGE_EDIT: 2 } } } };
   const src = fs.readFileSync(path.join(__dirname, '../lib/platforms/whatsapp-linked.js'), 'utf8');
   const take = (start) => { const at = src.indexOf(start); return src.slice(at, src.indexOf('\n}\n', at) + 3); };
   const secret = crypto.randomBytes(32);
