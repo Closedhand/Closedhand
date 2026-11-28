@@ -76,5 +76,8 @@ test('a WhatsApp message edited or deleted for everyone after it was stored chan
   assert.equal(gone.file, undefined); assert.equal(gone.file_texts, undefined);
   // Receipts and the like are not changes, and never read the database.
   assert.equal(await box.changeStored('u1', key, { status: 3 }), false);
+  // A change it cannot follow says why, by its outline, never its words.
+  await assert.rejects(box.changeStored('u1', key, { message: { pollUpdateMessage: { vote: 'x' } } }), /unknown change \(message; pollUpdateMessage\)/);
+  await assert.rejects(box.changeStored('u1', key, { message: { editedMessage: { message: { stickerMessage: {} } } } }), /edit has no text \(stickerMessage\)/);
   assert.match(src, /sock\.ev\.on\("messages\.update"[\s\S]{0,200}_sentIds\.has\(key\?\.id\)[\s\S]{0,200}changeStored\(_ownerUserId, key, update\)/, 'Closedhand\'s own messages, edited as it writes, are left alone');
 });
