@@ -81,3 +81,54 @@ test('a WhatsApp message edited or deleted for everyone after it was stored chan
   await assert.rejects(box.changeStored('u1', key, { message: { editedMessage: { message: { stickerMessage: {} } } } }), /edit has no text \(stickerMessage\)/);
   assert.match(src, /sock\.ev\.on\("messages\.update"[\s\S]{0,200}_sentIds\.has\(key\?\.id\)[\s\S]{0,200}changeStored\(_ownerUserId, key, update\)/, 'Closedhand\'s own messages, edited as it writes, are left alone');
 });
+
+// An edit made in WhatsApp's own app comes sealed with the secret its message
+// carried, which the library cannot open, so it went unread. Sealed here by
+// hand (HKDF as two HMAC steps, independent of the code under test), it opens
+// under whichever name WhatsApp gave the sender and the stored copy follows.
+test('an edit sealed with its message\'s secret is opened and the stored copy follows it', async () => {
+  const crypto = require('node:crypto');
+  const { proto } = require('@whiskeysockets/baileys');
+  const src = fs.readFileSync(path.join(__dirname, '../lib/platforms/whatsapp-linked.js'), 'utf8');
+  const take = (start) => { const at = src.indexOf(start); return src.slice(at, src.indexOf('\n}\n', at) + 3); };
+  const secret = crypto.randomBytes(32);
+  const seal = (plain, id, who) => {
+    const prk = crypto.createHmac('sha256', Buffer.alloc(32)).update(secret).digest();
+    const key = crypto.createHmac('sha256', prk).update(Buffer.concat([Buffer.from(id + who + who + 'Message Edit'), Buffer.from([1])])).digest();
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+    return { encPayload: Buffer.concat([c.update(plain), c.final(), c.getAuthTag()]), encIv: iv };
+  };
+  const plain = proto.Message.encode({ editedMessage: { message: { protocolMessage: { type: 14, key: { id: 'ORIG1', fromMe: true }, editedMessage: { conversation: 'pick up at six' } } } } }).finish();
+  const changes = [];
+  const box = {
+    require: (name) => name === '@whiskeysockets/baileys' ? { proto } : require(path.join(__dirname, '../lib/platforms', name)),
+    _sentIds: new Set(['MINE1']), _sock: { user: { id: '447700900222:51@s.whatsapp.net', lid: '99887766:51@lid' } }, _ownerUserId: 'u1',
+    changeStored: async (u, key, update) => { changes.push({ u, key, update }); return true; },
+    console: { log: () => {} }, Date, Buffer, Error, Number,
+  };
+  vm.runInNewContext(take('function unwrap(') + take('function bareJid(') + 'const _secrets = new Map();\nconst SECRET_KEEP_MS = 20 * 60 * 1000;\n'
+    + take('function keepSecret(') + take('async function followSecretEdit(') + '\nthis.keepSecret = keepSecret; this.followSecretEdit = followSecretEdit;', box);
+  const edit = (target, sealed) => [{ key: { remoteJid: 'friend@lid', fromMe: true, id: 'EDIT1' }, messageTimestamp: 1795000000 },
+    { targetMessageKey: target, secretEncType: proto.Message.SecretEncryptedMessage.SecretEncType.MESSAGE_EDIT, ...sealed }];
+  box.keepSecret('ORIG1', secret, Date.now());
+  await box.followSecretEdit(...edit({ id: 'ORIG1', fromMe: true, remoteJid: 'friend@lid' }, seal(plain, 'ORIG1', '99887766@lid')));
+  assert.equal(changes.length, 1, 'opened under the private id');
+  assert.equal(changes[0].key.id, 'ORIG1');
+  assert.deepEqual(JSON.parse(JSON.stringify(changes[0].update.message.editedMessage.message)), { conversation: 'pick up at six' });
+  box.keepSecret('ORIG2', secret, Date.now());
+  const plain2 = proto.Message.encode({ conversation: 'six thirty' }).finish();
+  await box.followSecretEdit(...edit({ id: 'ORIG2', fromMe: true }, seal(plain2, 'ORIG2', '447700900222@s.whatsapp.net')));
+  assert.equal(changes.length, 2, 'and under the number, an edit sealed as bare content too');
+  assert.equal(changes[1].key.remoteJid, 'friend@lid', 'the chat comes from the edit when the target does not name it');
+  // Not kept (too old to edit, or sent before a restart), Closedhand's own, or the wrong secret: nothing changes.
+  box.keepSecret('OLD1', secret, Date.now() - 21 * 60 * 1000);
+  await box.followSecretEdit(...edit({ id: 'OLD1', fromMe: true }, seal(plain2, 'OLD1', '99887766@lid')));
+  box.keepSecret('MINE1', secret, Date.now());
+  await box.followSecretEdit(...edit({ id: 'MINE1', fromMe: true }, seal(plain2, 'MINE1', '99887766@lid')));
+  box.keepSecret('ORIG3', crypto.randomBytes(32), Date.now());
+  await box.followSecretEdit(...edit({ id: 'ORIG3', fromMe: true }, seal(plain2, 'ORIG3', '99887766@lid')));
+  assert.equal(changes.length, 2);
+  assert.match(src, /keepSecret\(msg\.key\.id, [^\n]*messageSecret/, 'every message\'s secret is kept as it arrives');
+  assert.match(src, /if \(m\.secretEncryptedMessage\) \{ await followSecretEdit\(msg, m\.secretEncryptedMessage\); continue; \}/);
+});
